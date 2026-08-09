@@ -3,7 +3,7 @@ name: 自動露營區爬蟲機器人
 on:
   schedule:
     - cron: '0 * * * *' # 每小時自動執行一次
-  workflow_dispatch: # 允許在網頁手動按按鈕執行
+  workflow_dispatch: # 允許在網頁手動按按鈕觸發
 
 jobs:
   run-scraper:
