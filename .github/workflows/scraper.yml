@@ -1,0 +1,23 @@
+name: 自動露營區爬蟲機器人
+
+on:
+  schedule:
+    - cron: '0 * * * *' # 代表每小時的 0 分鐘自動醒來執行一次
+  workflow_dispatch: # 讓你在網頁上也可以按按鈕隨時手動觸發
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下載程式碼
+        uses: actions/checkout@v3
+
+      - name: 設定 Node.js 環境
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: 機器人開始執行
+        run: |
+          echo "機器人已醒來，正在檢查各大露營區空位..."
+          # 未來可以在這裡執行 node scraper.js 來寫入 Supabase
