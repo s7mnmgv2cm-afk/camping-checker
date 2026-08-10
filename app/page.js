@@ -34,12 +34,12 @@ export default function Home() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-50 py-10 px-4 sm:px-8 max-w-4xl mx-auto">
+    <main className="min-h-screen bg-slate-50 py-10 px-4 sm:px-8 max-w-4xl mx-auto font-sans">
       <h1 className="text-3xl font-extrabold text-slate-900 mb-8 flex items-center gap-2">
         <span>🏕️</span> 全台露營區即時空位搜尋
       </h1>
 
-      {/* 控制面板：日期與車程並排 */}
+      {/* 搜尋與篩選控制區塊 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* 📅 日期選擇器 */}
@@ -51,7 +51,7 @@ export default function Home() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 p-3 font-semibold"
+              className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 p-3 font-semibold outline-none transition-all"
             />
           </div>
 
@@ -78,14 +78,21 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 營地列表 */}
+      {/* 營地卡片清單 */}
       {loading ? (
         <div className="text-center py-12 text-slate-500 font-medium">🔄 載入中...</div>
+      ) : filteredCampsites.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 text-slate-500">
+          😔 沒有找到 {maxDriveTime} 分鐘車程內的營地，請試著拉長車程時間。
+        </div>
       ) : (
         <div className="space-y-4">
           {filteredCampsites.map((site) => (
-            <div key={site.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              {/* 標題與空位標籤 */}
+            <div
+              key={site.id}
+              className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-all"
+            >
+              {/* 頂部名稱與狀態 */}
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">{site.name}</h2>
@@ -95,9 +102,13 @@ export default function Home() {
                     </span>
                   )}
                 </div>
-                <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                  site.status === 'available' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'
-                }`}>
+                <span
+                  className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                    site.status === 'available'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-rose-100 text-rose-700'
+                  }`}
+                >
                   {site.status === 'available' ? '有空位' : '已滿位'}
                 </span>
               </div>
@@ -109,14 +120,14 @@ export default function Home() {
                 <span>🚗 開車車程: 約 {site.drive_time_mins} 分鐘 ({site.distance_km})</span>
               </p>
 
-              {/* 💡 AI 整理優缺點 (這一段補回來了) */}
+              {/* 👍👎 AI 優缺點標籤 */}
               <div className="space-y-2 pt-3 border-t border-slate-100">
                 {site.pros && site.pros.length > 0 && (
                   <div>
                     <span className="text-xs font-bold text-slate-500">👍 AI 整理優點：</span>
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       {site.pros.map((pro, i) => (
-                        <span key={i} className="text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-md">
+                        <span key={i} className="text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-md border border-emerald-100">
                           {pro}
                         </span>
                       ))}
@@ -129,7 +140,7 @@ export default function Home() {
                     <span className="text-xs font-bold text-slate-500">👎 AI 整理缺點：</span>
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       {site.cons.map((con, i) => (
-                        <span key={i} className="text-xs bg-rose-50 text-rose-700 font-medium px-2.5 py-1 rounded-md">
+                        <span key={i} className="text-xs bg-rose-50 text-rose-700 font-medium px-2.5 py-1 rounded-md border border-rose-100">
                           {con}
                         </span>
                       ))}
