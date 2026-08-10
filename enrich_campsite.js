@@ -243,9 +243,9 @@ async function main() {
       pros = aiResult.pros;
       cons = aiResult.cons;
 
-      // ⏳ 等待 12 秒，符合 5 RPM 限額
-      console.log(`⏳ 冷卻 12 秒，避免 API 429 超額...`);
-      await sleep(12000);
+      // ⏳ 等待 15 秒，符合 5 RPM 限額
+      console.log(`⏳ 冷卻 15 秒，避免 API 429 超額...`);
+      await sleep(15000);
     }
 
     console.log(`🏔️ 海拔: ${altitude} | 🚘 車程: ${driveTimeMins} 分鐘 (${distanceKm})`);
