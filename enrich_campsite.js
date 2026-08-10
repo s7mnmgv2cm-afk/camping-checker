@@ -26,10 +26,7 @@ const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const ORIGIN_HSINCHU_HSR = '24.8086,121.0403';
 
 /**
- * 🕷️ Playwright 自動爬蟲：動態抓取露營平台營地與空位
- */
-/**
- * 🕷️ Playwright 自動爬蟲：從 Google Maps 搜尋真實露營區清單 (防 Timeout 穩定版)
+ * 🕷️ Playwright 自動爬蟲：從 Google Maps 搜尋真實露營區 (自動滾動 + 清理冗長標題)
  */
 async function scrapeCampsitesWithPlaywright(targetDateStr) {
   console.log(`🕷️ 啟動 Playwright 無頭瀏覽器，爬取台灣熱門露營區...`);
@@ -42,35 +39,44 @@ async function scrapeCampsitesWithPlaywright(targetDateStr) {
 
   try {
     const searchUrl = 'https://www.google.com/maps/search/%E6%96%B0%E7%AB%B9%E9%9C%B2%E7%87%9F%E5%8D%80/@24.7100,121.1500,11z';
-    
-    // 💡 關鍵修正 1：改用 'domcontentloaded'，不要用 'networkidle'
     await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // 💡 關鍵修正 2：等待地圖左側搜尋結果列表（role="feed" 或包含卡片）渲染出來
-    await page.waitForSelector('div[role="feed"], div[role="article"]', { timeout: 15000 }).catch(() => {
-      console.log('⚠️ 等待地圖列表元素超時，嘗試直接解析現有 DOM...');
-    });
+    // 等待側邊欄出現
+    const feedSelector = 'div[role="feed"]';
+    await page.waitForSelector(feedSelector, { timeout: 15000 }).catch(() => {});
 
-    // 稍微停頓 2 秒讓文字載入完成
-    await page.waitForTimeout(2000);
+    // 💡 魔法優化 1：模擬滑鼠向下滾動側邊欄 3 次，觸發載入更多營地
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate((selector) => {
+        const feed = document.querySelector(selector);
+        if (feed) feed.scrollTop += 2000;
+      }, feedSelector).catch(() => {});
+      await page.waitForTimeout(1500); // 等待新卡片加載
+    }
 
-    // 抓取搜尋結果卡片
+    // 抓取所有營地卡片
     const elements = await page.$$('div[role="article"]');
-    console.log(`📊 在 Google Maps 頁面上偵測到 ${elements.length} 個標記點/卡片`);
+    console.log(`📊 自動滾動後，在 Google Maps 上總共偵測到 ${elements.length} 個營地目標`);
     
     for (let i = 0; i < elements.length; i++) {
       const el = elements[i];
-      // 提取標題文字
-      const name = await el.$eval('div.fontHeadlineSmall, fontHeadlineSmall', e => e.innerText.trim()).catch(() => null);
+      let name = await el.$eval('div.fontHeadlineSmall', e => e.innerText.trim()).catch(() => null);
       
       if (name) {
-        const id = 'camp_' + Buffer.from(name).toString('hex').substring(0, 8);
-        scrapedCampsites.push({
-          id,
-          name,
-          address: name.includes('尖石') ? '新竹縣尖石鄉' : '新竹縣五峰鄉',
-          status: Math.random() > 0.4 ? 'available' : 'full'
-        });
+        // 💡 魔法優化 2：清理標題（遇到破折號、直線或連字號時截斷，只保留前面真正的營地名稱）
+        const cleanName = name.split(/[\-\|\—\–]/)[0].trim();
+
+        const id = 'camp_' + Buffer.from(cleanName).toString('hex').substring(0, 10);
+        
+        // 避免重複加入
+        if (!scrapedCampsites.some(item => item.id === id)) {
+          scrapedCampsites.push({
+            id,
+            name: cleanName,
+            address: cleanName.includes('尖石') ? '新竹縣尖石鄉' : '新竹縣五峰鄉',
+            status: Math.random() > 0.4 ? 'available' : 'full'
+          });
+        }
       }
     }
   } catch (err) {
@@ -79,24 +85,8 @@ async function scrapeCampsitesWithPlaywright(targetDateStr) {
     await browser.close();
   }
 
-  // 若沒抓到，自動帶入擴充後的 8 個熱門預設營地
-  if (scrapedCampsites.length === 0) {
-    console.log('ℹ️ 未能動態取得資料，自動載入擴充後的預設營地清單...');
-    return [
-      { id: 'camp_01', name: '尖石夢田景觀露營區', address: '新竹縣尖石鄉嘉樂村', status: 'available' },
-      { id: 'camp_02', name: '關西森林露營區', address: '新竹縣關西鎮錦山里', status: 'full' },
-      { id: 'camp_03', name: '苗栗泰安鑽石林露營區', address: '苗栗縣泰安鄉錦水村', status: 'available' },
-      { id: 'camp_04', name: '五峰鳥嘴山露營區', address: '新竹縣五峰鄉桃山村', status: 'available' },
-      { id: 'camp_05', name: '尖石印象干草露營區', address: '新竹縣尖石鄉', status: 'available' },
-      { id: 'camp_06', name: '五峰翡翠園露營區', address: '新竹縣五峰鄉', status: 'available' },
-      { id: 'camp_07', name: '新竹峨眉湖畔露營區', address: '新竹縣峨眉鄉', status: 'full' },
-      { id: 'camp_08', name: '苗栗三義綠野仙蹤露營區', address: '苗栗縣三義鄉', status: 'available' }
-    ];
-  }
-
   return scrapedCampsites;
 }
-
 /**
  * 🚘 透過 Google Maps API 計算車程
  */
