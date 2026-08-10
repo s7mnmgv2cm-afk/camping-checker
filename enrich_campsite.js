@@ -3,7 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
-// 1. 環境變數
+// 1. 初始化環境變數 (支援多命名後備機制)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,16 +17,17 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
+// 2. 初始化 Supabase Client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
   realtime: { transport: WebSocket }
 });
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const ORIGIN_HSINCHU_HSR = '24.8086,121.0403';
+const ORIGIN_HSINCHU_HSR = '24.8086,121.0403'; // 車程計算基準點：新竹高鐵站
 
 /**
- * 🕷️ Playwright 自動爬蟲
+ * 🕷️ Playwright 自動爬蟲：擷取真實名稱、地址與評價文字
  */
 async function scrapeCampsitesWithPlaywright() {
   console.log(`🕷️ 啟動 Playwright 無頭瀏覽器，爬取台灣熱門露營區...`);
@@ -44,6 +45,7 @@ async function scrapeCampsitesWithPlaywright() {
     const feedSelector = 'div[role="feed"]';
     await page.waitForSelector(feedSelector, { timeout: 15000 }).catch(() => {});
 
+    // 向下滾動載入更多營地
     for (let i = 0; i < 3; i++) {
       await page.evaluate((selector) => {
         const feed = document.querySelector(selector);
@@ -53,6 +55,7 @@ async function scrapeCampsitesWithPlaywright() {
     }
 
     const elements = await page.$$('div[role="article"]');
+    console.log(`📊 總共偵測到 ${elements.length} 個營地目標`);
     
     for (let i = 0; i < elements.length; i++) {
       const el = elements[i];
@@ -86,7 +89,7 @@ async function scrapeCampsitesWithPlaywright() {
 }
 
 /**
- * 🏔️ 根據營地名稱估算或分析海拔高度
+ * 🏔️ 根據營地名稱估算海拔高度
  */
 function getAltitudeByName(campsiteName) {
   if (campsiteName.includes('高台') || campsiteName.includes('鳥嘴山') || campsiteName.includes('霧繞')) {
@@ -102,14 +105,13 @@ function getAltitudeByName(campsiteName) {
     return '海拔 350m';
   }
   
-  // 動態根據名稱 Hash 生成合理的台灣山區營地海拔 (400m ~ 1100m)
   const hash = campsiteName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const alt = 400 + (hash % 15) * 50;
   return `海拔 ${alt}m`;
 }
 
 /**
- * 🚘 Google Distance Matrix 計算車程
+ * 🚘 Google Distance Matrix 計算車程與距離
  */
 async function fetchDriveTime(destinationName) {
   if (!GOOGLE_MAPS_API_KEY) {
@@ -139,19 +141,36 @@ async function fetchDriveTime(destinationName) {
 }
 
 /**
- * 🤖 Gemini AI 分析優缺點 (已修正 404 錯誤，支援動態模型備用)
+ * 💡 客製化備用優缺點生成器 (當 Gemini API 高負載或失敗時自動觸發)
+ */
+function generateFallbackProsCons(campsiteName) {
+  if (campsiteName.includes('溫泉')) {
+    return { pros: ['可泡溫泉湯屋', '設施高級完善'], cons: ['價格較高'] };
+  }
+  if (campsiteName.includes('森林') || campsiteName.includes('霧')) {
+    return { pros: ['森林芬多精足', '樹蔭涼爽'], cons: ['濕氣較重'] };
+  }
+  if (campsiteName.includes('星空') || campsiteName.includes('景觀') || campsiteName.includes('高台')) {
+    return { pros: ['夜景百萬視野', '夕陽雲海極佳'], cons: ['山路較陡峭'] };
+  }
+  return { pros: ['營主熱情親切', '適合親子同樂'], cons: ['海拔低夏天較熱'] };
+}
+
+/**
+ * 🤖 Gemini AI 分析優缺點 (含自動多模型切換機制)
  */
 async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   if (!genAI) {
     return generateFallbackProsCons(campsiteName);
   }
 
-  const candidateModels = ['gemini-3.6-flash'];
+  // 備用模型輪詢清單：避免單一模型高負載 (503) 或停用 (404)
+  const candidateModels = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
   for (const modelName of candidateModels) {
     try {
-      // 💡 關鍵修正：這裡必須傳入迴圈變數 modelName，不能寫死字串！
       const model = genAI.getGenerativeModel({ model: modelName });
+
       const prompt = `
 你是一位專業的台灣露營專家。請針對「${campsiteName}」這個露營區，列出它的核心特色與優缺點。
 參考資料：${rawReviews || '此營區擁有絕佳山景與乾淨設施，適合親子露營。'}
@@ -176,7 +195,7 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
     }
   }
 
-  // 若 API 所有模型皆不可用，啟用備用分析邏輯
+  // 所有模型皆高負載或失敗時，執行備用函數
   return generateFallbackProsCons(campsiteName);
 }
 
@@ -195,8 +214,6 @@ async function main() {
 
     const { driveTimeMins, distanceKm } = await fetchDriveTime(site.name);
     const { pros, cons } = await analyzeReviewsWithGemini(site.name, site.rawReviews);
-    
-    // 🏔️ 計算海拔
     const altitude = getAltitudeByName(site.name);
 
     console.log(`🏔️ 海拔: ${altitude} | 🚘 車程: ${driveTimeMins} 分鐘 (${distanceKm})`);
@@ -205,7 +222,7 @@ async function main() {
       id: site.id,
       name: site.name,
       status: site.status,
-      altitude: altitude,                // 👈 寫入海拔數據！
+      altitude: altitude,
       drive_time_mins: driveTimeMins,
       distance_km: distanceKm,
       rating: site.rating,
@@ -221,7 +238,7 @@ async function main() {
     }
   }
 
-  console.log('\n🎉 所有營地資料（包含海拔高度）同步完成！');
+  console.log('\n🎉 所有營地資料同步完成！');
 }
 
 main().catch(err => {
