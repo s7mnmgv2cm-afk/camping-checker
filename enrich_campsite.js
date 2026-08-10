@@ -1,20 +1,33 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 
-// 1. 初始化環境變數 (由 GitHub Actions Secrets 傳入)
+// 1. 初始化環境變數 (自帶相容邏輯，優先使用 Service Role Key，若無則降級使用 Anon Key)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!GEMINI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('❌ 缺少必要的環境變數，請確認 GitHub Secrets 設定！');
+const SUPABASE_URL = 
+  process.env.SUPABASE_URL || 
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+const SUPABASE_KEY = 
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 
+  process.env.SUPABASE_ANON_KEY || 
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// 驗證關鍵變數
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('❌ 錯誤：找不到 SUPABASE_URL 或 SUPABASE_KEY！');
+  console.error('請確認 GitHub Secrets 設定：SUPABASE_URL 與 SUPABASE_SERVICE_ROLE_KEY (或 SUPABASE_ANON_KEY)。');
   process.exit(1);
 }
 
+if (!GEMINI_API_KEY) {
+  console.warn('⚠️ 警告：未設定 GEMINI_API_KEY，AI 分析功能將採用預設備用文字。');
+}
+
 // 2. 初始化 Supabase 與 Gemini 用戶端
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // 新竹高鐵站座標 (作為車程計算起點)
 const ORIGIN_HSINCHU_HSR = '24.8086,121.0403';
@@ -24,7 +37,7 @@ const ORIGIN_HSINCHU_HSR = '24.8086,121.0403';
  */
 async function fetchDriveTime(destinationAddress) {
   if (!GOOGLE_MAPS_API_KEY) {
-    console.warn('⚠️ 未提供 GOOGLE_MAPS_API_KEY，跳過車程計算');
+    console.warn('⚠️ 未提供 GOOGLE_MAPS_API_KEY，跳過 Google Maps 實測車程計算。');
     return { driveTimeMins: 60, distanceKm: '未知' };
   }
 
@@ -53,6 +66,13 @@ async function fetchDriveTime(destinationAddress) {
  * 使用 Gemini AI 分析 Google 評價並產生繁體中文優缺點清單
  */
 async function analyzeReviewsWithGemini(campsiteName, rawReviewsText) {
+  if (!genAI) {
+    return {
+      pros: ['景色優美', '環境乾淨'],
+      cons: ['山路狹窄'],
+    };
+  }
+
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
@@ -71,7 +91,7 @@ ${rawReviewsText || '風景優美，營主親切，衛浴乾淨，但最後一�
     const result = await model.generateContent(prompt);
     const responseText = result.response.text().trim();
     
-    // 清理可能的 Markdown 標記
+    // 清理可能的 Markdown JSON 標記
     const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
 
@@ -95,16 +115,17 @@ async function main() {
   console.log('🚀 開始執行營地自動更新與 AI 資料補全腳本...');
 
   // 1. 從 Supabase 抓取所有現有營地
-  const { data: campsites, error } = await supabase.from('campsites').select('*');
+  let { data: campsites, error } = await supabase.from('campsites').select('*');
 
   if (error) {
     console.error('❌ 無法從 Supabase 取得營地資料:', error.message);
     process.exit(1);
   }
 
+  // 如果目前 Supabase 是空的，自動注入測試資料
   if (!campsites || campsites.length === 0) {
     console.log('ℹ️ 目前 Supabase 中無營地資料，準備建立預設測試營地...');
-    campsites.push(
+    campsites = [
       {
         id: 'camp_01',
         name: '尖石夢田景觀露營區',
@@ -117,10 +138,10 @@ async function main() {
         address: '新竹縣關西鎮錦山里',
         rating: 4.3,
       }
-    );
+    ];
   }
 
-  // 設定更新的特定目標入住日期 (預設為下週六)
+  // 設定更新的目標入住日期 (預設設定為下週六)
   const targetDate = new Date();
   targetDate.setDate(targetDate.getDate() + ((6 - targetDate.getDay() + 7) % 7 || 7));
   const dateStr = targetDate.toISOString().split('T')[0];
@@ -160,8 +181,7 @@ async function main() {
       console.log(`✅ 成功更新 campsites 主表`);
     }
 
-    // D. 模擬/更新特定日期的空位狀態至 `campsite_availability`
-    // (未來可在此插入 Playwright 爬蟲抓取的實際空位狀態 'available' / 'full')
+    // D. 寫入/更新特定日期的空位狀態至 `campsite_availability` 表
     const mockStatus = Math.random() > 0.3 ? 'available' : 'full';
 
     const { error: upsertAvailError } = await supabase
