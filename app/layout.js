@@ -1,3 +1,5 @@
+import './globals.css';
+
 export const metadata = {
   title: '全台露營區即時空位搜尋',
   description: '整合各大平台露營區空位、車程與 AI 評價',
