@@ -3,7 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
-// 1. 初始化環境變數 (支援多命名後備機制)
+// 1. 初始化環境變數
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,17 +17,19 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-// 2. 初始化 Supabase Client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
   realtime: { transport: WebSocket }
 });
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const ORIGIN_HSINCHU_HSR = '24.8086,121.0403'; // 車程計算基準點：新竹高鐵站
+const ORIGIN_HSINCHU_HSR = '24.8086,121.0403'; // 新竹高鐵站
+
+// ⏱️ 延遲輔助函式：避免觸發 API 429 速率限制
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * 🕷️ Playwright 自動爬蟲：擷取真實名稱、地址與評價文字
+ * 🕷️ Playwright 自動爬蟲
  */
 async function scrapeCampsitesWithPlaywright() {
   console.log(`🕷️ 啟動 Playwright 無頭瀏覽器，爬取台灣熱門露營區...`);
@@ -45,7 +47,6 @@ async function scrapeCampsitesWithPlaywright() {
     const feedSelector = 'div[role="feed"]';
     await page.waitForSelector(feedSelector, { timeout: 15000 }).catch(() => {});
 
-    // 向下滾動載入更多營地
     for (let i = 0; i < 3; i++) {
       await page.evaluate((selector) => {
         const feed = document.querySelector(selector);
@@ -111,7 +112,7 @@ function getAltitudeByName(campsiteName) {
 }
 
 /**
- * 🚘 Google Distance Matrix 計算車程與距離
+ * 🚘 Google Distance Matrix 計算車程
  */
 async function fetchDriveTime(destinationName) {
   if (!GOOGLE_MAPS_API_KEY) {
@@ -141,7 +142,7 @@ async function fetchDriveTime(destinationName) {
 }
 
 /**
- * 💡 客製化備用優缺點生成器 (當 Gemini API 高負載或失敗時自動觸發)
+ * 💡 補齊備用函式：當 API 觸發 429/503 或失敗時自動調用
  */
 function generateFallbackProsCons(campsiteName) {
   if (campsiteName.includes('溫泉')) {
@@ -157,14 +158,13 @@ function generateFallbackProsCons(campsiteName) {
 }
 
 /**
- * 🤖 Gemini AI 分析優缺點 (含自動多模型切換機制)
+ * 🤖 Gemini AI 分析優缺點
  */
 async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   if (!genAI) {
     return generateFallbackProsCons(campsiteName);
   }
 
-  // 備用模型輪詢清單：避免單一模型高負載 (503) 或停用 (404)
   const candidateModels = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
   for (const modelName of candidateModels) {
@@ -191,11 +191,10 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
         cons: parsed.cons || ['山路較窄'] 
       };
     } catch (err) {
-      console.warn(`⚠️ 模型 [${modelName}] 呼叫失敗，自動嘗試備用模型... (${err.message})`);
+      console.warn(`⚠️ 模型 [${modelName}] 呼叫失敗，嘗試備用模型... (${err.message})`);
     }
   }
 
-  // 所有模型皆高負載或失敗時，執行備用函數
   return generateFallbackProsCons(campsiteName);
 }
 
@@ -205,6 +204,21 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
 async function main() {
   console.log('🚀 開始執行自動爬蟲與 Supabase 動態同步管線...');
 
+  // 1. 抓取 Supabase 已有資料做 Cache
+  const { data: existingCampsites } = await supabase
+    .from('campsites')
+    .select('id, pros, cons');
+    
+  const existingMap = new Map();
+  if (existingCampsites) {
+    existingCampsites.forEach(site => {
+      if (site.pros && site.pros.length > 0) {
+        existingMap.set(site.id, { pros: site.pros, cons: site.cons });
+      }
+    });
+  }
+
+  // 2. 爬取最新營地標的
   const campsites = await scrapeCampsitesWithPlaywright();
   console.log(`✅ 成功取得 ${campsites.length} 個營地目標`);
 
@@ -213,8 +227,26 @@ async function main() {
     console.log(`🔍 處理營地: ${site.name}`);
 
     const { driveTimeMins, distanceKm } = await fetchDriveTime(site.name);
-    const { pros, cons } = await analyzeReviewsWithGemini(site.name, site.rawReviews);
     const altitude = getAltitudeByName(site.name);
+
+    let pros, cons;
+
+    // 💡 3. 快取判斷：已有優缺點就跳過 API，全新營地才呼叫 API 並停頓 12 秒
+    if (existingMap.has(site.id)) {
+      console.log(`⚡ [快取命中] 沿用現有優缺點，跳過 API 呼叫`);
+      const cached = existingMap.get(site.id);
+      pros = cached.pros;
+      cons = cached.cons;
+    } else {
+      console.log(`🤖 [新營地] 呼叫 Gemini AI 分析...`);
+      const aiResult = await analyzeReviewsWithGemini(site.name, site.rawReviews);
+      pros = aiResult.pros;
+      cons = aiResult.cons;
+
+      // ⏳ 等待 12 秒，符合 5 RPM 限額
+      console.log(`⏳ 冷卻 12 秒，避免 API 429 超額...`);
+      await sleep(12000);
+    }
 
     console.log(`🏔️ 海拔: ${altitude} | 🚘 車程: ${driveTimeMins} 分鐘 (${distanceKm})`);
 
@@ -234,7 +266,7 @@ async function main() {
     if (error) {
       console.error(`❌ 寫入 Supabase 失敗 (${site.name}):`, error.message);
     } else {
-      console.log(`✅ ${site.name} 更新成功！(${altitude})`);
+      console.log(`✅ ${site.name} 更新成功！`);
     }
   }
 
@@ -245,3 +277,5 @@ main().catch(err => {
   console.error('💥 執行失敗:', err);
   process.exit(1);
 });
+
+
