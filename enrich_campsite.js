@@ -25,8 +25,12 @@ if (!GEMINI_API_KEY) {
   console.warn('⚠️ 警告：未設定 GEMINI_API_KEY，AI 分析功能將採用預設備用文字。');
 }
 
-// 2. 初始化 Supabase 與 Gemini 用戶端
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// 2. 初始化 Supabase 用戶端 (顯式關閉 Realtime WebSocket 以修復 Node 20 錯誤)
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false },
+  realtime: { enabled: false },
+});
+
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // 新竹高鐵站座標 (作為車程計算起點)
