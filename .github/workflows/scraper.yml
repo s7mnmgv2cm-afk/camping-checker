@@ -1,22 +1,30 @@
-name: 自動露營區爬蟲機器人
+name: Campsite Auto Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *' # 每小時自動執行一次
-  workflow_dispatch: # 允許在網頁手動按按鈕觸發
+    # 每天凌晨 0:00 (UTC) 自動執行一次更新 (可依需求調整)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 允許在 GitHub 介面上手動按鈕觸發測試
 
 jobs:
-  run-scraper:
+  scrape-and-update:
     runs-on: ubuntu-latest
     steps:
-      - name: 下載程式碼
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 設定 Node.js 環境
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
-      - name: 機器人開始執行
-        run: |
-          echo "機器人已醒來，正在檢查各大露營區空位..."
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Enrich Script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node enrich_campsite.js
