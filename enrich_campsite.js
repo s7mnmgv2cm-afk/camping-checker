@@ -1,7 +1,8 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws'); // 引入 WebSocket 模組修復 Node 20 限制
 
-// 1. 初始化環境變數 (自帶相容邏輯，優先使用 Service Role Key，若無則降級使用 Anon Key)
+// 1. 初始化環境變數
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
@@ -14,26 +15,20 @@ const SUPABASE_KEY =
   process.env.SUPABASE_ANON_KEY || 
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// 驗證關鍵變數
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error('❌ 錯誤：找不到 SUPABASE_URL 或 SUPABASE_KEY！');
-  console.error('請確認 GitHub Secrets 設定：SUPABASE_URL 與 SUPABASE_SERVICE_ROLE_KEY (或 SUPABASE_ANON_KEY)。');
   process.exit(1);
 }
 
-if (!GEMINI_API_KEY) {
-  console.warn('⚠️ 警告：未設定 GEMINI_API_KEY，AI 分析功能將採用預設備用文字。');
-}
-
-// 2. 初始化 Supabase 用戶端 (顯式關閉 Realtime WebSocket 以修復 Node 20 錯誤)
+// 2. 初始化 Supabase 用戶端 (傳入 WebSocket 解決 Node.js < 22 缺省問題)
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
-  realtime: { enabled: false },
+  realtime: { transport: WebSocket }
 });
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
-// 新竹高鐵站座標 (作為車程計算起點)
+// 新竹高鐵站座標
 const ORIGIN_HSINCHU_HSR = '24.8086,121.0403';
 
 /**
@@ -95,7 +90,6 @@ ${rawReviewsText || '風景優美，營主親切，衛浴乾淨，但最後一�
     const result = await model.generateContent(prompt);
     const responseText = result.response.text().trim();
     
-    // 清理可能的 Markdown JSON 標記
     const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
 
@@ -118,7 +112,6 @@ ${rawReviewsText || '風景優美，營主親切，衛浴乾淨，但最後一�
 async function main() {
   console.log('🚀 開始執行營地自動更新與 AI 資料補全腳本...');
 
-  // 1. 從 Supabase 抓取所有現有營地
   let { data: campsites, error } = await supabase.from('campsites').select('*');
 
   if (error) {
@@ -126,7 +119,6 @@ async function main() {
     process.exit(1);
   }
 
-  // 如果目前 Supabase 是空的，自動注入測試資料
   if (!campsites || campsites.length === 0) {
     console.log('ℹ️ 目前 Supabase 中無營地資料，準備建立預設測試營地...');
     campsites = [
@@ -145,7 +137,6 @@ async function main() {
     ];
   }
 
-  // 設定更新的目標入住日期 (預設設定為下週六)
   const targetDate = new Date();
   targetDate.setDate(targetDate.getDate() + ((6 - targetDate.getDay() + 7) % 7 || 7));
   const dateStr = targetDate.toISOString().split('T')[0];
@@ -156,17 +147,14 @@ async function main() {
     console.log(`\n-----------------------------------`);
     console.log(`🔍 正在處理營地: ${site.name}`);
 
-    // A. 計算車程與距離
     const searchAddress = site.address || site.name;
     const { driveTimeMins, distanceKm } = await fetchDriveTime(searchAddress);
     console.log(`🚘 車程結果: 約 ${driveTimeMins} 分鐘 (${distanceKm})`);
 
-    // B. AI 評價分析
     const { pros, cons } = await analyzeReviewsWithGemini(site.name, site.raw_reviews);
     console.log(`👍 AI 優點:`, pros);
     console.log(`👎 AI 缺點:`, cons);
 
-    // C. 更新/插入主表 `campsites`
     const { error: upsertCampError } = await supabase.from('campsites').upsert({
       id: site.id,
       name: site.name,
@@ -185,7 +173,6 @@ async function main() {
       console.log(`✅ 成功更新 campsites 主表`);
     }
 
-    // D. 寫入/更新特定日期的空位狀態至 `campsite_availability` 表
     const mockStatus = Math.random() > 0.3 ? 'available' : 'full';
 
     const { error: upsertAvailError } = await supabase
