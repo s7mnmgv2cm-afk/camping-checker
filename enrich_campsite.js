@@ -139,40 +139,46 @@ async function fetchDriveTime(destinationName) {
 }
 
 /**
- * 🤖 Gemini AI 分析優缺點 (修正模型名稱為 'gemini-1.5-flash')
+ * 🤖 Gemini AI 分析優缺點 (已修正 404 錯誤，支援動態模型備用)
  */
 async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   if (!genAI) {
-    return { pros: ['景色優美', '環境乾淨'], cons: ['山路狹窄'] };
+    return generateFallbackProsCons(campsiteName);
   }
 
-  try {
-    // 💡 將模型名稱改為 gemini-2.0-flash 或 gemini-2.5-flash
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  // 💡 嘗試順序：使用 gemini-flash-latest (社群與官方推薦最穩定解法)
+  const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash'];
 
-    const prompt = `
+  for (const modelName of candidateModels) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+
+      const prompt = `
 你是一位專業的台灣露營專家。請針對「${campsiteName}」這個露營區，列出它的核心特色與優缺點。
 參考資料：${rawReviews || '此營區擁有絕佳山景與乾淨設施，適合親子露營。'}
 
 規則：
 1. 請嚴格回傳標準 JSON，包含 "pros" (2~3個優點陣列) 與 "cons" (1~2個缺點陣列)。
-2. 請使用繁體中文，每點 10 字以內。
-3. 絕不要包含任何 Markdown 格式標記。
+2. 請使用繁體中文，每點 10 字以內，文字請根據「${campsiteName}」特有的地理位置與特色客製化。
+3. 絕不要包含任何 Markdown 格式標記（如 \`\`\`json ）。
 `;
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text().trim();
-    const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const parsed = JSON.parse(cleanJson);
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text().trim();
+      const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
 
-    return { 
-      pros: parsed.pros || ['環境優美', '草皮乾淨'], 
-      cons: parsed.cons || ['山路較窄'] 
-    };
-  } catch (err) {
-    console.error(`Gemini AI 分析失敗 (${campsiteName}):`, err.message);
-    return { pros: ['夜景極佳', '衛浴乾淨'], cons: ['最後一段路較窄'] };
+      return { 
+        pros: parsed.pros || ['環境優美', '草皮乾淨'], 
+        cons: parsed.cons || ['山路較窄'] 
+      };
+    } catch (err) {
+      console.warn(`⚠️ 模型 [${modelName}] 呼叫失敗，自動嘗試備用模型... (${err.message})`);
+    }
   }
+
+  // 若 API 所有模型皆不可用，啟用備用分析邏輯
+  return generateFallbackProsCons(campsiteName);
 }
 
 /**
