@@ -25,7 +25,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const ORIGIN_HSINCHU_HSR = '24.8086,121.0403'; // 新竹高鐵站
 
-// ⏱️ 延遲輔助函式：避免觸發 API 429 速率限制
+// ⏱️ 延遲輔助函式：控制請求頻率，避免觸發 429 Rate Limit
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -142,7 +142,7 @@ async function fetchDriveTime(destinationName) {
 }
 
 /**
- * 💡 補齊備用函式：當 API 觸發 429/503 或失敗時自動調用
+ * 💡 保底函式：當 API 觸發 429/503 或失敗時自動調用
  */
 function generateFallbackProsCons(campsiteName) {
   if (campsiteName.includes('溫泉')) {
@@ -231,7 +231,7 @@ async function main() {
 
     let pros, cons;
 
-    // 💡 3. 快取判斷：已有優缺點就跳過 API，全新營地才呼叫 API 並停頓 12 秒
+    // 💡 3. 快取判斷：已有優缺點就跳過 API，全新營地才呼叫 API 並停頓 15 秒
     if (existingMap.has(site.id)) {
       console.log(`⚡ [快取命中] 沿用現有優缺點，跳過 API 呼叫`);
       const cached = existingMap.get(site.id);
@@ -243,8 +243,8 @@ async function main() {
       pros = aiResult.pros;
       cons = aiResult.cons;
 
-      // ⏳ 等待 15 秒，符合 5 RPM 限額
-      console.log(`⏳ 冷卻 15 秒，避免 API 429 超額...`);
+      // ⏳ 強制停頓 15 秒（符合免費版 <= 5 RPM 的限制）
+      console.log(`⏳ 冷卻 15 秒，避免 API 429 Rate Limit...`);
       await sleep(15000);
     }
 
@@ -277,5 +277,4 @@ main().catch(err => {
   console.error('💥 執行失敗:', err);
   process.exit(1);
 });
-
 
