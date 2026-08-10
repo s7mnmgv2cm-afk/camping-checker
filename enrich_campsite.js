@@ -147,7 +147,8 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // 💡 將模型名稱改為 gemini-2.0-flash 或 gemini-2.5-flash
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const prompt = `
 你是一位專業的台灣露營專家。請針對「${campsiteName}」這個露營區，列出它的核心特色與優缺點。
