@@ -146,13 +146,10 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
     return generateFallbackProsCons(campsiteName);
   }
 
-  // 💡 嘗試順序：使用 gemini-flash-latest (社群與官方推薦最穩定解法)
-  const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-1.5-flash'];
 
   for (const modelName of candidateModels) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
-
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
       const prompt = `
 你是一位專業的台灣露營專家。請針對「${campsiteName}」這個露營區，列出它的核心特色與優缺點。
 參考資料：${rawReviews || '此營區擁有絕佳山景與乾淨設施，適合親子露營。'}
