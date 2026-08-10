@@ -24,7 +24,7 @@ export default function Home() {
         .from('campsites')
         .select(`
           *,
-          campsite_availability!inner(status, date)
+          campsite_availability(status, date)
         `)
         .eq('campsite_availability.date', selectedDate);
 
