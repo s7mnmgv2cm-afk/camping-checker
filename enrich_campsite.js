@@ -29,7 +29,7 @@ const ORIGIN_HSINCHU_HSR = '24.8086,121.0403';
  * 🕷️ Playwright 自動爬蟲：動態抓取露營平台營地與空位
  */
 /**
- * 🕷️ Playwright 自動爬蟲：從 Google Maps 搜尋真實露營區清單
+ * 🕷️ Playwright 自動爬蟲：從 Google Maps 搜尋真實露營區清單 (防 Timeout 穩定版)
  */
 async function scrapeCampsitesWithPlaywright(targetDateStr) {
   console.log(`🕷️ 啟動 Playwright 無頭瀏覽器，爬取台灣熱門露營區...`);
@@ -41,28 +41,35 @@ async function scrapeCampsitesWithPlaywright(targetDateStr) {
   const scrapedCampsites = [];
 
   try {
-    // 1. 前往 Google 地圖搜尋新竹/苗栗一帶熱門露營區
     const searchUrl = 'https://www.google.com/maps/search/%E6%96%B0%E7%AB%B9%E9%9C%B2%E7%87%9F%E5%8D%80/@24.7100,121.1500,11z';
-    await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 30000 });
+    
+    // 💡 關鍵修正 1：改用 'domcontentloaded'，不要用 'networkidle'
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // 2. 稍微等待列表載入
-    await page.waitForTimeout(3000);
+    // 💡 關鍵修正 2：等待地圖左側搜尋結果列表（role="feed" 或包含卡片）渲染出來
+    await page.waitForSelector('div[role="feed"], div[role="article"]', { timeout: 15000 }).catch(() => {
+      console.log('⚠️ 等待地圖列表元素超時，嘗試直接解析現有 DOM...');
+    });
 
-    // 3. 抓取地圖左側搜尋結果卡片 (Google Maps 結構)
+    // 稍微停頓 2 秒讓文字載入完成
+    await page.waitForTimeout(2000);
+
+    // 抓取搜尋結果卡片
     const elements = await page.$$('div[role="article"]');
+    console.log(`📊 在 Google Maps 頁面上偵測到 ${elements.length} 個標記點/卡片`);
     
     for (let i = 0; i < elements.length; i++) {
       const el = elements[i];
-      const name = await el.$eval('div.fontHeadlineSmall', e => e.innerText.trim()).catch(() => null);
+      // 提取標題文字
+      const name = await el.$eval('div.fontHeadlineSmall, fontHeadlineSmall', e => e.innerText.trim()).catch(() => null);
       
       if (name) {
-        // 產生獨立的 ID
         const id = 'camp_' + Buffer.from(name).toString('hex').substring(0, 8);
         scrapedCampsites.push({
           id,
           name,
           address: name.includes('尖石') ? '新竹縣尖石鄉' : '新竹縣五峰鄉',
-          status: Math.random() > 0.4 ? 'available' : 'full' // 狀態動態標記
+          status: Math.random() > 0.4 ? 'available' : 'full'
         });
       }
     }
@@ -72,7 +79,7 @@ async function scrapeCampsitesWithPlaywright(targetDateStr) {
     await browser.close();
   }
 
-  // 若沒抓到，自動帶入擴充後的預設種子清單 (確保不會只有 4 個)
+  // 若沒抓到，自動帶入擴充後的 8 個熱門預設營地
   if (scrapedCampsites.length === 0) {
     console.log('ℹ️ 未能動態取得資料，自動載入擴充後的預設營地清單...');
     return [
