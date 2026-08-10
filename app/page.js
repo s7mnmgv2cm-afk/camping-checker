@@ -80,12 +80,13 @@ export default function Home() {
 
       {/* 營地列表 */}
       {loading ? (
-        <div className="text-center py-12 text-slate-500">🔄 載入中...</div>
+        <div className="text-center py-12 text-slate-500 font-medium">🔄 載入中...</div>
       ) : (
         <div className="space-y-4">
           {filteredCampsites.map((site) => (
             <div key={site.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <div className="flex justify-between items-start mb-2">
+              {/* 標題與空位標籤 */}
+              <div className="flex justify-between items-start mb-3">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">{site.name}</h2>
                   {site.altitude && (
@@ -100,9 +101,42 @@ export default function Home() {
                   {site.status === 'available' ? '有空位' : '已滿位'}
                 </span>
               </div>
-              <p className="text-sm text-slate-600 mb-3">
-                ⭐ Google 評分: {site.rating || 4.5} | 🚗 開車車程: 約 {site.drive_time_mins} 分鐘 ({site.distance_km})
+
+              {/* 評分與車程 */}
+              <p className="text-sm text-slate-600 mb-4 flex items-center gap-1">
+                <span>⭐ Google 評分: {site.rating || 4.5}</span>
+                <span className="mx-1">|</span>
+                <span>🚗 開車車程: 約 {site.drive_time_mins} 分鐘 ({site.distance_km})</span>
               </p>
+
+              {/* 💡 AI 整理優缺點 (這一段補回來了) */}
+              <div className="space-y-2 pt-3 border-t border-slate-100">
+                {site.pros && site.pros.length > 0 && (
+                  <div>
+                    <span className="text-xs font-bold text-slate-500">👍 AI 整理優點：</span>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {site.pros.map((pro, i) => (
+                        <span key={i} className="text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-md">
+                          {pro}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {site.cons && site.cons.length > 0 && (
+                  <div className="mt-2">
+                    <span className="text-xs font-bold text-slate-500">👎 AI 整理缺點：</span>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {site.cons.map((con, i) => (
+                        <span key={i} className="text-xs bg-rose-50 text-rose-700 font-medium px-2.5 py-1 rounded-md">
+                          {con}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
