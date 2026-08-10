@@ -5,42 +5,46 @@ import { createClient } from '@supabase/supabase-js';
 export default function Home() {
   const [campsites, setCampsites] = useState([]);
   const [maxDriveTime, setMaxDriveTime] = useState(60);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
+  
+  // 1. 新增預設日期狀態 (預設選取下週六，或今天)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [loading, setLoading] = useState(false);
 
+  // 2. 當選擇的「日期」變更時，重新查詢該日期的營地狀態
   useEffect(() => {
     async function fetchData() {
-      try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      setLoading(true);
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 除錯檢查：如果找不到變數，會在前端畫面上警示
-        if (!supabaseUrl || !supabaseKey) {
-          setErrorMsg('未偵測到 Supabase 環境變數，請確認 Vercel 設定！');
-          setLoading(false);
-          return;
-        }
+      // 同時讀取營地資訊與特定日期的空位狀態
+      const { data, error } = await supabase
+        .from('campsites')
+        .select(`
+          *,
+          campsite_availability!inner(status, date)
+        `)
+        .eq('campsite_availability.date', selectedDate);
 
-        const supabase = createClient(supabaseUrl, supabaseKey);
-        const { data, error } = await supabase.from('campsites').select('*');
-
-        if (error) {
-          console.error('Supabase 讀取錯誤:', error);
-          setErrorMsg(`讀取失敗: ${error.message}`);
-        } else if (data) {
-          setCampsites(data);
-        }
-      } catch (err) {
-        console.error('系統例外:', err);
-        setErrorMsg('連線時發生未知錯誤');
-      } finally {
-        setLoading(false);
+      if (error) {
+        console.error('讀取失敗:', error);
+      } else if (data) {
+        // 將撈出來的 availability status 整理進營地物件
+        const formatted = data.map(site => ({
+          ...site,
+          status: site.campsite_availability[0]?.status || 'unknown'
+        }));
+        setCampsites(formatted);
       }
+      setLoading(false);
     }
 
     fetchData();
-  }, []);
+  }, [selectedDate]); // 當 selectedDate 改變時自動觸發
 
+  // 3. 依車程過濾營地
   const filteredSites = campsites.filter(
     (site) => (site.drive_time_mins ?? 0) <= maxDriveTime
   );
@@ -49,35 +53,53 @@ export default function Home() {
     <main style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '800px', margin: '0 auto' }}>
       <h1>⛺ 全台露營區即時空位搜尋</h1>
       
-      {/* 錯誤或載入提示 */}
-      {loading && <p style={{ color: '#666' }}>⏳ 資料載入中...</p>}
-      {errorMsg && <p style={{ color: 'red', background: '#ffebee', padding: '10px', borderRadius: '4px' }}>⚠️ {errorMsg}</p>}
+      {/* 搜尋條件面板 */}
+      <div style={{ background: '#f0f4f8', padding: '20px', borderRadius: '10px', marginBottom: '20px' }}>
+        
+        {/* 新增：指定日期選擇器 */}
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
+            📅 請選擇欲入住日期：
+          </label>
+          <input
+            type="date"
+            value={selectedDate}
+            min={todayStr}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            style={{ padding: '8px 12px', fontSize: '16px', borderRadius: '6px', border: '1px solid #ccc' }}
+          />
+        </div>
 
-      {/* 車程篩選器 */}
-      <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-        <label>
-          <strong>🚗 從新竹高鐵出發時間上限：</strong> {maxDriveTime} 分鐘
-        </label>
-        <input
-          type="range"
-          min="10"
-          max="120"
-          value={maxDriveTime}
-          onChange={(e) => setMaxDriveTime(Number(e.target.value))}
-          style={{ width: '100%', marginTop: '10px' }}
-        />
+        {/* 車程上限滑桿 */}
+        <div>
+          <label>
+            <strong>🚗 從新竹高鐵出發車程上限：</strong> {maxDriveTime} 分鐘
+          </label>
+          <input
+            type="range"
+            min="10"
+            max="120"
+            value={maxDriveTime}
+            onChange={(e) => setMaxDriveTime(Number(e.target.value))}
+            style={{ width: '100%', marginTop: '8px' }}
+          />
+        </div>
       </div>
 
-      {/* 營地卡片清單 */}
-      {!loading && !errorMsg && filteredSites.length === 0 && (
-        <p style={{ color: '#888' }}>查無符合時間（{maxDriveTime} 分鐘內）的露營區。</p>
-      )}
+      {loading && <p>⏳ 正在查詢 {selectedDate} 的營地空位...</p>}
 
+      {/* 營地列表卡片 */}
       <div style={{ display: 'grid', gap: '15px' }}>
+        {!loading && filteredSites.length === 0 && (
+          <p style={{ color: '#888' }}>{selectedDate} 當天沒有符合車程限制的營地資料。</p>
+        )}
+
         {filteredSites.map((site) => (
           <div key={site.id} style={{ border: '1px solid #ddd', padding: '15px', borderRadius: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: '0 0 5px 0' }}>{site.name}</h2>
+              
+              {/* 動態空位標籤 */}
               <span style={{
                 background: site.status === 'available' ? '#2e7d32' : '#c62828',
                 color: 'white',
