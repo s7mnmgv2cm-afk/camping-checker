@@ -261,7 +261,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 📋 營地卡片與線上預約動作區域 */}
+      {/* 📋 營地卡片區域 */}
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-bold text-slate-900">
           🏕️ 營地清單 (共 {filteredCampsites.length} 個符合條件)
@@ -347,33 +347,33 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 🔗 直達主流預約平台與觀光署查詢按鈕 */}
+              {/* 🔗 營地專屬跳轉與預約按鈕 */}
               <div className="pt-3 border-t border-slate-100 mt-2">
-                <span className="text-xs font-bold text-slate-500 block mb-2">🔗 直達訂位平台與合法查詢：</span>
+                <span className="text-xs font-bold text-slate-500 block mb-2">🔗 營地專屬連結與訂位：</span>
                 <div className="grid grid-cols-2 gap-2">
                   <a
-                    href={`https://www.easycamp.com.tw/search?SearchKey=${encodeURIComponent(site.name)}`}
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    🗺️ Google 地圖地標
+                  </a>
+                  <a
+                    href={`https://www.google.com/search?q=${encodeURIComponent(site.name + ' 預約 訂位 官網')}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
                   >
-                    🏕️ 露營樂
+                    🔍 直達官網/預約
                   </a>
                   <a
-                    href={`https://m.icamping.app`}
+                    href={`https://www.easycamp.com.tw/search?SearchKey=${encodeURIComponent(site.name)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-center bg-orange-500 hover:bg-orange-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                    className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
                   >
-                    ⛺ 愛露營
-                  </a>
-                  <a
-                    href={`https://www.kkday.com/zh-tw/product/productlist?keyword=${encodeURIComponent(site.name)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-center bg-sky-500 hover:bg-sky-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
-                  >
-                    🎒 KKday
+                    🏕️ 露營樂搜尋
                   </a>
                   <a
                     href={`https://camp.tad.gov.tw/`}
@@ -390,7 +390,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 📋 下方精簡露營區預約對照表格 */}
+      {/* 📋 下方露營區預約與地圖對照表格 */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-12">
         <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-sm">
           📋 營地快速預約與合法性對照表
@@ -403,7 +403,7 @@ export default function Home() {
                 <th className="p-3.5 font-bold">真實海拔</th>
                 <th className="p-3.5 font-bold">車程 / 距離</th>
                 <th className="p-3.5 font-bold">預算區間</th>
-                <th className="p-3.5 font-bold">預約與合法查詢動作</th>
+                <th className="p-3.5 font-bold">專屬地標與預約連結</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -416,28 +416,20 @@ export default function Home() {
                   <td className="p-3.5">
                     <div className="flex flex-wrap gap-1.5">
                       <a
-                        href={`https://www.easycamp.com.tw/search?SearchKey=${encodeURIComponent(site.name)}`}
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        地圖地標
+                      </a>
+                      <a
+                        href={`https://www.google.com/search?q=${encodeURIComponent(site.name + ' 預約 訂位 官網')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
                       >
-                        露營樂
-                      </a>
-                      <a
-                        href={`https://m.icamping.app`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
-                      >
-                        愛露營
-                      </a>
-                      <a
-                        href={`https://camp.tad.gov.tw/`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
-                      >
-                        合法查詢
+                        預約搜尋
                       </a>
                     </div>
                   </td>
