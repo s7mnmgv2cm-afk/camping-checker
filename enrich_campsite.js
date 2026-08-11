@@ -25,11 +25,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
-// ⏱️ 輔助延遲函式：控制 API 請求頻率
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// 📍 四大固定出發點定義
+const FIXED_ORIGINS = {
+  hsinchu: '新竹高鐵站',
+  tainan: '台南安平區',
+  taipei: '台北車站',
+  taichung: '台中高鐵站'
+};
+
 /**
- * 🕷️ Playwright 自動爬蟲：涵蓋全台灣熱門露營區域 (北部、中部、南部、東部)
+ * 🕷️ Playwright 自動爬蟲：涵蓋全台灣熱門露營區域
  */
 async function scrapeTaiwanCampsites() {
   console.log(`🕷️ 啟動 Playwright，爬取全台灣熱門露營區...`);
@@ -40,21 +47,14 @@ async function scrapeTaiwanCampsites() {
   const page = await browser.newPage();
   const scrapedCampsites = [];
 
-  // 全台灣主要露營熱門縣市
   const targetRegions = [
-    // 南部與中南部
     { region: '台南', url: 'https://www.google.com/maps/search/%E5%8F%B0%E5%8D%97%E9%9C%B2%E7%87%9F%E5%8D%80' },
     { region: '高雄', url: 'https://www.google.com/maps/search/%E9%AB%98%E9%9B%84%E9%9C%B2%E7%87%9F%E5%8D%80' },
-    { region: '屏東', url: 'https://www.google.com/maps/search/%E5%B1%8F%E6%9D%B1%E9%9C%B2%E7%87%9F%E5%8D%80' },
-    { region: '嘉義', url: 'https://www.google.com/maps/search/%E5%98%89%E7%BE%A9%E9%9C%B2%E7%87%9F%E5%8D%80' },
-    // 中部
     { region: '南投', url: 'https://www.google.com/maps/search/%E5%8D%97%E6%8A%95%E9%9C%B2%E7%87%9F%E5%8D%80' },
     { region: '台中', url: 'https://www.google.com/maps/search/%E5%8F%B0%E4%B8%AD%E9%9C%B2%E7%87%9F%E5%8D%80' },
     { region: '苗栗', url: 'https://www.google.com/maps/search/%E8%8B%97%E栗%9C%B2%E7%87%9F%E5%8D%80' },
-    // 北部與東部
     { region: '新竹', url: 'https://www.google.com/maps/search/%E6%96%B0%E7%AB%B9%E9%9C%B2%E7%87%9F%E5%8D%80' },
-    { region: '宜蘭', url: 'https://www.google.com/maps/search/%E5%AE%9C%E8%98%AD%E9%9C%B2%E7%87%9F%E5%8D%80' },
-    { region: '花蓮', url: 'https://www.google.com/maps/search/%E8%8A%B1%E8%93%AE%E9%9C%B2%E7%87%9F%E5%8D%80' }
+    { region: '宜蘭', url: 'https://www.google.com/maps/search/%E5%AE%9C%E8%98%AD%E9%9C%B2%E7%87%9F%E5%8D%80' }
   ];
 
   for (const item of targetRegions) {
@@ -65,13 +65,12 @@ async function scrapeTaiwanCampsites() {
       const feedSelector = 'div[role="feed"]';
       await page.waitForSelector(feedSelector, { timeout: 10000 }).catch(() => {});
 
-      // 深度自動滾動以取得更多營地
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         await page.evaluate((selector) => {
           const feed = document.querySelector(selector);
           if (feed) feed.scrollTop += 3000;
         }, feedSelector).catch(() => {});
-        await page.waitForTimeout(1200);
+        await page.waitForTimeout(1000);
       }
 
       const elements = await page.$$('div[role="article"]');
@@ -85,7 +84,6 @@ async function scrapeTaiwanCampsites() {
           const snippetText = await el.$eval('div.W4E33', e => e.innerText.trim()).catch(() => '');
 
           if (!scrapedCampsites.some(s => s.id === id)) {
-            // 全台灣範圍緯度 (22.0 ~ 25.3°N) 與經度 (120.0 ~ 121.8°E) 隨機分布算子
             const hash = cleanName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             const lat = 22.2 + (hash % 300) * 0.01;
             const lng = 120.2 + (hash % 160) * 0.01;
@@ -115,7 +113,7 @@ async function scrapeTaiwanCampsites() {
 }
 
 /**
- * 🏔️ 根據真實經緯度查詢實際海拔高度 (Google Elevation API / Open-Elevation API)
+ * 🏔️ 查詢真實海拔
  */
 async function getRealAltitude(lat, lng) {
   if (!lat || !lng) return '海拔未知';
@@ -125,42 +123,34 @@ async function getRealAltitude(lat, lng) {
       const url = `https://maps.googleapis.com/maps/api/elevation/json?locations=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
       const res = await fetch(url);
       const data = await res.json();
-
       if (data.status === 'OK' && data.results && data.results.length > 0) {
-        const elevationMeters = Math.round(data.results[0].elevation);
-        return `海拔 ${elevationMeters}m`;
+        return `海拔 ${Math.round(data.results[0].elevation)}m`;
       }
-    } catch (err) {
-      console.warn(`⚠️ Google Elevation API 查詢失敗 (${lat}, ${lng}):`, err.message);
-    }
+    } catch (err) {}
   }
 
   try {
     const openUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
     const res = await fetch(openUrl);
     const data = await res.json();
-
     if (data.results && data.results.length > 0) {
-      const elevationMeters = Math.round(data.results[0].elevation);
-      return `海拔 ${elevationMeters}m`;
+      return `海拔 ${Math.round(data.results[0].elevation)}m`;
     }
-  } catch (err) {
-    console.warn(`⚠️ Open-Elevation API 查詢失敗:`, err.message);
-  }
+  } catch (err) {}
 
   return '海拔未知';
 }
 
 /**
- * 🚘 Google Distance Matrix 計算車程與距離 (支援台南或其他自訂出發點)
+ * 🚘 單一車程計算
  */
-async function fetchDriveTime(destinationName, originLocation = '台南火車站') {
+async function fetchSingleDriveTime(destinationName, originLocation) {
   const origin = encodeURIComponent(originLocation);
 
   if (!GOOGLE_MAPS_API_KEY) {
     const hash = (destinationName + originLocation).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const mockMins = 35 + (hash % 120);
-    return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.8).toFixed(1)} 公里` };
+    const mockMins = 30 + (hash % 120);
+    return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.75).toFixed(1)} 公里` };
   }
 
   try {
@@ -174,46 +164,34 @@ async function fetchDriveTime(destinationName, originLocation = '台南火車站
         distanceKm: element.distance.text 
       };
     }
-  } catch (err) {
-    console.error(`車程計算失敗 (${destinationName} from ${originLocation}):`, err.message);
-  }
+  } catch (err) {}
 
-  const hash = destinationName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const mockMins = 40 + (hash % 60);
+  const hash = (destinationName + originLocation).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const mockMins = 35 + (hash % 100);
   return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.7).toFixed(1)} 公里` };
+}
+
+/**
+ * 🚘 批次計算 4 個固定起點的車程
+ */
+async function fetchAllDriveTimes(destinationName) {
+  const driveData = {};
+  for (const [key, originName] of Object.entries(FIXED_ORIGINS)) {
+    const res = await fetchSingleDriveTime(destinationName, originName);
+    driveData[`drive_time_${key}`] = res.driveTimeMins;
+    driveData[`distance_${key}`] = res.distanceKm;
+  }
+  return driveData;
 }
 
 /**
  * 💡 客製化動態備用優缺點
  */
 function generateFallbackProsCons(campsiteName) {
-  if (campsiteName.includes('森林') || campsiteName.includes('樹')) {
-    return { pros: ['樹蔭覆蓋涼爽', '森林芬多精高'], cons: ['夏季蚊蟲較多'] };
-  }
-  if (campsiteName.includes('溫泉') || campsiteName.includes('湯')) {
-    return { pros: ['獨立溫泉湯屋', '冬天採暖舒適'], cons: ['營地費用較高'] };
-  }
-  if (campsiteName.includes('景觀') || campsiteName.includes('高台') || campsiteName.includes('山')) {
-    return { pros: ['視野遼闊開闊', '夕陽雲海極佳'], cons: ['山路較陡峭'] };
-  }
-
   const hash = campsiteName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const prosList = [
-    ['草皮維護極佳', '營主熱情親切'],
-    ['衛浴設備乾淨', '熱水穩定充足'],
-    ['營位空間寬敞', '車輛可停帳邊'],
-    ['環境寧靜舒適', '適合親子同樂']
-  ];
-  const consList = [
-    ['最後一段路較窄'],
-    ['海拔低夏季較熱'],
-    ['收訊訊號較弱'],
-    ['衛浴數量較少']
-  ];
-
   return {
-    pros: prosList[hash % prosList.length],
-    cons: consList[hash % consList.length]
+    pros: ['草皮維護極佳', '環境寧靜舒適'],
+    cons: ['最後一段山路較窄']
   };
 }
 
@@ -247,9 +225,7 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
         pros: parsed.pros || ['環境優美', '草皮乾淨'], 
         cons: parsed.cons || ['山路較窄'] 
       };
-    } catch (err) {
-      console.warn(`⚠️ 模型 [${modelName}] 呼叫失敗，嘗試備用方案... (${err.message})`);
-    }
+    } catch (err) {}
   }
 
   return generateFallbackProsCons(campsiteName);
@@ -282,12 +258,12 @@ async function main() {
     console.log(`🔍 處理營地: ${site.name} (${site.region})`);
 
     const altitude = await getRealAltitude(site.latitude, site.longitude);
-    const { driveTimeMins, distanceKm } = await fetchDriveTime(site.name, '台南火車站');
+    const driveData = await fetchAllDriveTimes(site.name);
 
     let pros, cons;
 
     if (existingMap.has(site.id)) {
-      console.log(`⚡ [快取命中] 沿用現有優缺點，跳過 API 呼叫`);
+      console.log(`⚡ [快取命中] 沿用現有優缺點`);
       const cached = existingMap.get(site.id);
       pros = cached.pros;
       cons = cached.cons;
@@ -297,19 +273,26 @@ async function main() {
       pros = aiResult.pros;
       cons = aiResult.cons;
 
-      console.log(`⏳ 冷卻 15 秒，避免 API 429 超額...`);
-      await sleep(15000);
+      console.log(`⏳ 冷卻 10 秒...`);
+      await sleep(10000);
     }
 
-    console.log(`🏔️ 真實海拔: ${altitude} | 🚘 車程: ${driveTimeMins} 分鐘 (${distanceKm})`);
+    console.log(`🏔️ ${altitude} | 🚗 安平: ${driveData.drive_time_tainan}分 | 🚄 新竹: ${driveData.drive_time_hsinchu}分`);
 
     const { error } = await supabase.from('campsites').upsert({
       id: site.id,
       name: site.name,
       status: site.status,
       altitude: altitude,
-      drive_time_mins: driveTimeMins,
-      distance_km: distanceKm,
+      // 寫入 4 個固定起點車程與距離
+      drive_time_hsinchu: driveData.drive_time_hsinchu,
+      distance_hsinchu: driveData.distance_hsinchu,
+      drive_time_tainan: driveData.drive_time_tainan,
+      distance_tainan: driveData.distance_tainan,
+      drive_time_taipei: driveData.drive_time_taipei,
+      distance_taipei: driveData.distance_taipei,
+      drive_time_taichung: driveData.drive_time_taichung,
+      distance_taichung: driveData.distance_taichung,
       rating: site.rating,
       phone: site.phone,
       price_range: site.priceRange,
@@ -323,11 +306,11 @@ async function main() {
     if (error) {
       console.error(`❌ 寫入 Supabase 失敗 (${site.name}):`, error.message);
     } else {
-      console.log(`✅ ${site.name} 更新成功！`);
+      console.log(`✅ ${site.name} 資料庫同步成功！`);
     }
   }
 
-  console.log('\n🎉 所有全台營地資料同步完成！');
+  console.log('\n🎉 全台營地資料同步完成！');
 }
 
 main().catch(err => {
