@@ -72,7 +72,7 @@ export default function Home() {
     return driveOk && altOk;
   });
 
-  // 📊 為 Recharts 座標圖準備數據（不疊加靜態文字標籤，靠精美 Tooltip 呈現）
+  // 📊 Recharts 數據
   const chartData = filteredCampsites
     .filter((site) => site.altitude && site.distance_km)
     .map((site) => ({
@@ -87,7 +87,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
-      {/* 頂部標題 */}
+      {/* 頂部標題與模式切換 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
           <span>🏕️</span> 全台露營區即時空位與 3D 地形搜尋
@@ -170,7 +170,7 @@ export default function Home() {
         <MapWithNoSSR campsites={filteredCampsites} mapMode={mapMode} />
       </div>
 
-      {/* 📊 1. 散佈圖優化版（移除死板文字，使用乾淨的高亮互動視窗） */}
+      {/* 📊 散佈圖 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -225,7 +225,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 📋 2. 營地卡片與線上預約動作區域 */}
+      {/* 📋 營地卡片與線上預約動作區域 */}
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-bold text-slate-900">
           🏕️ 營地清單 (共 {filteredCampsites.length} 個符合條件)
@@ -311,24 +311,53 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 🔗 直達預約 / 官網搜尋按鈕 */}
-              <a
-                href={`https://www.google.com/search?q=${encodeURIComponent(site.name + ' 預約 訂位')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition-colors shadow-sm flex items-center justify-center gap-1"
-              >
-                🔗 前往預約 / 搜尋官網
-              </a>
+              {/* 🔗 直達主流預約平台與觀光署查詢按鈕 */}
+              <div className="pt-3 border-t border-slate-100 mt-2">
+                <span className="text-xs font-bold text-slate-500 block mb-2">🔗 直達訂位平台與合法查詢：</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href={`https://www.easycamp.com.tw/search?SearchKey=${encodeURIComponent(site.name)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    🏕️ 露營樂
+                  </a>
+                  <a
+                    href={`https://m.icamping.app`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-center bg-orange-500 hover:bg-orange-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    ⛺ 愛露營
+                  </a>
+                  <a
+                    href={`https://www.kkday.com/zh-tw/product/productlist?keyword=${encodeURIComponent(site.name)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-center bg-sky-500 hover:bg-sky-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    🎒 KKday
+                  </a>
+                  <a
+                    href={`https://camp.tad.gov.tw/`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-center bg-slate-700 hover:bg-slate-800 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    🏛️ 觀光署合法專區
+                  </a>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* 📊 3. 下方精簡露營區預約對照表格 */}
+      {/* 📋 下方精簡露營區預約對照表格 */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-12">
         <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-sm">
-          📋 營地快速預約對照表
+          📋 營地快速預約與合法性對照表
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
@@ -338,7 +367,7 @@ export default function Home() {
                 <th className="p-3.5 font-bold">真實海拔</th>
                 <th className="p-3.5 font-bold">車程 / 距離</th>
                 <th className="p-3.5 font-bold">預算區間</th>
-                <th className="p-3.5 font-bold">預約動作</th>
+                <th className="p-3.5 font-bold">預約與合法查詢動作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -349,14 +378,32 @@ export default function Home() {
                   <td className="p-3.5 text-slate-600">{site.drive_time_mins} 分鐘 ({site.distance_km})</td>
                   <td className="p-3.5 text-emerald-600 font-medium">{site.price_range || '$1,000 - $1,500'}</td>
                   <td className="p-3.5">
-                    <a
-                      href={`https://www.google.com/search?q=${encodeURIComponent(site.name + ' 預約 訂位')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shadow-sm"
-                    >
-                      🔗 前往預約
-                    </a>
+                    <div className="flex flex-wrap gap-1.5">
+                      <a
+                        href={`https://www.easycamp.com.tw/search?SearchKey=${encodeURIComponent(site.name)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        露營樂
+                      </a>
+                      <a
+                        href={`https://m.icamping.app`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        愛露營
+                      </a>
+                      <a
+                        href={`https://camp.tad.gov.tw/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
+                      >
+                        合法查詢
+                      </a>
+                    </div>
                   </td>
                 </tr>
               ))}
