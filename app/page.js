@@ -58,33 +58,36 @@ export default function Home() {
   // 🎯 被選擇的營地物件（地圖、座標圖、卡片清單三者同步高亮與展開）
   const [selectedCamp, setSelectedCamp] = useState(null);
 
-  // 📅 連動日期查詢：當選擇的日期變更時，自動從 Supabase 讀取空位狀態
+  // 📅 連動日期查詢：採兩階段抓取，確保即使無空位數據，營地亦不會被過濾掉
   useEffect(() => {
     async function fetchCampsitesWithAvailability() {
       setLoading(true);
       const formattedDate = selectedDate.toISOString().split('T')[0];
 
-      // 讀取營地主表，並 Left Join 查詢該日期的空位狀態
-      const { data, error } = await supabase
+      // 1. 先抓取所有營地基本資料
+      const { data: campsitesData, error: campError } = await supabase
         .from('campsites')
-        .select(`
-          *,
-          campsite_availability!left (
-            status,
-            date
-          )
-        `);
+        .select('*');
 
-      if (!error && data) {
-        // 整理資料：抓取當日 status，若無資料則預設為 'available'
-        const processed = data.map((site) => {
-          const availList = site.campsite_availability || [];
-          const matchedAvail = availList.find((a) => a.date === formattedDate);
-          return {
-            ...site,
-            status: matchedAvail ? matchedAvail.status : 'available'
-          };
-        });
+      // 2. 獨立抓取所選日期的空位狀態
+      const { data: availData } = await supabase
+        .from('campsite_availability')
+        .select('campsite_id, status')
+        .eq('date', formattedDate);
+
+      if (!campError && campsitesData) {
+        // 建立當日空位 Map
+        const availMap = new Map();
+        if (availData) {
+          availData.forEach((a) => availMap.set(a.campsite_id, a.status));
+        }
+
+        // 將當天的 status 合併回營地物件（若無該日記錄則預設為 available）
+        const processed = campsitesData.map((site) => ({
+          ...site,
+          status: availMap.get(site.id) || 'available'
+        }));
+
         setCampsites(processed);
       }
       setLoading(false);
