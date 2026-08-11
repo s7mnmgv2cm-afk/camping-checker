@@ -3,7 +3,7 @@
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 
-// 客製化地圖藍色與綠色標記 Icon
+// 客製化地圖 Icon
 const customIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -14,11 +14,10 @@ const customIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-export default function CampsiteMap({ campsites, mapMode, onSelectCampsite }) {
-  // 預設中心點：新竹山區
-  const position = [24.7, 121.1];
+export default function CampsiteMap({ campsites, mapMode, onSelectCampsite, selectedCampId }) {
+  // 預設中心點：台灣中部附近，適合作為全台檢視視角
+  const position = [24.0, 120.9];
 
-  // 根據按鈕切換：2D OpenStreetMap 或 3D 衛星圖 (Esri World Imagery)
   const tileUrl =
     mapMode === '3d'
       ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
@@ -32,13 +31,15 @@ export default function CampsiteMap({ campsites, mapMode, onSelectCampsite }) {
   return (
     <MapContainer
       center={position}
-      zoom={9}
+      zoom={7.5}
       scrollWheelZoom={true}
       className="w-full h-full"
     >
       <TileLayer url={tileUrl} attribution={attribution} />
       {campsites.map((site) => {
         if (!site.latitude || !site.longitude) return null;
+        const isSelected = selectedCampId === site.id;
+
         return (
           <Marker
             key={site.id}
@@ -47,7 +48,7 @@ export default function CampsiteMap({ campsites, mapMode, onSelectCampsite }) {
             eventHandlers={{
               click: () => {
                 if (onSelectCampsite) {
-                  onSelectCampsite(site); // 🎯 點擊地標時，將營地傳回主頁面
+                  onSelectCampsite(site); // 🎯 點擊地圖 Marker 時將完整的 site 物件傳回 Home
                 }
               }
             }}
