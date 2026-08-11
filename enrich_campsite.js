@@ -1,12 +1,16 @@
-// 🎯 1. 載入 .env.local 檔案（確保 GOOGLE_MAPS_API_KEY 被正確讀取）
-require('dotenv').config({ path: '.env.local' });
+// 🎯 1. 嘗試讀取本地 .env.local 檔案（在本機執行時會自動載入；在 GitHub Actions 中找不到檔案也不會報錯）
+try {
+  require('dotenv').config({ path: '.env.local' });
+} catch (e) {
+  // 環境未安裝 dotenv 或是在 CI/CD 環境下執行，忽略錯誤
+}
 
 const { chromium } = require('playwright');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
-// 2. 初始化環境變數
+// 2. 初始化環境變數 (兼顧 .env.local 與 GitHub Secrets)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -73,7 +77,7 @@ async function scrapeTaiwanCampsites() {
       const feedSelector = 'div[role="feed"]';
       await page.waitForSelector(feedSelector, { timeout: 10000 }).catch(() => {});
 
-      // 🔄 滾動 8 次獲取更多營地
+      // 🔄 滾動 8 次獲取更多營地資料
       for (let i = 0; i < 8; i++) {
         await page.evaluate((selector) => {
           const feed = document.querySelector(selector);
@@ -92,7 +96,7 @@ async function scrapeTaiwanCampsites() {
           const ratingText = await el.$eval('span.MW4pA', e => e.innerText.trim()).catch(() => '4.5');
           const snippetText = await el.$eval('div.W4E33', e => e.innerText.trim()).catch(() => '');
 
-          // 解析真實經緯度
+          // 從 Google 地圖連結中解析真實陸地經緯度
           let lat = null;
           let lng = null;
           const linkHref = await el.$eval('a.hfAn2', e => e.href).catch(() => '');
@@ -111,6 +115,7 @@ async function scrapeTaiwanCampsites() {
             }
           }
 
+          // 備用防呆座標（落在台灣中部陸地）
           if (!lat || !lng) {
             const hash = cleanName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             lat = 23.5 + (hash % 100) * 0.01;
@@ -144,7 +149,7 @@ async function scrapeTaiwanCampsites() {
 }
 
 /**
- * 🏔️ 呼叫 Google Elevation API (含負數防呆)
+ * 🏔️ 呼叫 Google Elevation API 取得真實海拔 (含負數防呆)
  */
 async function getRealAltitude(lat, lng) {
   if (!lat || !lng) return '海拔未知';
@@ -173,6 +178,7 @@ async function getRealAltitude(lat, lng) {
     } catch (err) {}
   }
 
+  // 🛡️ 負數高程防呆：若點掉在水域小於 0 則顯示未知
   if (elevationMeters !== null) {
     if (elevationMeters < 0) {
       return '海拔未知';
@@ -241,10 +247,11 @@ function generateFallbackProsCons(campsiteName) {
 async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   if (!genAI) return generateFallbackProsCons(campsiteName);
 
+  // 🎯 已更新為 gemini-3.5-flash-lite 為第一順位
   const candidateModels = [
-    'gemini-3.1-flash-lite', 
     'gemini-3.5-flash-lite', 
-    'gemini-2.5-flash-lite',
+    'gemini-3.1-flash-lite', 
+    'gemini-2.5-flash-lite', 
     'gemini-3.5-flash'
   ];
 
@@ -274,7 +281,7 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
 }
 
 /**
- * 🚀 主程式 (全欄位快取防呆)
+ * 🚀 主程式 (含海拔、車程、優缺點三重快取防呆)
  */
 async function main() {
   console.log('🚀 開始執行全台灣營地自動爬蟲管線...');
