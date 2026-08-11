@@ -3,6 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
+// 1. 初始化環境變數
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,6 +17,7 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
+// 2. 初始化 Supabase Client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
   realtime: { transport: WebSocket }
@@ -24,6 +26,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// 📍 四大固定出發點定義
 const FIXED_ORIGINS = {
   tainan: '台南安平區',
   hsinchu: '新竹高鐵站',
@@ -32,7 +35,7 @@ const FIXED_ORIGINS = {
 };
 
 /**
- * 🕷️ Playwright 自動爬蟲
+ * 🕷️ Playwright 自動爬蟲：涵蓋全台灣熱門露營區域
  */
 async function scrapeTaiwanCampsites() {
   console.log(`🕷️ 啟動 Playwright，爬取全台灣熱門露營區...`);
@@ -75,7 +78,7 @@ async function scrapeTaiwanCampsites() {
         
         if (name) {
           const cleanName = name.split(/[\-\|\—\–]/)[0].trim();
-          // 🎯 關鍵修復：使用固定 Name Hash 生成 unique ID
+          // 🎯 使用名稱 Hash 生成唯一且固定的 Unique ID，避免 upsert 時產生空行 NULL
           const id = 'camp_' + Buffer.from(cleanName).toString('hex').substring(0, 16);
           const ratingText = await el.$eval('span.MW4pA', e => e.innerText.trim()).catch(() => '4.5');
           const snippetText = await el.$eval('div.W4E33', e => e.innerText.trim()).catch(() => '');
@@ -109,6 +112,9 @@ async function scrapeTaiwanCampsites() {
   return scrapedCampsites;
 }
 
+/**
+ * 🏔️ 查詢真實海拔高度
+ */
 async function getRealAltitude(lat, lng) {
   if (!lat || !lng) return '海拔未知';
 
@@ -135,6 +141,9 @@ async function getRealAltitude(lat, lng) {
   return '海拔未知';
 }
 
+/**
+ * 🚘 單一地點車程計算
+ */
 async function fetchSingleDriveTime(destinationName, originLocation) {
   const origin = encodeURIComponent(originLocation);
 
@@ -162,6 +171,9 @@ async function fetchSingleDriveTime(destinationName, originLocation) {
   return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.7).toFixed(1)} 公里` };
 }
 
+/**
+ * 🚘 批次計算 4 個固定起點車程
+ */
 async function fetchAllDriveTimes(destinationName) {
   const driveData = {};
   for (const [key, originName] of Object.entries(FIXED_ORIGINS)) {
@@ -172,6 +184,9 @@ async function fetchAllDriveTimes(destinationName) {
   return driveData;
 }
 
+/**
+ * 💡 本地防呆備用優缺點
+ */
 function generateFallbackProsCons(campsiteName) {
   return {
     pros: ['草皮維護極佳', '環境寧靜舒適'],
@@ -179,21 +194,26 @@ function generateFallbackProsCons(campsiteName) {
   };
 }
 
+/**
+ * 🤖 Gemini AI 分析優缺點 (含 13 秒 RPM 嚴格防呆冷卻)
+ */
 async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   if (!genAI) return generateFallbackProsCons(campsiteName);
 
+  // 優先選擇每日免費額度高達 500 次 (RPD 500) 的 Flash Lite 模型
   const candidateModels = [
     'gemini-3.1-flash-lite', 
-    'gemini-3.5-flash', 
     'gemini-3.5-flash-lite', 
-    'gemini-3.1-pro-preview', 
-    'gemini-3-flash-preview', 
-    'gemini-2.5-flash', 
-    'gemini-2.5-flash-lite'
+    'gemini-2.5-flash-lite',
+    'gemini-3.5-flash'
   ];
 
   for (const modelName of candidateModels) {
     try {
+      // ⏱️ 關鍵防呆：每次發送 API 前強制等待 13 秒，將 RPM 鎖定在 ~4.6 次/分，100% 不爆額度
+      console.log(`⏳ [RPM 防呆] 等待 13 秒後發送 API 請求 (${modelName})...`);
+      await sleep(13000);
+
       const model = genAI.getGenerativeModel({ model: modelName });
       const prompt = `針對「${campsiteName}」這個露營區，列出 pros (2個優點) 與 cons (1個缺點) 的標準 JSON，繁體中文，每點 10 字內。不要任何 Markdown 標記。`;
 
@@ -206,34 +226,69 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
         pros: parsed.pros || ['環境優美', '草皮乾淨'], 
         cons: parsed.cons || ['山路較窄'] 
       };
-    } catch (err) {}
+    } catch (err) {
+      console.warn(`⚠️ 模型 [${modelName}] 呼叫超額或出錯，嘗試備用方案... (${err.message})`);
+    }
   }
 
+  // 若今日 API 額度全數用盡，自動降級使用本地優缺點，保證整個爬蟲流程不中斷
   return generateFallbackProsCons(campsiteName);
 }
 
+/**
+ * 🚀 主程式
+ */
 async function main() {
   console.log('🚀 開始執行全台灣營地自動爬蟲管線...');
 
+  // 1. 取得資料庫已有快取
+  const { data: existingCampsites } = await supabase
+    .from('campsites')
+    .select('id, pros, cons');
+    
+  const existingMap = new Map();
+  if (existingCampsites) {
+    existingCampsites.forEach(site => {
+      if (site.pros && site.pros.length > 0) {
+        existingMap.set(site.id, site);
+      }
+    });
+  }
+
+  // 2. 執行爬蟲
   const campsites = await scrapeTaiwanCampsites();
-  console.log(`✅ 共抓取到 ${campsites.length} 個營地，準備寫入 Supabase...`);
+  console.log(`✅ 共抓取到 ${campsites.length} 個營地，準備更新至 Supabase...`);
 
   for (let i = 0; i < campsites.length; i++) {
     const site = campsites[i];
-    console.log(`\n[${i + 1}/${campsites.length}] 🔍 處理營地: ${site.name} (${site.region})`);
+    console.log(`\n-----------------------------------`);
+    console.log(`[${i + 1}/${campsites.length}] 🔍 處理營地: ${site.name} (${site.region})`);
 
     const altitude = await getRealAltitude(site.latitude, site.longitude);
     const driveData = await fetchAllDriveTimes(site.name);
-    const aiResult = await analyzeReviewsWithGemini(site.name, site.rawReviews);
 
-    console.log(`🏔️ ${altitude} | 🚗 安平:${driveData.drive_time_tainan}分 | 新竹:${driveData.drive_time_hsinchu}分 | 台北:${driveData.drive_time_taipei}分 | 台中:${driveData.drive_time_taichung}分`);
+    let pros, cons;
+
+    if (existingMap.has(site.id)) {
+      console.log(`⚡ [快取命中] 沿用現有優缺點，省下 API 額度`);
+      const cached = existingMap.get(site.id);
+      pros = cached.pros;
+      cons = cached.cons;
+    } else {
+      console.log(`🤖 [新營地] 呼叫 Gemini AI 分析優缺點...`);
+      const aiResult = await analyzeReviewsWithGemini(site.name, site.rawReviews);
+      pros = aiResult.pros;
+      cons = aiResult.cons;
+    }
+
+    console.log(`🏔️ ${altitude} | 🚗 安平:${driveData.drive_time_tainan}分 | 🚄 新竹:${driveData.drive_time_hsinchu}分 | 🚆 台北:${driveData.drive_time_taipei}分 | 🚄 台中:${driveData.drive_time_taichung}分`);
 
     const { error } = await supabase.from('campsites').upsert({
       id: site.id,
       name: site.name,
       status: site.status,
       altitude: altitude,
-      // 🎯 寫入 4 個起點車程與距離
+      // 🎯 完整寫入 4 個固定起點的車程與距離
       drive_time_hsinchu: driveData.drive_time_hsinchu,
       distance_hsinchu: driveData.distance_hsinchu,
       drive_time_tainan: driveData.drive_time_tainan,
@@ -247,21 +302,19 @@ async function main() {
       price_range: site.priceRange,
       latitude: site.latitude,
       longitude: site.longitude,
-      pros: aiResult.pros,
-      cons: aiResult.cons,
+      pros: pros,
+      cons: cons,
       updated_at: new Date()
     });
 
     if (error) {
       console.error(`❌ 寫入 Supabase 失敗 (${site.name}):`, error.message);
     } else {
-      console.log(`✅ [${site.name}] 100% 寫入成功！`);
+      console.log(`✅ [${site.name}] 100% 同步成功！`);
     }
-
-    await sleep(2000); // 冷卻 2 秒
   }
 
-  console.log('\n🎉 所有資料已 100% 填滿且無 NULL 欄位！');
+  console.log('\n🎉 所有營地資料更新完成！');
 }
 
 main().catch(err => {
