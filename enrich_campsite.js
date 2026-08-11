@@ -92,6 +92,44 @@ async function scrapeNorthernTaiwanCampsites() {
   await browser.close();
   return scrapedCampsites;
 }
+/**
+ * 🏔️ 根據真實經緯度查詢實際海拔高度 (Google Elevation API)
+ */
+async function getRealAltitude(lat, lng) {
+  // 如果有 Google Maps API Key，優先調用官方高程 API
+  if (GOOGLE_MAPS_API_KEY && lat && lng) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/elevation/json?locations=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.status === 'OK' && data.results && data.results.length > 0) {
+        const elevationMeters = Math.round(data.results[0].elevation);
+        return `海拔 ${elevationMeters}m`;
+      }
+    } catch (err) {
+      console.warn(`⚠️ Google Elevation API 查詢失敗 (${lat}, ${lng}):`, err.message);
+    }
+  }
+
+  // 💡 免備用方案：調用免費且免金鑰的 Open-Elevation API
+  if (lat && lng) {
+    try {
+      const openUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
+      const res = await fetch(openUrl);
+      const data = await res.json();
+
+      if (data.results && data.results.length > 0) {
+        const elevationMeters = Math.round(data.results[0].elevation);
+        return `海拔 ${elevationMeters}m`;
+      }
+    } catch (err) {
+      console.warn(`⚠️ Open-Elevation API 查詢失敗:`, err.message);
+    }
+  }
+
+  return '海拔未知';
+}
 
 function getAltitudeByName(campsiteName) {
   if (campsiteName.includes('高台') || campsiteName.includes('鳥嘴山') || campsiteName.includes('霧')) return '海拔 1,200m';
@@ -135,7 +173,9 @@ async function main() {
   console.log(`✅ 北台灣共爬取到 ${campsites.length} 個營地`);
 
   for (const site of campsites) {
-    const altitude = getAltitudeByName(site.name);
+    const altitude = getRealAltitude(site.name);
+    console.log(`🏔️ 真實海拔: ${altitude}`);
+    
     let pros, cons;
 
     if (existingMap.has(site.id)) {
