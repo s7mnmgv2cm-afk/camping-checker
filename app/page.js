@@ -31,7 +31,7 @@ const MapWithNoSSR = dynamic(() => import('../components/CampsiteMap'), {
   )
 });
 
-// 📍 固定起點設定檔
+// 📍 固定起點對照設定
 const FIXED_ORIGINS = {
   tainan: '台南安平區',
   hsinchu: '新竹高鐵站',
@@ -48,24 +48,49 @@ export default function Home() {
 
   const [campsites, setCampsites] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getNextSaturday());
-  const [originKey, setOriginKey] = useState('tainan'); // 📍 預設起點：台南安平區 (可隨時切換新竹/台北/台中)
+  const [originKey, setOriginKey] = useState('tainan'); // 預設起點：台南安平區
   const [maxDriveTime, setMaxDriveTime] = useState(120);
   const [minAltitude, setMinAltitude] = useState(0);
   const [maxAltitude, setMaxAltitude] = useState(2500);
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
 
-  // 🎯 被選擇的營地物件（地圖、座標圖、卡片清單三者同步）
+  // 🎯 被選擇的營地物件（地圖、座標圖、卡片清單三者同步高亮與展開）
   const [selectedCamp, setSelectedCamp] = useState(null);
 
+  // 📅 連動日期查詢：當選擇的日期變更時，自動從 Supabase 讀取空位狀態
   useEffect(() => {
-    async function fetchCampsites() {
+    async function fetchCampsitesWithAvailability() {
       setLoading(true);
-      const { data, error } = await supabase.from('campsites').select('*');
-      if (!error) setCampsites(data || []);
+      const formattedDate = selectedDate.toISOString().split('T')[0];
+
+      // 讀取營地主表，並 Left Join 查詢該日期的空位狀態
+      const { data, error } = await supabase
+        .from('campsites')
+        .select(`
+          *,
+          campsite_availability!left (
+            status,
+            date
+          )
+        `);
+
+      if (!error && data) {
+        // 整理資料：抓取當日 status，若無資料則預設為 'available'
+        const processed = data.map((site) => {
+          const availList = site.campsite_availability || [];
+          const matchedAvail = availList.find((a) => a.date === formattedDate);
+          return {
+            ...site,
+            status: matchedAvail ? matchedAvail.status : 'available'
+          };
+        });
+        setCampsites(processed);
+      }
       setLoading(false);
     }
-    fetchCampsites();
+
+    fetchCampsitesWithAvailability();
   }, [selectedDate]);
 
   const parseAltitudeNum = (altStr) => {
@@ -80,7 +105,7 @@ export default function Home() {
     return match ? parseFloat(match[0]) : 0;
   };
 
-  // 根據當前選擇的出發點 (originKey)，動態取得該起點的車程 mins 與距離 km
+  // 根據當前選擇的出發點 (originKey)，動態提取對應的車程與距離
   const getCampDriveInfo = (site) => {
     const mins = site[`drive_time_${originKey}`] || site.drive_time_mins || 0;
     const dist = site[`distance_${originKey}`] || site.distance_km || '未知';
@@ -116,7 +141,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
-      {/* 頂部標題 */}
+      {/* 頂部頁籤標題 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
           <span>🏕️</span> 全台露營區即時空位與 3D 地形搜尋
@@ -143,7 +168,7 @@ export default function Home() {
 
       {/* 搜尋控制面板 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6 relative z-30">
-        {/* 📍 下拉選單選擇固定出發點 */}
+        {/* 📍 下拉選擇固定出發點 */}
         <div>
           <label className="block text-sm font-bold text-slate-700 mb-2">
             📍 出發地點：
@@ -160,7 +185,7 @@ export default function Home() {
           </select>
         </div>
 
-        {/* 📅 日期選擇器 */}
+        {/* 📅 露營日期選擇器 */}
         <div className="relative z-50">
           <label className="block text-sm font-bold text-slate-700 mb-2">
             📅 選擇露營日期：
@@ -175,7 +200,7 @@ export default function Home() {
           />
         </div>
 
-        {/* ⛰️ 海拔高度 Min/Max 控制項 */}
+        {/* ⛰️ 海拔高度區間選擇器 */}
         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
           <div className="flex justify-between items-center mb-3">
             <label className="text-sm font-bold text-slate-700">⛰️ 海拔高度區間：</label>
@@ -225,7 +250,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 🚗 車程滑桿 */}
+        {/* 🚗 車程上限滑桿 */}
         <div>
           <div className="flex justify-between items-center mb-2">
             <label className="text-sm font-bold text-slate-700">🚗 {FIXED_ORIGINS[originKey]} 車程上限：</label>
@@ -320,12 +345,12 @@ export default function Home() {
           </ResponsiveContainer>
         </div>
 
-        {/* 🎯 點擊後同步顯示的「營地詳細圖卡」 */}
+        {/* 🎯 點擊點位後同步展開的詳細資訊圖卡 */}
         {selectedCamp && (
           <div className="mt-6 pt-6 border-t-2 border-dashed border-amber-300 bg-amber-50/50 p-6 rounded-2xl relative transition-all">
             <div className="flex justify-between items-center mb-3">
               <span className="text-xs font-black tracking-wide text-amber-800 bg-amber-200/80 px-3 py-1 rounded-full uppercase">
-                🎯 已選擇營地詳細資訊 (與地圖/圖表同步)
+                🎯 已選擇營地詳細資訊 (已與地圖與座標圖同步)
               </span>
               <button
                 onClick={() => setSelectedCamp(null)}
@@ -400,7 +425,7 @@ export default function Home() {
                 )}
               </div>
 
-              {/* 🔗 營地專屬跳轉與預約按鈕 */}
+              {/* 🔗 外連導航與預約按鈕 */}
               <div className="pt-3 border-t border-slate-100">
                 <span className="text-xs font-bold text-slate-500 block mb-2">🔗 營地專屬連結與訂位：</span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -534,7 +559,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 🔗 營地專屬跳轉與預約按鈕 */}
+                {/* 🔗 外連按鈕 */}
                 <div className="pt-3 border-t border-slate-100 mt-2">
                   <span className="text-xs font-bold text-slate-500 block mb-2">🔗 營地專屬連結與訂位：</span>
                   <div className="grid grid-cols-2 gap-2">
@@ -578,7 +603,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 📋 下方露營區預約與地圖對照表格 */}
+      {/* 📋 下方營地快速對照表 */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-12">
         <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-sm">
           📋 營地快速預約與合法性對照表
