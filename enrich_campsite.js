@@ -24,9 +24,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const ORIGIN_HSINCHU_HSR = '24.8086,121.0403'; // 新竹高鐵站
 
-// ⏱️ 輔助延遲函式：控制 API 請求頻率，避免觸發 429 限額
+// ⏱️ 輔助延遲函式：控制 API 請求頻率
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -77,7 +76,6 @@ async function scrapeNorthernTaiwanCampsites() {
           const snippetText = await el.$eval('div.W4E33', e => e.innerText.trim()).catch(() => '');
 
           if (!scrapedCampsites.some(s => s.id === id)) {
-            // 經緯度估算標記 (定位備用方案)
             const hash = cleanName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             const lat = 24.5 + (hash % 50) * 0.01;
             const lng = 121.0 + (hash % 60) * 0.01;
@@ -112,7 +110,6 @@ async function scrapeNorthernTaiwanCampsites() {
 async function getRealAltitude(lat, lng) {
   if (!lat || !lng) return '海拔未知';
 
-  // 1. 優先呼叫 Google Elevation API
   if (GOOGLE_MAPS_API_KEY) {
     try {
       const url = `https://maps.googleapis.com/maps/api/elevation/json?locations=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
@@ -128,7 +125,6 @@ async function getRealAltitude(lat, lng) {
     }
   }
 
-  // 2. 免費備用方案 Open-Elevation API
   try {
     const openUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
     const res = await fetch(openUrl);
@@ -146,17 +142,19 @@ async function getRealAltitude(lat, lng) {
 }
 
 /**
- * 🚘 Google Distance Matrix 計算車程與距離
+ * 🚘 Google Distance Matrix 計算車程與距離 (支援動態自訂出發點)
  */
-async function fetchDriveTime(destinationName) {
+async function fetchDriveTime(destinationName, originLocation = '新竹高鐵站') {
+  const origin = encodeURIComponent(originLocation);
+
   if (!GOOGLE_MAPS_API_KEY) {
-    const hash = destinationName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const mockMins = 35 + (hash % 50);
-    return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.7).toFixed(1)} 公里` };
+    const hash = (destinationName + originLocation).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const mockMins = 35 + (hash % 60);
+    return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.75).toFixed(1)} 公里` };
   }
 
   try {
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${ORIGIN_HSINCHU_HSR}&destinations=${encodeURIComponent(destinationName)}&mode=driving&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${encodeURIComponent(destinationName)}&mode=driving&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
     const res = await fetch(url);
     const data = await res.json();
     if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
@@ -167,7 +165,7 @@ async function fetchDriveTime(destinationName) {
       };
     }
   } catch (err) {
-    console.error(`車程計算失敗 (${destinationName}):`, err.message);
+    console.error(`車程計算失敗 (${destinationName} from ${originLocation}):`, err.message);
   }
 
   const hash = destinationName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -176,7 +174,7 @@ async function fetchDriveTime(destinationName) {
 }
 
 /**
- * 💡 客製化動態備用優缺點 (當 API 超額或失敗時自動觸發，避免全欄位重複)
+ * 💡 客製化動態備用優缺點
  */
 function generateFallbackProsCons(campsiteName) {
   if (campsiteName.includes('森林') || campsiteName.includes('樹')) {
@@ -210,12 +208,11 @@ function generateFallbackProsCons(campsiteName) {
 }
 
 /**
- * 🤖 Gemini AI 分析優缺點
+ * 🤖 Gemini AI 分析優缺點 (7 模型輪詢清單)
  */
 async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   if (!genAI) return generateFallbackProsCons(campsiteName);
 
-  // 💡 已置換為指定模型清單
   const candidateModels = [
     'gemini-3.1-flash-lite', 
     'gemini-3.5-flash', 
@@ -254,7 +251,6 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
 async function main() {
   console.log('🚀 開始執行全北台灣營地自動爬蟲管線...');
 
-  // 1. 讀取 Supabase 已有資料庫作為快取 (Cache)
   const { data: existingCampsites } = await supabase
     .from('campsites')
     .select('id, pros, cons');
@@ -268,7 +264,6 @@ async function main() {
     });
   }
 
-  // 2. 爬取北台灣熱門營地
   const campsites = await scrapeNorthernTaiwanCampsites();
   console.log(`✅ 北台灣共爬取到 ${campsites.length} 個營地`);
 
@@ -281,7 +276,6 @@ async function main() {
 
     let pros, cons;
 
-    // 快取機制：已存在的營地跳過 Gemini API，省額度又快
     if (existingMap.has(site.id)) {
       console.log(`⚡ [快取命中] 沿用現有優缺點，跳過 API 呼叫`);
       const cached = existingMap.get(site.id);
@@ -299,7 +293,6 @@ async function main() {
 
     console.log(`🏔️ 真實海拔: ${altitude} | 🚘 車程: ${driveTimeMins} 分鐘 (${distanceKm})`);
 
-    // 寫入 Supabase
     const { error } = await supabase.from('campsites').upsert({
       id: site.id,
       name: site.name,
