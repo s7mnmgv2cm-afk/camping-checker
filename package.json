@@ -1,5 +1,5 @@
 {
-  "name": "taiwan-campsite-search",
+  "name": "camping-checker",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,10 +12,13 @@
   "dependencies": {
     "@google/generative-ai": "^0.22.0",
     "@supabase/supabase-js": "^2.48.0",
+    "leaflet": "^1.9.4",
     "next": "^14.2.25",
     "playwright": "^1.50.0",
     "react": "^18.3.1",
+    "react-datepicker": "^7.5.0",
     "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
