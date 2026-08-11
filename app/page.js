@@ -4,8 +4,17 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import dynamic from 'next/dynamic';
 import DatePicker from 'react-datepicker';
+import {
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LabelList
+} from 'recharts';
 
-// 引入 DatePicker 與 Leaflet 的全域 CSS 樣式
 import 'react-datepicker/dist/react-datepicker.css';
 import 'leaflet/dist/leaflet.css';
 
@@ -13,7 +22,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 💡 動態載入 Leaflet 地圖組件，避免 Next.js 伺服器端渲染 (SSR) 報錯
 const MapWithNoSSR = dynamic(() => import('../components/CampsiteMap'), {
   ssr: false,
   loading: () => (
@@ -24,7 +32,6 @@ const MapWithNoSSR = dynamic(() => import('../components/CampsiteMap'), {
 });
 
 export default function Home() {
-  // 取得下一個星期六作為預設日期
   const getNextSaturday = () => {
     const d = new Date();
     d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
@@ -33,8 +40,9 @@ export default function Home() {
 
   const [campsites, setCampsites] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getNextSaturday());
-  const [maxDriveTime, setMaxDriveTime] = useState(60);
-  const [mapMode, setMapMode] = useState('2d'); // '2d' 平面 | '3d' 衛星高程
+  const [maxDriveTime, setMaxDriveTime] = useState(90);
+  const [minAltitude, setMinAltitude] = useState(300); // ⛰️ 海拔搜尋門檻 (公尺)
+  const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,14 +55,40 @@ export default function Home() {
     fetchCampsites();
   }, [selectedDate]);
 
-  // 篩選車程時間上限內的營地
-  const filteredCampsites = campsites.filter(
-    (site) => (site.drive_time_mins || 0) <= maxDriveTime
-  );
+  // 解析海拔字串為純數字，例如 "海拔 850m" -> 850
+  const parseAltitudeNum = (altStr) => {
+    if (!altStr) return 0;
+    const match = altStr.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+
+  // 解析距離字串為純數字，例如 "25.1 公里" -> 25.1
+  const parseDistanceNum = (distStr) => {
+    if (!distStr) return 0;
+    const match = distStr.match(/[\d\.]+/);
+    return match ? parseFloat(match[0]) : 0;
+  };
+
+  // 雙重過濾：車程時間 <= 上限 且 真實海拔 >= 下限
+  const filteredCampsites = campsites.filter((site) => {
+    const driveOk = (site.drive_time_mins || 0) <= maxDriveTime;
+    const altOk = parseAltitudeNum(site.altitude) >= minAltitude;
+    return driveOk && altOk;
+  });
+
+  // 📊 修正為：X 軸 = 距離 (km), Y 軸 = 海拔高度 (m)
+  const chartData = filteredCampsites
+    .filter((site) => site.altitude && site.distance_km)
+    .map((site) => ({
+      name: site.name,
+      x: parseDistanceNum(site.distance_km),
+      y: parseAltitudeNum(site.altitude),
+      altitude: site.altitude
+    }));
 
   return (
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
-      {/* 頁面標題與地圖切換按鈕 */}
+      {/* 頂部標題 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
           <span>🏕️</span> 全台露營區即時空位與 3D 地形搜尋
@@ -79,10 +113,10 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 搜尋與篩選控制面板 */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* 📅 巨型放大版日期選擇器 */}
-        <div>
+      {/* 搜尋控制面板 (包含海拔與車程滑桿) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-6 relative z-30">
+        {/* 📅 日期選擇器 */}
+        <div className="relative z-50">
           <label className="block text-sm font-bold text-slate-700 mb-2">
             📅 選擇露營日期：
           </label>
@@ -92,15 +126,33 @@ export default function Home() {
             dateFormat="yyyy / MM / dd"
             className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-lg rounded-xl p-3 font-bold outline-none cursor-pointer shadow-inner"
             calendarClassName="custom-big-calendar"
+            popperPlacement="bottom-start"
+          />
+        </div>
+
+        {/* ⛰️ 海拔高度搜尋滑桿 */}
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-sm font-bold text-slate-700">⛰️ 最低海拔限制：</label>
+            <span className="text-sm font-extrabold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
+              ≥ {minAltitude} 公尺
+            </span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1500"
+            step="50"
+            value={minAltitude}
+            onChange={(e) => setMinAltitude(Number(e.target.value))}
+            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600 mt-3"
           />
         </div>
 
         {/* 🚗 車程滑桿 */}
         <div>
           <div className="flex justify-between items-center mb-2">
-            <label className="text-sm font-bold text-slate-700">
-              🚗 新竹高鐵出發時間上限：
-            </label>
+            <label className="text-sm font-bold text-slate-700">🚗 車程時間上限：</label>
             <span className="text-sm font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
               {maxDriveTime} 分鐘
             </span>
@@ -117,17 +169,65 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 🗺️ 互動式地圖：根據篩選結果即時標註營地紅點 */}
-      <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 mb-8 h-80 relative">
+      {/* 🗺️ 地圖模組 */}
+      <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 mb-8 h-80 relative z-10">
         <MapWithNoSSR campsites={filteredCampsites} mapMode={mapMode} />
       </div>
 
-      {/* 營地卡片列表 */}
+      {/* 📊 營地分佈座標圖 (Y: 海拔高度 vs X: 開車距離) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
+        <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <span>📍</span> 營地分佈座標圖 (Y: 海拔高度 vs X: 開車距離)
+        </h3>
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                type="number"
+                dataKey="x"
+                name="距離"
+                unit=" km"
+                label={{ value: '開車距離 (公里)', position: 'insideBottom', offset: -10 }}
+              />
+              <YAxis
+                type="number"
+                dataKey="y"
+                name="海拔高度"
+                unit="m"
+                domain={['auto', 'auto']}
+                label={{ value: '海拔高度 (公尺)', angle: -90, position: 'insideLeft', offset: -5 }}
+              />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                content={({ payload }) => {
+                  if (payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="bg-slate-900 text-white p-3 rounded-xl text-xs font-semibold shadow-lg">
+                        <p className="font-bold text-sm text-yellow-400">{data.name}</p>
+                        <p className="mt-1">⛰️ 海拔高度: {data.y} m</p>
+                        <p>🚗 開車距離: {data.x} 公里</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Scatter name="營地" data={chartData} fill="#059669">
+                <LabelList dataKey="name" position="top" style={{ fontSize: '10px', fontWeight: 'bold', fill: '#334155' }} />
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 營地卡片清單 */}
       {loading ? (
         <div className="text-center py-12 text-slate-500 font-medium">🔄 載入營地資料中...</div>
       ) : filteredCampsites.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 text-slate-500">
-          😔 沒有找到 {maxDriveTime} 分鐘車程內的營地，請試著拉長車程上限。
+          😔 沒有找到海拔 ≥ {minAltitude}m 且車程在 {maxDriveTime} 分鐘內的營地。
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -137,7 +237,6 @@ export default function Home() {
               className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between hover:shadow-md transition-all"
             >
               <div>
-                {/* 頂部營地名稱與狀態 */}
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <h2 className="text-xl font-bold text-slate-900">{site.name}</h2>
@@ -158,18 +257,15 @@ export default function Home() {
                   </span>
                 </div>
 
-                {/* 評分與車程 */}
                 <p className="text-sm text-slate-600 mb-3">
                   ⭐ Google 評分: {site.rating || 4.5} | 🚗 車程: 約 {site.drive_time_mins} 分鐘 ({site.distance_km})
                 </p>
 
-                {/* 💰 價格與 📞 聯絡電話 */}
                 <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex justify-between text-xs font-semibold text-slate-700">
                   <span>💰 預估價格: <strong className="text-emerald-600">{site.price_range || '$1,000 - $1,500 / 帳'}</strong></span>
                   <span>📞 營主電話: <strong className="text-blue-600">{site.phone || '0912-345-678'}</strong></span>
                 </div>
 
-                {/* 👍👎 AI 優缺點標籤 */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   {site.pros && site.pros.length > 0 && (
                     <div>
