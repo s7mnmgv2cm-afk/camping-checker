@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import dynamic from 'next/dynamic';
 import DatePicker from 'react-datepicker';
@@ -46,7 +46,7 @@ export default function Home() {
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
 
-  // 🎯 新增：被點擊選中的營地狀態
+  // 🎯 被選擇的營地狀態（地圖與座標圖共享）
   const [selectedCamp, setSelectedCamp] = useState(null);
 
   useEffect(() => {
@@ -86,7 +86,6 @@ export default function Home() {
       y: parseAltitudeNum(site.altitude),
     }));
 
-  // 點擊散佈圖上的圓點時觸發
   const handleScatterClick = (entry) => {
     if (entry && entry.id) {
       setSelectedCamp(entry);
@@ -206,19 +205,23 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 🗺️ 地圖模組 */}
+      {/* 🗺️ 地圖模組（傳入 onSelectCampsite 讓地標點擊連動） */}
       <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 mb-8 h-80 relative z-10">
-        <MapWithNoSSR campsites={filteredCampsites} mapMode={mapMode} />
+        <MapWithNoSSR
+          campsites={filteredCampsites}
+          mapMode={mapMode}
+          onSelectCampsite={setSelectedCamp}
+        />
       </div>
 
-      {/* 📊 散佈圖與點擊連動區 */}
+      {/* 📊 散佈圖 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <span>📍</span> 營地分佈座標圖 (Y: 海拔高度 vs X: 開車距離)
           </h3>
           <span className="text-xs text-blue-600 font-bold bg-blue-50 px-2.5 py-1 rounded-md">
-            👉 點擊圖上圓點可查看下方營地詳情
+            👉 點擊地圖或座標圖上的點可查看詳細圖卡
           </span>
         </div>
 
@@ -264,7 +267,6 @@ export default function Home() {
                 onClick={handleScatterClick}
                 className="cursor-pointer"
               >
-                {/* 當該點被選中時，改變顏色與變大 */}
                 {chartData.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
@@ -277,7 +279,7 @@ export default function Home() {
           </ResponsiveContainer>
         </div>
 
-        {/* 🎯 點擊圖點後跳出的「選擇營地專屬詳細圖卡」 */}
+        {/* 🎯 點擊地圖或座標圖後跳出的「營地詳細圖卡」 */}
         {selectedCamp && (
           <div className="mt-6 pt-6 border-t-2 border-dashed border-amber-300 bg-amber-50/50 p-6 rounded-2xl relative transition-all">
             <div className="flex justify-between items-center mb-3">
