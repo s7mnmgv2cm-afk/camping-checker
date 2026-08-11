@@ -40,9 +40,10 @@ export default function Home() {
 
   const [campsites, setCampsites] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getNextSaturday());
+  const [originLocation, setOriginLocation] = useState('新竹高鐵站'); // 📍 自訂出發地點
   const [maxDriveTime, setMaxDriveTime] = useState(90);
-  const [minAltitude, setMinAltitude] = useState(0);
-  const [maxAltitude, setMaxAltitude] = useState(2000);
+  const [minAltitude, setMinAltitude] = useState(0);    // ⛰️ 最低海拔
+  const [maxAltitude, setMaxAltitude] = useState(2000); // ⛰️ 最高海拔
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
 
@@ -119,8 +120,23 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 搜尋控制面板 */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-6 relative z-30">
+      {/* 搜尋控制面板（含出發點、日期、海拔 Min/Max、車程） */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6 relative z-30">
+        {/* 📍 自訂出發地點 */}
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-2">
+            📍 出發地點：
+          </label>
+          <input
+            type="text"
+            value={originLocation}
+            onChange={(e) => setOriginLocation(e.target.value)}
+            placeholder="例如：台北車站、新竹高鐵站"
+            className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
+          />
+        </div>
+
+        {/* 📅 日期選擇器 */}
         <div className="relative z-50">
           <label className="block text-sm font-bold text-slate-700 mb-2">
             📅 選擇露營日期：
@@ -129,7 +145,7 @@ export default function Home() {
             selected={selectedDate}
             onChange={(date) => date && setSelectedDate(date)}
             dateFormat="yyyy / MM / dd"
-            className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-lg rounded-xl p-3 font-bold outline-none cursor-pointer shadow-inner"
+            className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-bold outline-none cursor-pointer shadow-inner"
             calendarClassName="custom-big-calendar"
             popperPlacement="bottom-start"
           />
@@ -188,7 +204,7 @@ export default function Home() {
         {/* 🚗 車程滑桿 */}
         <div>
           <div className="flex justify-between items-center mb-2">
-            <label className="text-sm font-bold text-slate-700">🚗 車程時間上限：</label>
+            <label className="text-sm font-bold text-slate-700">🚗 {originLocation || '出發點'} 車程上限：</label>
             <span className="text-sm font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
               {maxDriveTime} 分鐘
             </span>
@@ -196,7 +212,7 @@ export default function Home() {
           <input
             type="range"
             min="20"
-            max="120"
+            max="180"
             step="5"
             value={maxDriveTime}
             onChange={(e) => setMaxDriveTime(Number(e.target.value))}
@@ -234,7 +250,7 @@ export default function Home() {
                 dataKey="x"
                 name="距離"
                 unit=" km"
-                label={{ value: '開車距離 (公里)', position: 'insideBottom', offset: -10 }}
+                label={{ value: `從 [${originLocation || '出發地'}] 開車距離 (公里)`, position: 'insideBottom', offset: -10 }}
               />
               <YAxis
                 type="number"
