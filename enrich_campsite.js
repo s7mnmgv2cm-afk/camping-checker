@@ -1,9 +1,12 @@
+// 🎯 1. 載入 .env.local 檔案（確保 GOOGLE_MAPS_API_KEY 被正確讀取）
+require('dotenv').config({ path: '.env.local' });
+
 const { chromium } = require('playwright');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
-// 1. 初始化環境變數
+// 2. 初始化環境變數
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,7 +20,13 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-// 2. 初始化 Supabase Client
+if (!GOOGLE_MAPS_API_KEY) {
+  console.warn('⚠️ 警告：未偵測到 GOOGLE_MAPS_API_KEY！車程與海拔將降級為模擬資料。');
+} else {
+  console.log('🔑 已成功載入 GOOGLE_MAPS_API_KEY，將呼叫真實 Google API！');
+}
+
+// 3. 初始化 Supabase Client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
   realtime: { transport: WebSocket }
@@ -64,7 +73,7 @@ async function scrapeTaiwanCampsites() {
       const feedSelector = 'div[role="feed"]';
       await page.waitForSelector(feedSelector, { timeout: 10000 }).catch(() => {});
 
-      // 🔄 滾動 8 次以獲取更多營地資料
+      // 🔄 滾動 8 次獲取更多營地
       for (let i = 0; i < 8; i++) {
         await page.evaluate((selector) => {
           const feed = document.querySelector(selector);
@@ -79,12 +88,11 @@ async function scrapeTaiwanCampsites() {
         
         if (name) {
           const cleanName = name.split(/[\-\|\—\–]/)[0].trim();
-          // 🎯 使用營地名稱 Hash 生成固定唯一的 ID
           const id = 'camp_' + Buffer.from(cleanName).toString('hex').substring(0, 16);
           const ratingText = await el.$eval('span.MW4pA', e => e.innerText.trim()).catch(() => '4.5');
           const snippetText = await el.$eval('div.W4E33', e => e.innerText.trim()).catch(() => '');
 
-          // 從 Google 地圖連結中解析真實陸地經緯度
+          // 解析真實經緯度
           let lat = null;
           let lng = null;
           const linkHref = await el.$eval('a.hfAn2', e => e.href).catch(() => '');
@@ -103,7 +111,6 @@ async function scrapeTaiwanCampsites() {
             }
           }
 
-          // 備用防呆預設台灣陸地座標
           if (!lat || !lng) {
             const hash = cleanName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             lat = 23.5 + (hash % 100) * 0.01;
@@ -137,7 +144,7 @@ async function scrapeTaiwanCampsites() {
 }
 
 /**
- * 🏔️ 拿真實陸地經緯度呼叫 Google Elevation API (含負數防呆)
+ * 🏔️ 呼叫 Google Elevation API (含負數防呆)
  */
 async function getRealAltitude(lat, lng) {
   if (!lat || !lng) return '海拔未知';
@@ -166,7 +173,6 @@ async function getRealAltitude(lat, lng) {
     } catch (err) {}
   }
 
-  // 🛡️ 負數高程防呆：若點掉在水域小於 0 則顯示未知
   if (elevationMeters !== null) {
     if (elevationMeters < 0) {
       return '海拔未知';
@@ -178,30 +184,29 @@ async function getRealAltitude(lat, lng) {
 }
 
 /**
- * 🚘 單一地點車程與距離計算
+ * 🚘 單一地點真實車程計算 (呼叫 Google Distance Matrix API)
  */
 async function fetchSingleDriveTime(destinationName, originLocation) {
   const origin = encodeURIComponent(originLocation);
 
-  if (!GOOGLE_MAPS_API_KEY) {
-    const hash = (destinationName + originLocation).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const mockMins = 30 + (hash % 120);
-    return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.75).toFixed(1)} 公里` };
+  if (GOOGLE_MAPS_API_KEY) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${encodeURIComponent(destinationName)}&mode=driving&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
+        const element = data.rows[0].elements[0];
+        return { 
+          driveTimeMins: Math.round(element.duration.value / 60), 
+          distanceKm: element.distance.text 
+        };
+      }
+    } catch (err) {
+      console.warn(`⚠️ Distance Matrix API 查詢失敗 (${destinationName}):`, err.message);
+    }
   }
 
-  try {
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${encodeURIComponent(destinationName)}&mode=driving&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.status === 'OK' && data.rows[0]?.elements[0]?.status === 'OK') {
-      const element = data.rows[0].elements[0];
-      return { 
-        driveTimeMins: Math.round(element.duration.value / 60), 
-        distanceKm: element.distance.text 
-      };
-    }
-  } catch (err) {}
-
+  // 若無 API Key 才會觸發模擬計算
   const hash = (destinationName + originLocation).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const mockMins = 35 + (hash % 100);
   return { driveTimeMins: mockMins, distanceKm: `${(mockMins * 0.7).toFixed(1)} 公里` };
@@ -269,7 +274,7 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
 }
 
 /**
- * 🚀 主程式 (含海拔、車程、優缺點三重快取防呆)
+ * 🚀 主程式 (全欄位快取防呆)
  */
 async function main() {
   console.log('🚀 開始執行全台灣營地自動爬蟲管線...');
@@ -345,7 +350,7 @@ async function main() {
       cons = aiResult.cons;
     }
 
-    console.log(`summary -> 🏔️ ${altitude} | 🚗 安平:${driveData.drive_time_tainan}分 | 🚄 新竹:${driveData.drive_time_hsinchu}分`);
+    console.log(`summary -> 🏔️ ${altitude} | 🚗 安平:${driveData.drive_time_tainan}分 | 🚄 新竹:${driveData.drive_time_hsinchu}分 | 🚆 台北:${driveData.drive_time_taipei}分 | 🚄 台中:${driveData.drive_time_taichung}分`);
 
     // 3. 更新或寫入 Supabase
     const { error } = await supabase.from('campsites').upsert({
