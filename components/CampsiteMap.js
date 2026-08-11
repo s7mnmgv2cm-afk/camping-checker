@@ -3,39 +3,68 @@
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 
-// 修正 Leaflet 預設 Icon 缺失問題
+// 客製化地圖藍色與綠色標記 Icon
 const customIcon = new L.Icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
+  shadowSize: [41, 41]
 });
 
-export default function CampsiteMap({ campsites, mapMode }) {
-  // 預設中心點 (新竹山區)
-  const center = [24.7100, 121.1500];
+export default function CampsiteMap({ campsites, mapMode, onSelectCampsite }) {
+  // 預設中心點：新竹山區
+  const position = [24.7, 121.1];
 
-  // 根據 2D/3D 切換圖層：2D 使用 OpenStreetMap，3D/高程使用 Esri 衛星圖
+  // 根據按鈕切換：2D OpenStreetMap 或 3D 衛星圖 (Esri World Imagery)
   const tileUrl =
     mapMode === '3d'
       ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
       : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
+  const attribution =
+    mapMode === '3d'
+      ? '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+      : '&copy; OpenStreetMap contributors';
+
   return (
-    <MapContainer center={center} zoom={10} scrollWheelZoom={false} className="h-full w-full">
-      <TileLayer url={tileUrl} />
+    <MapContainer
+      center={position}
+      zoom={9}
+      scrollWheelZoom={true}
+      className="w-full h-full"
+    >
+      <TileLayer url={tileUrl} attribution={attribution} />
       {campsites.map((site) => {
         if (!site.latitude || !site.longitude) return null;
         return (
-          <Marker key={site.id} position={[site.latitude, site.longitude]} icon={customIcon}>
+          <Marker
+            key={site.id}
+            position={[site.latitude, site.longitude]}
+            icon={customIcon}
+            eventHandlers={{
+              click: () => {
+                if (onSelectCampsite) {
+                  onSelectCampsite(site); // 🎯 點擊地標時，將營地傳回主頁面
+                }
+              }
+            }}
+          >
             <Popup>
-              <div className="text-sm font-sans p-1">
-                <h3 className="font-bold text-slate-900">{site.name}</h3>
-                <p className="text-xs text-slate-600 mt-1">{site.altitude || '海拔估算中'}</p>
-                <p className="text-xs font-semibold text-emerald-600 mt-0.5">
+              <div className="p-1 font-sans">
+                <h3 className="font-bold text-slate-900 text-sm">{site.name}</h3>
+                <p className="text-xs text-slate-600 my-1">{site.altitude || '海拔未知'}</p>
+                <span
+                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                    site.status === 'available'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-rose-100 text-rose-700'
+                  }`}
+                >
                   {site.status === 'available' ? '🟢 有空位' : '🔴 已滿位'}
-                </p>
+                </span>
               </div>
             </Popup>
           </Marker>
