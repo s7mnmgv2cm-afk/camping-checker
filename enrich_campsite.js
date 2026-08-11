@@ -64,12 +64,13 @@ async function scrapeTaiwanCampsites() {
       const feedSelector = 'div[role="feed"]';
       await page.waitForSelector(feedSelector, { timeout: 10000 }).catch(() => {});
 
-      for (let i = 0; i < 3; i++) {
+      // 🔄 滾動 8 次以獲取更多營地資料
+      for (let i = 0; i < 8; i++) {
         await page.evaluate((selector) => {
           const feed = document.querySelector(selector);
-          if (feed) feed.scrollTop += 3000;
+          if (feed) feed.scrollTop += 4000;
         }, feedSelector).catch(() => {});
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(1200);
       }
 
       const elements = await page.$$('div[role="article"]');
@@ -78,11 +79,12 @@ async function scrapeTaiwanCampsites() {
         
         if (name) {
           const cleanName = name.split(/[\-\|\—\–]/)[0].trim();
+          // 🎯 使用營地名稱 Hash 生成固定唯一的 ID
           const id = 'camp_' + Buffer.from(cleanName).toString('hex').substring(0, 16);
           const ratingText = await el.$eval('span.MW4pA', e => e.innerText.trim()).catch(() => '4.5');
           const snippetText = await el.$eval('div.W4E33', e => e.innerText.trim()).catch(() => '');
 
-          // 🎯 從 Google 地圖連結中解析真實的經緯度 (格式例如 !3d24.7123!4d121.1234 或 @24.7123,121.1234)
+          // 從 Google 地圖連結中解析真實陸地經緯度
           let lat = null;
           let lng = null;
           const linkHref = await el.$eval('a.hfAn2', e => e.href).catch(() => '');
@@ -101,7 +103,7 @@ async function scrapeTaiwanCampsites() {
             }
           }
 
-          // 若未爬取到連結，備用預設台灣陸地區域座標 (23.5°N, 120.8°E)
+          // 備用防呆預設台灣陸地座標
           if (!lat || !lng) {
             const hash = cleanName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             lat = 23.5 + (hash % 100) * 0.01;
@@ -120,8 +122,7 @@ async function scrapeTaiwanCampsites() {
               phone: `09${Math.floor(10000000 + Math.random() * 90000000)}`,
               priceRange: `$${1000 + (hash % 6) * 200} - $${1800 + (hash % 5) * 300} / 帳`,
               latitude: lat,
-              longitude: lng,
-              status: Math.random() > 0.3 ? 'available' : 'full'
+              longitude: lng
             });
           }
         }
@@ -136,14 +137,13 @@ async function scrapeTaiwanCampsites() {
 }
 
 /**
- * 🏔️ 拿正確的陸地經緯度呼叫 Google Elevation API 取得真實海拔高度 (含負值與水域防呆)
+ * 🏔️ 拿真實陸地經緯度呼叫 Google Elevation API (含負數防呆)
  */
 async function getRealAltitude(lat, lng) {
   if (!lat || !lng) return '海拔未知';
 
   let elevationMeters = null;
 
-  // 1. 優先使用 Google Elevation API
   if (GOOGLE_MAPS_API_KEY) {
     try {
       const url = `https://maps.googleapis.com/maps/api/elevation/json?locations=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
@@ -152,12 +152,9 @@ async function getRealAltitude(lat, lng) {
       if (data.status === 'OK' && data.results && data.results.length > 0) {
         elevationMeters = Math.round(data.results[0].elevation);
       }
-    } catch (err) {
-      console.warn(`⚠️ Google Elevation API 查詢失敗 (${lat}, ${lng}):`, err.message);
-    }
+    } catch (err) {}
   }
 
-  // 2. 備用 Open-Elevation API
   if (elevationMeters === null) {
     try {
       const openUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
@@ -166,12 +163,10 @@ async function getRealAltitude(lat, lng) {
       if (data.results && data.results.length > 0) {
         elevationMeters = Math.round(data.results[0].elevation);
       }
-    } catch (err) {
-      console.warn(`⚠️ Open-Elevation API 查詢失敗:`, err.message);
-    }
+    } catch (err) {}
   }
 
-  // 🛡️ 關鍵防呆：過濾負數與水域異常數據
+  // 🛡️ 負數高程防呆：若點掉在水域小於 0 則顯示未知
   if (elevationMeters !== null) {
     if (elevationMeters < 0) {
       return '海拔未知';
@@ -242,15 +237,14 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
   if (!genAI) return generateFallbackProsCons(campsiteName);
 
   const candidateModels = [
-    'gemini-3.5-flash-lite', 
     'gemini-3.1-flash-lite', 
+    'gemini-3.5-flash-lite', 
     'gemini-2.5-flash-lite',
     'gemini-3.5-flash'
   ];
 
   for (const modelName of candidateModels) {
     try {
-      // ⏱️ 關鍵防呆：每次發送 API 前強制等待 13 秒，鎖定 RPM ~4.6 次/分，100% 不爆額度
       console.log(`⏳ [RPM 防呆] 等待 13 秒後發送 API 請求 (${modelName})...`);
       await sleep(13000);
 
@@ -275,42 +269,73 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews) {
 }
 
 /**
- * 🚀 主程式
+ * 🚀 主程式 (含海拔、車程、優缺點三重快取防呆)
  */
 async function main() {
   console.log('🚀 開始執行全台灣營地自動爬蟲管線...');
 
-  // 1. 取得資料庫已有快取
+  // 1. 先抓取 Supabase 資料庫中既有的所有營地完整資料
   const { data: existingCampsites } = await supabase
     .from('campsites')
-    .select('id, pros, cons');
+    .select('*');
     
   const existingMap = new Map();
   if (existingCampsites) {
     existingCampsites.forEach(site => {
-      if (site.pros && site.pros.length > 0) {
-        existingMap.set(site.id, site);
-      }
+      existingMap.set(site.id, site);
     });
   }
 
-  // 2. 執行爬蟲
+  // 2. 執行爬蟲抓取全台營地
   const campsites = await scrapeTaiwanCampsites();
-  console.log(`✅ 共抓取到 ${campsites.length} 個營地，準備更新至 Supabase...`);
+  console.log(`✅ 共抓取到 ${campsites.length} 個營地，準備進行增量比對...`);
 
   for (let i = 0; i < campsites.length; i++) {
     const site = campsites[i];
     console.log(`\n-----------------------------------`);
     console.log(`[${i + 1}/${campsites.length}] 🔍 處理營地: ${site.name} (${site.region})`);
 
-    const altitude = await getRealAltitude(site.latitude, site.longitude);
-    const driveData = await fetchAllDriveTimes(site.name);
+    const cached = existingMap.get(site.id);
 
+    // 🏔️ [快取防呆 1]：海拔高度
+    let altitude;
+    if (cached && cached.altitude && cached.altitude !== '海拔未知') {
+      console.log(`⚡ [快取命中] 沿用舊海拔: ${cached.altitude}`);
+      altitude = cached.altitude;
+    } else {
+      console.log(`📡 [呼叫 API] 查詢真實海拔...`);
+      altitude = await getRealAltitude(site.latitude, site.longitude);
+    }
+
+    // 🚗 [快取防呆 2]：4 起點車程
+    let driveData = {};
+    const hasFullDriveData = cached && 
+      cached.drive_time_tainan && 
+      cached.drive_time_hsinchu && 
+      cached.drive_time_taipei && 
+      cached.drive_time_taichung;
+
+    if (hasFullDriveData) {
+      console.log(`⚡ [快取命中] 沿用舊車程資料 (安平:${cached.drive_time_tainan}分 | 新竹:${cached.drive_time_hsinchu}分)`);
+      driveData = {
+        drive_time_hsinchu: cached.drive_time_hsinchu,
+        distance_hsinchu: cached.distance_hsinchu,
+        drive_time_tainan: cached.drive_time_tainan,
+        distance_tainan: cached.distance_tainan,
+        drive_time_taipei: cached.drive_time_taipei,
+        distance_taipei: cached.distance_taipei,
+        drive_time_taichung: cached.drive_time_taichung,
+        distance_taichung: cached.distance_taichung,
+      };
+    } else {
+      console.log(`📡 [呼叫 API] 批次計算 4 起點車程...`);
+      driveData = await fetchAllDriveTimes(site.name);
+    }
+
+    // 🤖 [快取防呆 3]：AI 優缺點
     let pros, cons;
-
-    if (existingMap.has(site.id)) {
-      console.log(`⚡ [快取命中] 沿用現有優缺點，省下 API 額度`);
-      const cached = existingMap.get(site.id);
+    if (cached && cached.pros && cached.pros.length > 0) {
+      console.log(`⚡ [快取命中] 沿用現有 AI 優缺點`);
       pros = cached.pros;
       cons = cached.cons;
     } else {
@@ -320,12 +345,12 @@ async function main() {
       cons = aiResult.cons;
     }
 
-    console.log(`🏔️ ${altitude} (${site.latitude}, ${site.longitude}) | 🚗 安平:${driveData.drive_time_tainan}分 | 🚄 新竹:${driveData.drive_time_hsinchu}分 | 🚆 台北:${driveData.drive_time_taipei}分 | 🚄 台中:${driveData.drive_time_taichung}分`);
+    console.log(`summary -> 🏔️ ${altitude} | 🚗 安平:${driveData.drive_time_tainan}分 | 🚄 新竹:${driveData.drive_time_hsinchu}分`);
 
+    // 3. 更新或寫入 Supabase
     const { error } = await supabase.from('campsites').upsert({
       id: site.id,
       name: site.name,
-      status: site.status,
       altitude: altitude,
       drive_time_hsinchu: driveData.drive_time_hsinchu,
       distance_hsinchu: driveData.distance_hsinchu,
@@ -348,7 +373,7 @@ async function main() {
     if (error) {
       console.error(`❌ 寫入 Supabase 失敗 (${site.name}):`, error.message);
     } else {
-      console.log(`✅ [${site.name}] 100% 同步成功！`);
+      console.log(`✅ [${site.name}] 資料庫同步成功！`);
     }
   }
 
