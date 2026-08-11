@@ -40,10 +40,10 @@ export default function Home() {
 
   const [campsites, setCampsites] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getNextSaturday());
-  const [originLocation, setOriginLocation] = useState('新竹高鐵站'); // 📍 自訂出發地點
-  const [maxDriveTime, setMaxDriveTime] = useState(90);
-  const [minAltitude, setMinAltitude] = useState(0);    // ⛰️ 最低海拔
-  const [maxAltitude, setMaxAltitude] = useState(2000); // ⛰️ 最高海拔
+  const [originLocation, setOriginLocation] = useState('新竹高鐵'); // 📍 預設出發地：新竹高鐵（可供使用者自由修改）
+  const [maxDriveTime, setMaxDriveTime] = useState(120);             // 🚗 預設車程上限 120 分鐘
+  const [minAltitude, setMinAltitude] = useState(0);                  // ⛰️ 最低海拔
+  const [maxAltitude, setMaxAltitude] = useState(2500);               // ⛰️ 最高海拔
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
 
@@ -120,7 +120,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 搜尋控制面板（含出發點、日期、海拔 Min/Max、車程） */}
+      {/* 搜尋控制面板 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6 relative z-30">
         {/* 📍 自訂出發地點 */}
         <div>
@@ -131,7 +131,7 @@ export default function Home() {
             type="text"
             value={originLocation}
             onChange={(e) => setOriginLocation(e.target.value)}
-            placeholder="例如：台北車站、新竹高鐵站"
+            placeholder="例如：新竹高鐵、台南火車站、台北車站"
             className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
           />
         </div>
@@ -169,7 +169,7 @@ export default function Home() {
               <input
                 type="range"
                 min="0"
-                max="2000"
+                max="2500"
                 step="50"
                 value={minAltitude}
                 onChange={(e) => {
@@ -188,7 +188,7 @@ export default function Home() {
               <input
                 type="range"
                 min="0"
-                max="2000"
+                max="2500"
                 step="50"
                 value={maxAltitude}
                 onChange={(e) => {
@@ -212,8 +212,8 @@ export default function Home() {
           <input
             type="range"
             min="20"
-            max="180"
-            step="5"
+            max="300"
+            step="10"
             value={maxDriveTime}
             onChange={(e) => setMaxDriveTime(Number(e.target.value))}
             className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 mt-3"
@@ -221,7 +221,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 🗺️ 地圖模組（傳入 onSelectCampsite 讓地標點擊連動） */}
+      {/* 🗺️ 地圖模組 */}
       <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 mb-8 h-80 relative z-10">
         <MapWithNoSSR
           campsites={filteredCampsites}
@@ -332,7 +332,7 @@ export default function Home() {
               </div>
 
               <p className="text-sm text-slate-600 mb-3">
-                ⭐ Google 評分: {selectedCamp.rating || 4.5} | 🚗 車程: 約 {selectedCamp.drive_time_mins} 分鐘 ({selectedCamp.distance_km})
+                ⭐ Google 評分: {selectedCamp.rating || 4.5} | 🚗 從 {originLocation} 出發車程: 約 {selectedCamp.drive_time_mins} 分鐘 ({selectedCamp.distance_km})
               </p>
 
               <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex justify-between items-center text-xs font-semibold text-slate-700">
@@ -429,7 +429,7 @@ export default function Home() {
         <div className="text-center py-12 text-slate-500 font-medium">🔄 載入營地資料中...</div>
       ) : filteredCampsites.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 text-slate-500">
-          😔 沒有找到海拔在 {minAltitude}m ~ {maxAltitude}m 且車程在 {maxDriveTime} 分鐘內的營地。
+          😔 沒有找到海拔在 {minAltitude}m ~ {maxAltitude}m 且從 [{originLocation}] 出發車程在 {maxDriveTime} 分鐘內的營地。
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
