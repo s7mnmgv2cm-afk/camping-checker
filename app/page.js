@@ -31,7 +31,7 @@ const MapWithNoSSR = dynamic(() => import('../components/CampsiteMap'), {
   )
 });
 
-// 📍 固定起點對照設定
+// 📍 四大固定出發點對照設定
 const FIXED_ORIGINS = {
   tainan: '台南安平區',
   hsinchu: '新竹高鐵站',
@@ -58,18 +58,18 @@ export default function Home() {
   // 🎯 被選擇的營地物件（地圖、座標圖、卡片清單三者同步高亮與展開）
   const [selectedCamp, setSelectedCamp] = useState(null);
 
-  // 📅 連動日期查詢：採兩階段抓取，確保即使無空位數據，營地亦不會被過濾掉
+  // 📅 依據事實連動日期查詢
   useEffect(() => {
     async function fetchCampsitesWithAvailability() {
       setLoading(true);
       const formattedDate = selectedDate.toISOString().split('T')[0];
 
-      // 1. 先抓取所有營地基本資料
+      // 1. 抓取所有營地基本事實資料
       const { data: campsitesData, error: campError } = await supabase
         .from('campsites')
         .select('*');
 
-      // 2. 獨立抓取所選日期的空位狀態
+      // 2. 獨立抓取所選日期的真實空位紀錄
       const { data: availData } = await supabase
         .from('campsite_availability')
         .select('campsite_id, status')
@@ -82,10 +82,10 @@ export default function Home() {
           availData.forEach((a) => availMap.set(a.campsite_id, a.status));
         }
 
-        // 將當天的 status 合併回營地物件（若無該日記錄則預設為 available）
+        // 🎯 依據事實呈現：若資料庫中有驗證紀錄則帶入，否則標示為 'unknown' (需洽營地)
         const processed = campsitesData.map((site) => ({
           ...site,
-          status: availMap.get(site.id) || 'available'
+          status: availMap.get(site.id) || 'unknown'
         }));
 
         setCampsites(processed);
@@ -108,7 +108,7 @@ export default function Home() {
     return match ? parseFloat(match[0]) : 0;
   };
 
-  // 根據當前選擇的出發點 (originKey)，動態提取對應的車程與距離
+  // 根據當前選擇的出發點 (originKey)，動態提取對應的真實車程與距離
   const getCampDriveInfo = (site) => {
     const mins = site[`drive_time_${originKey}`] || site.drive_time_mins || 0;
     const dist = site[`distance_${originKey}`] || site.distance_km || '未知';
@@ -142,9 +142,32 @@ export default function Home() {
     setSelectedCamp(targetCamp);
   };
 
+  // 渲染空位狀態標籤
+  const renderStatusBadge = (status) => {
+    if (status === 'available') {
+      return (
+        <span className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+          🟢 有空位
+        </span>
+      );
+    }
+    if (status === 'full') {
+      return (
+        <span className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+          🔴 已滿位
+        </span>
+      );
+    }
+    return (
+      <span className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+        ⚪ 需向營地查詢
+      </span>
+    );
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
-      {/* 頂部頁籤標題 */}
+      {/* 頂部標題與模式切換 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
           <span>🏕️</span> 全台露營區即時空位與 3D 地形搜尋
@@ -373,15 +396,7 @@ export default function Home() {
                     </span>
                   )}
                 </div>
-                <span
-                  className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                    selectedCamp.status === 'available'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-rose-100 text-rose-700'
-                  }`}
-                >
-                  {selectedCamp.status === 'available' ? '有空位' : '已滿位'}
-                </span>
+                {renderStatusBadge(selectedCamp.status)}
               </div>
 
               <p className="text-sm text-slate-600 mb-3">
@@ -389,8 +404,8 @@ export default function Home() {
               </p>
 
               <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex justify-between items-center text-xs font-semibold text-slate-700">
-                <span>💰 預估價格: <strong className="text-emerald-600">{selectedCamp.price_range || '$1,000 - $1,500 / 帳'}</strong></span>
-                <span>📞 電話: <strong className="text-blue-600">{selectedCamp.phone || '0912-345-678'}</strong></span>
+                <span>💰 預估價格: <strong className="text-emerald-600">{selectedCamp.price_range || '未標示'}</strong></span>
+                <span>📞 電話: <strong className="text-blue-600">{selectedCamp.phone || '未提供'}</strong></span>
               </div>
 
               {/* 👍👎 AI 優缺點標籤 */}
@@ -428,9 +443,9 @@ export default function Home() {
                 )}
               </div>
 
-              {/* 🔗 外連導航與預約按鈕 */}
+              {/* 🔗 外連導航與即時查詢按鈕 */}
               <div className="pt-3 border-t border-slate-100">
-                <span className="text-xs font-bold text-slate-500 block mb-2">🔗 營地專屬連結與訂位：</span>
+                <span className="text-xs font-bold text-slate-500 block mb-2">🔗 營地專屬地標與直接查詢：</span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <a
                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCamp.name)}`}
@@ -506,15 +521,7 @@ export default function Home() {
                         </span>
                       )}
                     </div>
-                    <span
-                      className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                        site.status === 'available'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-rose-100 text-rose-700'
-                      }`}
-                    >
-                      {site.status === 'available' ? '有空位' : '已滿位'}
-                    </span>
+                    {renderStatusBadge(site.status)}
                   </div>
 
                   <p className="text-sm text-slate-600 mb-3">
@@ -522,8 +529,8 @@ export default function Home() {
                   </p>
 
                   <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex justify-between items-center text-xs font-semibold text-slate-700">
-                    <span>💰 預估價格: <strong className="text-emerald-600">{site.price_range || '$1,000 - $1,500 / 帳'}</strong></span>
-                    <span>📞 電話: <strong className="text-blue-600">{site.phone || '0912-345-678'}</strong></span>
+                    <span>💰 預估價格: <strong className="text-emerald-600">{site.price_range || '未標示'}</strong></span>
+                    <span>📞 電話: <strong className="text-blue-600">{site.phone || '未提供'}</strong></span>
                   </div>
 
                   {/* 👍👎 AI 優缺點標籤 */}
@@ -564,7 +571,7 @@ export default function Home() {
 
                 {/* 🔗 外連按鈕 */}
                 <div className="pt-3 border-t border-slate-100 mt-2">
-                  <span className="text-xs font-bold text-slate-500 block mb-2">🔗 營地專屬連結與訂位：</span>
+                  <span className="text-xs font-bold text-slate-500 block mb-2">🔗 營地專屬地標與直接查詢：</span>
                   <div className="grid grid-cols-2 gap-2">
                     <a
                       href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`}
@@ -635,7 +642,7 @@ export default function Home() {
                     <td className="p-3.5 font-bold text-slate-900">{site.name}</td>
                     <td className="p-3.5 text-slate-600">{site.altitude || '標示中'}</td>
                     <td className="p-3.5 text-slate-600">{mins} 分鐘 ({dist})</td>
-                    <td className="p-3.5 text-emerald-600 font-medium">{site.price_range || '$1,000 - $1,500'}</td>
+                    <td className="p-3.5 text-emerald-600 font-medium">{site.price_range || '未標示'}</td>
                     <td className="p-3.5">
                       <div className="flex flex-wrap gap-1.5">
                         <a
