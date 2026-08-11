@@ -40,7 +40,8 @@ export default function Home() {
   const [campsites, setCampsites] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getNextSaturday());
   const [maxDriveTime, setMaxDriveTime] = useState(90);
-  const [minAltitude, setMinAltitude] = useState(300);
+  const [minAltitude, setMinAltitude] = useState(0);    // ⛰️ 最低海拔
+  const [maxAltitude, setMaxAltitude] = useState(2000); // ⛰️ 最高海拔
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
 
@@ -66,13 +67,14 @@ export default function Home() {
     return match ? parseFloat(match[0]) : 0;
   };
 
+  // 雙重過濾：車程時間 <= 上限 且 海拔高度在 Min ~ Max 之間
   const filteredCampsites = campsites.filter((site) => {
     const driveOk = (site.drive_time_mins || 0) <= maxDriveTime;
-    const altOk = parseAltitudeNum(site.altitude) >= minAltitude;
+    const alt = parseAltitudeNum(site.altitude);
+    const altOk = alt >= minAltitude && alt <= maxAltitude;
     return driveOk && altOk;
   });
 
-  // 📊 Recharts 數據
   const chartData = filteredCampsites
     .filter((site) => site.altitude && site.distance_km)
     .map((site) => ({
@@ -87,7 +89,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
-      {/* 頂部標題與模式切換 */}
+      {/* 頂部標題 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
           <span>🏕️</span> 全台露營區即時空位與 3D 地形搜尋
@@ -114,6 +116,7 @@ export default function Home() {
 
       {/* 搜尋控制面板 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-6 relative z-30">
+        {/* 📅 日期選擇器 */}
         <div className="relative z-50">
           <label className="block text-sm font-bold text-slate-700 mb-2">
             📅 選擇露營日期：
@@ -128,24 +131,57 @@ export default function Home() {
           />
         </div>
 
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-sm font-bold text-slate-700">⛰️ 最低海拔限制：</label>
-            <span className="text-sm font-extrabold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
-              ≥ {minAltitude} 公尺
+        {/* ⛰️ 海拔高度 Min/Max 控制項 */}
+        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+          <div className="flex justify-between items-center mb-3">
+            <label className="text-sm font-bold text-slate-700">⛰️ 海拔高度區間：</label>
+            <span className="text-xs font-extrabold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+              {minAltitude} - {maxAltitude} m
             </span>
           </div>
-          <input
-            type="range"
-            min="0"
-            max="1500"
-            step="50"
-            value={minAltitude}
-            onChange={(e) => setMinAltitude(Number(e.target.value))}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600 mt-3"
-          />
+
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between text-xs font-semibold text-slate-500 mb-1">
+                <span>最低海拔 (Min)</span>
+                <span>≥ {minAltitude} m</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="2000"
+                step="50"
+                value={minAltitude}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (val <= maxAltitude) setMinAltitude(val);
+                }}
+                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between text-xs font-semibold text-slate-500 mb-1">
+                <span>最高海拔 (Max)</span>
+                <span>≤ {maxAltitude} m</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="2000"
+                step="50"
+                value={maxAltitude}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (val >= minAltitude) setMaxAltitude(val);
+                }}
+                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+              />
+            </div>
+          </div>
         </div>
 
+        {/* 🚗 車程滑桿 */}
         <div>
           <div className="flex justify-between items-center mb-2">
             <label className="text-sm font-bold text-slate-700">🚗 車程時間上限：</label>
@@ -236,7 +272,7 @@ export default function Home() {
         <div className="text-center py-12 text-slate-500 font-medium">🔄 載入營地資料中...</div>
       ) : filteredCampsites.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 text-slate-500">
-          😔 沒有找到海拔 ≥ {minAltitude}m 且車程在 {maxDriveTime} 分鐘內的營地。
+          😔 沒有找到海拔在 {minAltitude}m ~ {maxAltitude}m 且車程在 {maxDriveTime} 分鐘內的營地。
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
