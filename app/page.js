@@ -40,14 +40,14 @@ export default function Home() {
 
   const [campsites, setCampsites] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getNextSaturday());
-  const [originLocation, setOriginLocation] = useState('新竹高鐵'); // 📍 預設出發地：新竹高鐵（可供使用者自由修改）
-  const [maxDriveTime, setMaxDriveTime] = useState(120);             // 🚗 預設車程上限 120 分鐘
-  const [minAltitude, setMinAltitude] = useState(0);                  // ⛰️ 最低海拔
-  const [maxAltitude, setMaxAltitude] = useState(2500);               // ⛰️ 最高海拔
+  const [originLocation, setOriginLocation] = useState('新竹高鐵');
+  const [maxDriveTime, setMaxDriveTime] = useState(120);
+  const [minAltitude, setMinAltitude] = useState(0);
+  const [maxAltitude, setMaxAltitude] = useState(2500);
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
 
-  // 🎯 被選擇的營地狀態（地圖與座標圖共享）
+  // 🎯 被選擇的營地物件（地圖、座標圖、卡片清單三者共享）
   const [selectedCamp, setSelectedCamp] = useState(null);
 
   useEffect(() => {
@@ -87,10 +87,12 @@ export default function Home() {
       y: parseAltitudeNum(site.altitude),
     }));
 
-  const handleScatterClick = (entry) => {
-    if (entry && entry.id) {
-      setSelectedCamp(entry);
-    }
+  // 🔄 統一選擇處理函式（地圖點擊與散佈圖點擊皆傳遞至此）
+  const handleSelectCamp = (camp) => {
+    if (!camp) return;
+    // 如果傳入的是 Recharts 回傳的包裝物件，取其 payload，否則直接使用物件
+    const targetCamp = camp.payload ? camp.payload : camp;
+    setSelectedCamp(targetCamp);
   };
 
   return (
@@ -221,12 +223,13 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 🗺️ 地圖模組 */}
+      {/* 🗺️ 地圖模組 (傳入 onSelectCampsite 與 selectedCampId 實現地圖連動高亮) */}
       <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 mb-8 h-80 relative z-10">
         <MapWithNoSSR
           campsites={filteredCampsites}
           mapMode={mapMode}
-          onSelectCampsite={setSelectedCamp}
+          onSelectCampsite={handleSelectCamp}
+          selectedCampId={selectedCamp?.id}
         />
       </div>
 
@@ -237,7 +240,7 @@ export default function Home() {
             <span>📍</span> 營地分佈座標圖 (Y: 海拔高度 vs X: 開車距離)
           </h3>
           <span className="text-xs text-blue-600 font-bold bg-blue-50 px-2.5 py-1 rounded-md">
-            👉 點擊地圖或座標圖上的點可查看詳細圖卡
+            👉 點擊地圖標記或座標圖上的點，可同步顯示下方詳情圖卡
           </span>
         </div>
 
@@ -280,14 +283,14 @@ export default function Home() {
               <Scatter
                 name="營地"
                 data={chartData}
-                onClick={handleScatterClick}
+                onClick={handleSelectCamp}
                 className="cursor-pointer"
               >
                 {chartData.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
                     fill={selectedCamp?.id === entry.id ? '#f59e0b' : '#059669'}
-                    r={selectedCamp?.id === entry.id ? 8 : 5}
+                    r={selectedCamp?.id === entry.id ? 9 : 5}
                   />
                 ))}
               </Scatter>
@@ -295,12 +298,12 @@ export default function Home() {
           </ResponsiveContainer>
         </div>
 
-        {/* 🎯 點擊地圖或座標圖後跳出的「營地詳細圖卡」 */}
+        {/* 🎯 地圖或座標圖點擊後同步顯示的「營地詳細圖卡」 */}
         {selectedCamp && (
           <div className="mt-6 pt-6 border-t-2 border-dashed border-amber-300 bg-amber-50/50 p-6 rounded-2xl relative transition-all">
             <div className="flex justify-between items-center mb-3">
               <span className="text-xs font-black tracking-wide text-amber-800 bg-amber-200/80 px-3 py-1 rounded-full uppercase">
-                🎯 已選擇營地詳細資訊
+                🎯 已選擇營地詳細資訊 (已與地圖/圖表同步)
               </span>
               <button
                 onClick={() => setSelectedCamp(null)}
