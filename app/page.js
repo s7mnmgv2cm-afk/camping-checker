@@ -64,7 +64,7 @@ export default function Home() {
       setLoading(true);
       const formattedDate = selectedDate.toISOString().split('T')[0];
 
-      // 1. 抓取所有營地基本事實資料
+      // 1. 抓取所有營地基本事實資料 (包含新加入的 booking 欄位)
       const { data: campsitesData, error: campError } = await supabase
         .from('campsites')
         .select('*');
@@ -107,28 +107,28 @@ export default function Home() {
   };
 
   // 🎯 1. 嚴格解析車程數字（將字串或 NULL 轉為真實數字）
-const getCampDriveInfo = (site) => {
-  const rawMins = site[`drive_time_${originKey}`] ?? site.drive_time_mins;
-  const mins = rawMins !== null && rawMins !== undefined ? Number(rawMins) : null;
-  const dist = site[`distance_${originKey}`] ?? site.distance_km ?? '距離確認中';
-  return { mins, dist };
-};
+  const getCampDriveInfo = (site) => {
+    const rawMins = site[`drive_time_${originKey}`] ?? site.drive_time_mins;
+    const mins = rawMins !== null && rawMins !== undefined ? Number(rawMins) : null;
+    const dist = site[`distance_${originKey}`] ?? site.distance_km ?? '距離確認中';
+    return { mins, dist };
+  };
 
-// 🎯 2. 精準過濾邏輯：車程必須「存在」、「大於 0」且「小於等於上限」
-const filteredCampsites = campsites.filter((site) => {
-  const { mins } = getCampDriveInfo(site);
-  
-  // 🛡️ 只有真實數字且 <= maxDriveTime 的營地才能通過（未計算車程或異常者直接剔除）
-  const driveOk = mins !== null && !isNaN(mins) && mins > 0 && mins <= maxDriveTime;
-  
-  // 🛡️ 海拔過濾
-  const alt = parseAltitudeNum(site.altitude);
-  const altOk = (site.altitude === '海拔未知' || !site.altitude) 
-    ? true 
-    : (alt >= minAltitude && alt <= maxAltitude);
+  // 🎯 2. 精準過濾邏輯：車程必須「存在」、「大於 0」且「小於等於上限」
+  const filteredCampsites = campsites.filter((site) => {
+    const { mins } = getCampDriveInfo(site);
+    
+    // 🛡️ 只有真實數字且 <= maxDriveTime 的營地才能通過（未計算車程或異常者直接剔除）
+    const driveOk = mins !== null && !isNaN(mins) && mins > 0 && mins <= maxDriveTime;
+    
+    // 🛡️ 海拔過濾
+    const alt = parseAltitudeNum(site.altitude);
+    const altOk = (site.altitude === '海拔未知' || !site.altitude) 
+      ? true 
+      : (alt >= minAltitude && alt <= maxAltitude);
 
-  return driveOk && altOk;
-});
+    return driveOk && altOk;
+  });
 
   const chartData = filteredCampsites
     .filter((site) => site.altitude)
@@ -171,37 +171,61 @@ const filteredCampsites = campsites.filter((site) => {
     );
   };
 
-  // 🚀 精準直達與比對按鈕組件
+  // 🚀 精準直達與比對按鈕組件 (AI 智慧動態版)
   const renderActionButtons = (site) => {
-    const searchPriceUrl = `https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營區 價目表 費用 一帳')}`;
-    const searchBookingUrl = `https://www.easycamp.com.tw/search?SearchKey=${encodeURIComponent(site.name)}`;
     const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`;
+    
+    let mainActionBtn = null;
+
+    // 1. 如果有專屬訂位網址，且類型是 Line
+    if (site.booking_type === 'line') {
+      // 優先使用 booking_url，若無則用 line_id 兜出加入好友連結
+      const lineLink = site.booking_url || `https://line.me/R/ti/p/${site.line_id?.replace('@', '%40')}`;
+      mainActionBtn = (
+        <a href={lineLink} target="_blank" rel="noopener noreferrer" className="text-center bg-[#06C755] hover:bg-[#05b34c] text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+          💬 加 LINE 預約 {site.line_id && `(${site.line_id})`}
+        </a>
+      );
+    } 
+    // 2. 如果類型是愛露營或露營樂平台
+    else if (['icamping', 'easycamp'].includes(site.booking_type) && site.booking_url) {
+      mainActionBtn = (
+        <a href={site.booking_url} target="_blank" rel="noopener noreferrer" className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+          🏕️ 前往平台線上訂位
+        </a>
+      );
+    } 
+    // 3. 如果有獨立官方網站
+    else if (site.booking_type === 'official_site' && site.booking_url) {
+      mainActionBtn = (
+        <a href={site.booking_url} target="_blank" rel="noopener noreferrer" className="text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+          🌐 前往官網預約
+        </a>
+      );
+    } 
+    // 4. 如果只有電話
+    else if (site.phone) {
+      mainActionBtn = (
+        <a href={`tel:${site.phone}`} className="text-center bg-rose-500 hover:bg-rose-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+          📞 撥打電話預約
+        </a>
+      );
+    } 
+    // 5. 如果以上皆非，提供 Google 搜尋備案
+    else {
+      const searchBookingUrl = `https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營 預約')}`;
+      mainActionBtn = (
+        <a href={searchBookingUrl} target="_blank" rel="noopener noreferrer" className="text-center bg-slate-600 hover:bg-slate-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+          🔍 搜尋訂位資訊
+        </a>
+      );
+    }
 
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
-        <a
-          href={searchPriceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-center bg-amber-500 hover:bg-amber-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
-        >
-          🏷️ 精準比對價目表
-        </a>
-        <a
-          href={searchBookingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
-        >
-          🏕️ 露營樂/訂位網直達
-        </a>
-        <a
-          href={googleMapUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm col-span-2 sm:col-span-1"
-        >
-          🗺️ Google 地圖與地標
+      <div className="grid grid-cols-2 gap-2 mt-3 w-full">
+        {mainActionBtn}
+        <a href={googleMapUrl} target="_blank" rel="noopener noreferrer" className="text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+          🗺️ Google 地圖
         </a>
       </div>
     );
@@ -578,24 +602,7 @@ const filteredCampsites = campsites.filter((site) => {
                     <td className="p-3.5 text-slate-600">{mins ? `${mins} 分鐘` : '確認中'} ({dist})</td>
                     <td className="p-3.5 text-emerald-600 font-medium">{site.price_range || '以官網/訂位頁為準'}</td>
                     <td className="p-3.5">
-                      <div className="flex flex-wrap gap-1.5">
-                        <a
-                          href={`https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營區 價目表 費用')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
-                        >
-                          比對價目表
-                        </a>
-                        <a
-                          href={`https://www.easycamp.com.tw/search?SearchKey=${encodeURIComponent(site.name)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs px-2 py-1 rounded transition-colors"
-                        >
-                          訂位網直達
-                        </a>
-                      </div>
+                      {renderActionButtons(site)}
                     </td>
                   </tr>
                 );
