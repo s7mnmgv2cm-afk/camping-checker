@@ -106,22 +106,29 @@ export default function Home() {
     return match ? parseFloat(match[0]) : 0;
   };
 
-  const getCampDriveInfo = (site) => {
-    const mins = site[`drive_time_${originKey}`] ?? site.drive_time_mins ?? null;
-    const dist = site[`distance_${originKey}`] ?? site.distance_km ?? '車程確認中';
-    return { mins, dist };
-  };
+  // 🎯 1. 嚴格解析車程數字（將字串或 NULL 轉為真實數字）
+const getCampDriveInfo = (site) => {
+  const rawMins = site[`drive_time_${originKey}`] ?? site.drive_time_mins;
+  const mins = rawMins !== null && rawMins !== undefined ? Number(rawMins) : null;
+  const dist = site[`distance_${originKey}`] ?? site.distance_km ?? '距離確認中';
+  return { mins, dist };
+};
 
-  const filteredCampsites = campsites.filter((site) => {
-    const { mins } = getCampDriveInfo(site);
-    const driveOk = (mins === null || mins === 0) ? true : mins <= maxDriveTime;
-    const alt = parseAltitudeNum(site.altitude);
-    const altOk = (site.altitude === '海拔未知' || !site.altitude) 
-      ? true 
-      : (alt >= minAltitude && alt <= maxAltitude);
+// 🎯 2. 精準過濾邏輯：車程必須「存在」、「大於 0」且「小於等於上限」
+const filteredCampsites = campsites.filter((site) => {
+  const { mins } = getCampDriveInfo(site);
+  
+  // 🛡️ 只有真實數字且 <= maxDriveTime 的營地才能通過（未計算車程或異常者直接剔除）
+  const driveOk = mins !== null && !isNaN(mins) && mins > 0 && mins <= maxDriveTime;
+  
+  // 🛡️ 海拔過濾
+  const alt = parseAltitudeNum(site.altitude);
+  const altOk = (site.altitude === '海拔未知' || !site.altitude) 
+    ? true 
+    : (alt >= minAltitude && alt <= maxAltitude);
 
-    return driveOk && altOk;
-  });
+  return driveOk && altOk;
+});
 
   const chartData = filteredCampsites
     .filter((site) => site.altitude)
