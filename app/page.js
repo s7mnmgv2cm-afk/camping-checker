@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import dynamic from 'next/dynamic';
-import DatePicker from 'react-datepicker';
 import {
   ScatterChart,
   Scatter,
@@ -15,7 +14,6 @@ import {
   Cell
 } from 'recharts';
 
-import 'react-datepicker/dist/react-datepicker.css';
 import 'leaflet/dist/leaflet.css';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,14 +38,7 @@ const FIXED_ORIGINS = {
 };
 
 export default function Home() {
-  const getNextSaturday = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
-    return d;
-  };
-
   const [campsites, setCampsites] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(getNextSaturday());
   const [originKey, setOriginKey] = useState('tainan');
   const [maxDriveTime, setMaxDriveTime] = useState(120);
   const [minAltitude, setMinAltitude] = useState(0);
@@ -58,41 +49,23 @@ export default function Home() {
   // 🎯 被選擇的營地物件
   const [selectedCamp, setSelectedCamp] = useState(null);
 
-  // 📅 依據事實連動日期查詢
+  // 🚀 網頁初次載入時，抓取一次營地資料即可
   useEffect(() => {
-    async function fetchCampsitesWithAvailability() {
+    async function fetchCampsites() {
       setLoading(true);
-      const formattedDate = selectedDate.toISOString().split('T')[0];
-
-      // 1. 抓取所有營地基本事實資料 (包含新加入的 booking 欄位)
-      const { data: campsitesData, error: campError } = await supabase
+      
+      const { data: campsitesData, error } = await supabase
         .from('campsites')
         .select('*');
 
-      // 2. 獨立抓取所選日期的真實空位紀錄
-      const { data: availData } = await supabase
-        .from('campsite_availability')
-        .select('campsite_id, status')
-        .eq('date', formattedDate);
-
-      if (!campError && campsitesData) {
-        const availMap = new Map();
-        if (availData) {
-          availData.forEach((a) => availMap.set(a.campsite_id, a.status));
-        }
-
-        const processed = campsitesData.map((site) => ({
-          ...site,
-          status: availMap.get(site.id) || 'unknown'
-        }));
-
-        setCampsites(processed);
+      if (!error && campsitesData) {
+        setCampsites(campsitesData);
       }
       setLoading(false);
     }
 
-    fetchCampsitesWithAvailability();
-  }, [selectedDate]);
+    fetchCampsites();
+  }, []);
 
   const parseAltitudeNum = (altStr) => {
     if (!altStr) return 0;
@@ -118,7 +91,7 @@ export default function Home() {
   const filteredCampsites = campsites.filter((site) => {
     const { mins } = getCampDriveInfo(site);
     
-    // 🛡️ 只有真實數字且 <= maxDriveTime 的營地才能通過（未計算車程或異常者直接剔除）
+    // 🛡️ 只有真實數字且 <= maxDriveTime 的營地才能通過
     const driveOk = mins !== null && !isNaN(mins) && mins > 0 && mins <= maxDriveTime;
     
     // 🛡️ 海拔過濾
@@ -149,37 +122,13 @@ export default function Home() {
     setSelectedCamp(targetCamp);
   };
 
-  const renderStatusBadge = (status) => {
-    if (status === 'available') {
-      return (
-        <span className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-          🟢 有空位
-        </span>
-      );
-    }
-    if (status === 'full') {
-      return (
-        <span className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
-          🔴 已滿位
-        </span>
-      );
-    }
-    return (
-      <span className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
-        ⚪ 需向營地查詢
-      </span>
-    );
-  };
-
   // 🚀 精準直達與比對按鈕組件 (AI 智慧動態版)
   const renderActionButtons = (site) => {
     const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`;
     
     let mainActionBtn = null;
 
-    // 1. 如果有專屬訂位網址，且類型是 Line
     if (site.booking_type === 'line') {
-      // 優先使用 booking_url，若無則用 line_id 兜出加入好友連結
       const lineLink = site.booking_url || `https://line.me/R/ti/p/${site.line_id?.replace('@', '%40')}`;
       mainActionBtn = (
         <a href={lineLink} target="_blank" rel="noopener noreferrer" className="text-center bg-[#06C755] hover:bg-[#05b34c] text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
@@ -187,7 +136,6 @@ export default function Home() {
         </a>
       );
     } 
-    // 2. 如果類型是愛露營或露營樂平台
     else if (['icamping', 'easycamp'].includes(site.booking_type) && site.booking_url) {
       mainActionBtn = (
         <a href={site.booking_url} target="_blank" rel="noopener noreferrer" className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
@@ -195,7 +143,6 @@ export default function Home() {
         </a>
       );
     } 
-    // 3. 如果有獨立官方網站
     else if (site.booking_type === 'official_site' && site.booking_url) {
       mainActionBtn = (
         <a href={site.booking_url} target="_blank" rel="noopener noreferrer" className="text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
@@ -203,7 +150,6 @@ export default function Home() {
         </a>
       );
     } 
-    // 4. 如果只有電話
     else if (site.phone) {
       mainActionBtn = (
         <a href={`tel:${site.phone}`} className="text-center bg-rose-500 hover:bg-rose-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
@@ -211,7 +157,6 @@ export default function Home() {
         </a>
       );
     } 
-    // 5. 如果以上皆非，提供 Google 搜尋備案
     else {
       const searchBookingUrl = `https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營 預約')}`;
       mainActionBtn = (
@@ -236,7 +181,7 @@ export default function Home() {
       {/* 頂部標題 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-          <span>🏕️</span> 全台露營區即時空位與 3D 地形搜尋
+          <span>🏕️</span> 全台露營區即時 3D 地形與直達預約
         </h1>
         <div className="bg-slate-200 p-1 rounded-xl flex gap-1 self-start sm:self-auto">
           <button
@@ -258,8 +203,8 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 控制面板 */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6 relative z-30">
+      {/* 控制面板 (移除日期後，改為 3 欄式設計) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-6 relative z-30">
         <div>
           <label className="block text-sm font-bold text-slate-700 mb-2">
             📍 出發地點：
@@ -274,20 +219,6 @@ export default function Home() {
             <option value="taipei">🚆 台北車站</option>
             <option value="taichung">🚄 台中高鐵站</option>
           </select>
-        </div>
-
-        <div className="relative z-50">
-          <label className="block text-sm font-bold text-slate-700 mb-2">
-            📅 選擇露營日期：
-          </label>
-          <DatePicker
-            selected={selectedDate}
-            onChange={(date) => date && setSelectedDate(date)}
-            dateFormat="yyyy / MM / dd"
-            className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-bold outline-none cursor-pointer shadow-inner"
-            calendarClassName="custom-big-calendar"
-            popperPlacement="bottom-start"
-          />
         </div>
 
         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -458,7 +389,6 @@ export default function Home() {
                     </span>
                   )}
                 </div>
-                {renderStatusBadge(selectedCamp.status)}
               </div>
 
               <p className="text-sm text-slate-600 mb-3">
@@ -512,7 +442,6 @@ export default function Home() {
                         </span>
                       )}
                     </div>
-                    {renderStatusBadge(site.status)}
                   </div>
 
                   <p className="text-sm text-slate-600 mb-3">
@@ -574,7 +503,7 @@ export default function Home() {
       {/* 📋 下方營地快速對照表 */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-12">
         <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-sm">
-          📋 營地快速預約與合法性對照表
+          📋 營地快速預約對照表
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
