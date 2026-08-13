@@ -206,7 +206,7 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-          <span>🏕️</span> 全台露營區即時 3D 地形與直達預約
+          <span>🏕️</span> 台灣露營地研究中心
         </h1>
         <div className="flex gap-2 self-start sm:self-auto flex-wrap">
           <div className="flex gap-1.5">
