@@ -45,6 +45,7 @@ export default function Home() {
   const [maxAltitude, setMaxAltitude] = useState(2500);
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
+  const [isNightDrive, setIsNightDrive] = useState(false);
 
   // 🎯 搜尋與篩選狀態
   const [searchName, setSearchName] = useState('');
@@ -80,7 +81,8 @@ export default function Home() {
   };
 
   const getCampDriveInfo = (site) => {
-    const rawMins = site[`drive_time_${originKey}`] ?? site.drive_time_mins;
+    const fieldKey = isNightDrive ? `drive_time_${originKey}_fri` : `drive_time_${originKey}`;
+    const rawMins = site[fieldKey] ?? site.drive_time_mins;
     const mins = rawMins !== null && rawMins !== undefined ? Number(rawMins) : null;
     const dist = site[`distance_${originKey}`] ?? site.distance_km ?? '距離確認中';
     return { mins, dist };
@@ -201,7 +203,19 @@ export default function Home() {
             <input type="text" placeholder="例如：新竹 或 五峰鄉" value={searchRegion} onChange={(e) => setSearchRegion(e.target.value)} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">🚗 出發地點：</label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-bold text-slate-700">🚗 出發地點：</label>
+              <button
+                onClick={() => setIsNightDrive(!isNightDrive)}
+                className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all border ${
+                  isNightDrive 
+                    ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' 
+                    : 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm hover:bg-amber-100'
+                }`}
+              >
+                {isNightDrive ? '🌙 週五夜衝' : '☀️ 週末早衝'}
+              </button>
+            </div>
             <select value={originKey} onChange={(e) => setOriginKey(e.target.value)} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner cursor-pointer">
               <option value="tainan">🌊 台南安平區</option>
               <option value="hsinchu">🚄 新竹高鐵站</option>
