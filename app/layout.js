@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: '全台露營區即時空位搜尋',
-  description: '整合各大平台露營區空位、車程與 AI 評價',
+  title: '台灣露營地研究中心',
+  description: '整合各大平台露營區、車程與 AI 評價',
 };
 
 export default function RootLayout({ children }) {
