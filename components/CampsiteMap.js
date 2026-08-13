@@ -3,11 +3,20 @@
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 
-// 客製化地圖 Icon
-const customIcon = new L.Icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+// 客製化地圖 Icon (預設藍色)
+const defaultIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+// 選取狀態的地圖 Icon (黃色/金色)
+const selectedIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
@@ -44,7 +53,8 @@ export default function CampsiteMap({ campsites, mapMode, onSelectCampsite, sele
           <Marker
             key={site.id}
             position={[site.latitude, site.longitude]}
-            icon={customIcon}
+            icon={isSelected ? selectedIcon : defaultIcon}
+            zIndexOffset={isSelected ? 1000 : 0}
             eventHandlers={{
               click: () => {
                 if (onSelectCampsite) {
@@ -55,17 +65,10 @@ export default function CampsiteMap({ campsites, mapMode, onSelectCampsite, sele
           >
             <Popup>
               <div className="p-1 font-sans">
-                <h3 className="font-bold text-slate-900 text-sm">{site.name}</h3>
-                <p className="text-xs text-slate-600 my-1">{site.altitude || '海拔未知'}</p>
-                <span
-                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                    site.status === 'available'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-rose-100 text-rose-700'
-                  }`}
-                >
-                  {site.status === 'available' ? '🟢 有空位' : '🔴 已滿位'}
-                </span>
+                <h3 className="font-bold text-slate-900 text-sm mb-1.5">{site.name}</h3>
+                <p className="text-xs bg-sky-50 text-sky-700 font-semibold px-2 py-1 rounded border border-sky-100 mt-1 mb-0 flex items-center gap-1">
+                  ⛰️ {site.altitude || '海拔未知'}
+                </p>
               </div>
             </Popup>
           </Marker>
