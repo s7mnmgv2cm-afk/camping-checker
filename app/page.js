@@ -103,7 +103,7 @@ export default function Home() {
     const alt = parseAltitudeNum(site.altitude);
     const altOk = (site.altitude === '海拔未知' || !site.altitude) ? true : (alt >= minAltitude && alt <= maxAltitude);
     const nameMatch = searchName ? (site.name || '').toLowerCase().includes(searchName.toLowerCase()) : true;
-    const regionText = (site.location || site.region || site.address || '').toLowerCase();
+    const regionText = `${site.region || ''} ${site.location || ''} ${site.address || ''}`.toLowerCase();
     const regionMatch = searchRegion ? regionText.includes(searchRegion.toLowerCase()) : true;
     const bookmarkOk = showOnlyBookmarked ? bookmarkedCamps.has(site.id) : true;
 
@@ -161,14 +161,28 @@ export default function Home() {
           <span>🏕️</span> 全台露營區即時 3D 地形與直達預約
         </h1>
         <div className="flex gap-2 self-start sm:self-auto flex-wrap">
-          <button
-            onClick={() => setShowOnlyBookmarked(!showOnlyBookmarked)}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border ${
-              showOnlyBookmarked ? 'bg-amber-100 text-amber-700 border-amber-300 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {showOnlyBookmarked ? '👈 返回完整列表' : `📌 檢視待確認清單 (${bookmarkedCamps.size})`}
-          </button>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setShowOnlyBookmarked(!showOnlyBookmarked)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border ${
+                showOnlyBookmarked ? 'bg-amber-100 text-amber-700 border-amber-300 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {showOnlyBookmarked ? '👈 返回完整列表' : `📌 檢視待確認清單 (${bookmarkedCamps.size})`}
+            </button>
+            {bookmarkedCamps.size > 0 && (
+              <button
+                onClick={() => {
+                  setBookmarkedCamps(new Set());
+                  setShowOnlyBookmarked(false);
+                }}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all border bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+                title="清空待確認清單"
+              >
+                🗑️ 清空
+              </button>
+            )}
+          </div>
           <div className="bg-slate-200 p-1 rounded-xl flex gap-1">
             <button onClick={() => setMapMode('2d')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mapMode === '2d' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}>🗺️ 2D 平面圖</button>
             <button onClick={() => setMapMode('3d')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mapMode === '3d' ? 'bg-blue-600 text-white shadow' : 'text-slate-600'}`}>⛰️ 衛星高程圖</button>
@@ -315,16 +329,29 @@ export default function Home() {
         </h3>
         
         {/* 新增：快速切換按鈕 */}
-        <button
-          onClick={() => setShowOnlyBookmarked(!showOnlyBookmarked)}
-          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border ${
-            showOnlyBookmarked 
-              ? 'bg-amber-100 text-amber-700 border-amber-300 shadow' 
-              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          {showOnlyBookmarked ? '顯示全部結果' : '過濾：只顯示待確認 📌'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowOnlyBookmarked(!showOnlyBookmarked)}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border ${
+              showOnlyBookmarked 
+                ? 'bg-amber-100 text-amber-700 border-amber-300 shadow' 
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {showOnlyBookmarked ? '顯示全部結果' : '過濾：只顯示待確認 📌'}
+          </button>
+          {bookmarkedCamps.size > 0 && (
+            <button
+              onClick={() => {
+                setBookmarkedCamps(new Set());
+                setShowOnlyBookmarked(false);
+              }}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all border bg-white text-rose-600 border-rose-200 hover:bg-rose-50"
+            >
+              🗑️ 清空名單
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
