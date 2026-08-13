@@ -284,22 +284,22 @@ export default function Home() {
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center z-20 relative">
           <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">🗺️ 地圖預覽</span>
           <div className="flex items-center gap-3">
-            {selectedCamp && (
-              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors border border-amber-300">
+            {bookmarkedCamps.size > 0 && (
+              <label className="flex items-center gap-1.5 text-xs font-bold text-rose-700 cursor-pointer bg-rose-100 hover:bg-rose-200 px-3 py-1.5 rounded-lg transition-colors border border-rose-300">
                 <input 
                   type="checkbox" 
                   checked={showOnlySelectedMap} 
                   onChange={(e) => setShowOnlySelectedMap(e.target.checked)} 
-                  className="w-3.5 h-3.5 accent-amber-600 rounded cursor-pointer" 
+                  className="w-3.5 h-3.5 accent-rose-600 rounded cursor-pointer" 
                 />
-                🎯 只看已選擇營地
+                📌 地圖僅顯示待確認名單 ({bookmarkedCamps.size})
               </label>
             )}
           </div>
         </div>
         <div className="h-80 relative z-10 w-full">
           <MapWithNoSSR 
-            campsites={showOnlySelectedMap && selectedCamp ? [selectedCamp] : sortedFilteredCampsites} 
+            campsites={showOnlySelectedMap && bookmarkedCamps.size > 0 ? sortedFilteredCampsites.filter(site => bookmarkedCamps.has(site.id)) : sortedFilteredCampsites} 
             mapMode={mapMode} 
             onSelectCampsite={handleSelectCamp} 
             selectedCampId={selectedCamp?.id} 
