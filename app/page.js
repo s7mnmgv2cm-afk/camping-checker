@@ -140,17 +140,34 @@ export default function Home() {
     // 如果有 booking_url，依據換行符號切割支援多個網址
     if (site.booking_url) {
       const urls = site.booking_url.split('\n').map(u => u.trim()).filter(Boolean);
-      urls.forEach((url, idx) => {
-        let btnText = '🏕️ 前往平台線上訂位';
-        if (url.includes('icamping')) btnText = '🏕️ 前往 愛露營 訂位';
-        else if (url.includes('easycamp')) btnText = '🏕️ 前往 露營樂 訂位';
-        else if (url.includes('asiacamp')) btnText = '🏕️ 前往 AsiaCamp 訂位';
-        else if (url.includes('campingdaddy')) btnText = '🏕️ 前往 露營老爹 訂位';
-        else if (site.booking_type === 'line' || url.includes('line.me')) btnText = '💬 加 LINE 預約';
-        else if (site.booking_type === 'official_site') btnText = '🌐 前往官網預約';
+      const uniqueUrls = Array.from(new Set(urls));
+      
+      const typeCounts = {};
+      const btnConfigs = uniqueUrls.map(url => {
+        let type = 'other';
+        let baseText = '🏕️ 前往平台線上訂位';
+        
+        if (url.includes('icamping')) { type = 'icamping'; baseText = '🏕️ 前往 愛露營 訂位'; }
+        else if (url.includes('easycamp')) { type = 'easycamp'; baseText = '🏕️ 前往 露營樂 訂位'; }
+        else if (url.includes('asiacamp')) { type = 'asiacamp'; baseText = '🏕️ 前往 AsiaCamp 訂位'; }
+        else if (url.includes('campingdaddy')) { type = 'campingdaddy'; baseText = '🏕️ 前往 露營老爹 訂位'; }
+        else if (site.booking_type === 'line' || url.includes('line.me')) { type = 'line'; baseText = '💬 加 LINE 預約'; }
+        else if (site.booking_type === 'official_site') { type = 'official'; baseText = '🌐 前往官網預約'; }
+        
+        typeCounts[type] = (typeCounts[type] || 0) + 1;
+        return { url, type, baseText };
+      });
+      
+      const typeCurrent = {};
+      btnConfigs.forEach((config, idx) => {
+        typeCurrent[config.type] = (typeCurrent[config.type] || 0) + 1;
+        let btnText = config.baseText;
+        if (typeCounts[config.type] > 1) {
+          btnText += ` (${typeCurrent[config.type]})`;
+        }
         
         btns.push(
-          <a key={`booking-${idx}`} href={url} target="_blank" rel="noopener noreferrer" className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
+          <a key={`booking-${idx}`} href={config.url} target="_blank" rel="noopener noreferrer" className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
             {btnText}
           </a>
         );
@@ -363,7 +380,6 @@ export default function Home() {
               </div>
               <p className="text-sm text-slate-600 mb-3">⭐ Google 評分: {selectedCamp.rating || 4.5} | 🚗 車程: 約 {getCampDriveInfo(selectedCamp).mins || '確認中'} 分鐘 ({getCampDriveInfo(selectedCamp).dist})</p>
               <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
-                <span>💰 價格: <strong className="text-emerald-600">{selectedCamp.price_range || '以官網/訂位頁為準'}</strong></span>
                 <span>📞 電話: <strong className="text-blue-600">{selectedCamp.phone || '請洽官網/粉絲專頁'}</strong></span>
               </div>
               {((selectedCamp.pros && selectedCamp.pros.length > 0) || (selectedCamp.cons && selectedCamp.cons.length > 0)) && (
@@ -457,7 +473,6 @@ export default function Home() {
                   </div>
                   <p className="text-sm text-slate-600 mb-3">⭐ Google 評分: {site.rating || 4.5} | 🚗 車程: {mins ? `約 ${mins} 分鐘` : '確認中'} ({dist})</p>
                   <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
-                    <span>💰 價格: <strong className="text-emerald-600">{site.price_range || '以官網/訂位頁為準'}</strong></span>
                     <span>📞 電話: <strong className="text-blue-600">{site.phone || '請洽官網/粉絲專頁'}</strong></span>
                   </div>
                   {((site.pros && site.pros.length > 0) || (site.cons && site.cons.length > 0)) && (
@@ -499,7 +514,6 @@ export default function Home() {
                 <th className="p-3.5 font-bold">營地名稱</th>
                 <th className="p-3.5 font-bold">真實海拔</th>
                 <th className="p-3.5 font-bold">車程 / 距離 ({FIXED_ORIGINS[originKey]})</th>
-                <th className="p-3.5 font-bold">價格資訊</th>
                 <th className="p-3.5 font-bold">一鍵直達連結</th>
               </tr>
             </thead>
@@ -522,7 +536,6 @@ export default function Home() {
                     </td>
                     <td className="p-3.5 text-slate-600">{site.altitude || '標示中'}</td>
                     <td className="p-3.5 text-slate-600">{mins ? `${mins} 分鐘` : '確認中'} ({dist})</td>
-                    <td className="p-3.5 text-emerald-600 font-medium">{site.price_range || '以官網/訂位頁為準'}</td>
                     <td className="p-3.5">{renderActionButtons(site)}</td>
                   </tr>
                 );
