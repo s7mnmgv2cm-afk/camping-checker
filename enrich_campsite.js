@@ -48,11 +48,9 @@ async function searchPriceWithPlaywright(browser, campsiteName, region) {
 
     await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
-    // 擷取 Google 搜尋結果頁面的所有摘要文字
     const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
     await page.close();
 
-    // 正則表達式抓取包含：$1000 - $1500、1200元/帳、一帳 1000 等真實格式
     const matchRange = pageText.match(/(\$\d+[\d,]*\s*[\-\~～]\s*\$?\d+[\d,]*|\d{3,4}\s*[\-\~～]\s*\d{3,4}\s*元)/);
     if (matchRange) {
       return matchRange[0].replace(/\s+/g, '') + ' / 帳';
@@ -147,18 +145,14 @@ async function scrapeTaiwanCampsites(browser) {
           const ratingText = await el.$eval('span.MW4pA', e => e.innerText.trim()).catch(() => '4.5');
           const fullText = await el.evaluate(e => e.innerText).catch(() => '');
 
-          // 1. 從卡片中解析電話與價格格式
           const phoneMatch = fullText.match(/(09\d{2}[\s\-]?\d{3}[\s\-]?\d{3}|0\d{1,2}[\s\-]?\d{6,8})/);
           const domPhone = phoneMatch ? phoneMatch[0].replace(/\s/g, '') : null;
 
           const priceMatch = fullText.match(/(\$\d+[\d,]*|\d+[\d,]*\s*元)/);
           const domPrice = priceMatch ? priceMatch[0] : null;
 
-          // 2. 解析經緯度
           let linkHref = await el.$eval('a[href*="/maps/place/"]', e => e.href).catch(() => '');
-          if (!linkHref) {
-            linkHref = await el.$eval('a.hfAn2', e => e.href).catch(() => '');
-          }
+          if (!linkHref) linkHref = await el.$eval('a.hfAn2', e => e.href).catch(() => '');
 
           let lat = null;
           let lng = null;
@@ -183,7 +177,7 @@ async function scrapeTaiwanCampsites(browser) {
             lng = 120.9 + (hash % 60) * 0.01;
           }
 
-          if (!scrapedCampsites.some(s => s.id === id)) {
+          if (!scrapedCampsites.some(s => s.name === cleanName)) {
             scrapedCampsites.push({
               id,
               name: cleanName,
@@ -212,7 +206,6 @@ async function scrapeTaiwanCampsites(browser) {
  */
 async function getRealAltitude(lat, lng) {
   if (!lat || !lng) return '海拔未知';
-
   let elevationMeters = null;
 
   if (GOOGLE_MAPS_API_KEY) {
@@ -237,11 +230,7 @@ async function getRealAltitude(lat, lng) {
     } catch (err) {}
   }
 
-  if (elevationMeters !== null) {
-    if (elevationMeters < 0) return '海拔未知';
-    return `海拔 ${elevationMeters}m`;
-  }
-
+  if (elevationMeters !== null && elevationMeters >= 0) return `海拔 ${elevationMeters}m`;
   return '海拔未知';
 }
 
@@ -250,7 +239,6 @@ async function getRealAltitude(lat, lng) {
  */
 async function fetchSingleDriveTime(destinationName, originLocation) {
   const origin = encodeURIComponent(originLocation);
-
   if (GOOGLE_MAPS_API_KEY) {
     try {
       const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin}&destinations=${encodeURIComponent(destinationName)}&mode=driving&language=zh-TW&key=${GOOGLE_MAPS_API_KEY}`;
@@ -267,8 +255,7 @@ async function fetchSingleDriveTime(destinationName, originLocation) {
       console.warn(`⚠️ Distance Matrix API 查詢失敗 (${destinationName}):`, err.message);
     }
   }
-
-  return { driveTimeMins: null, distanceKm: '數據未取得' };
+  return { driveTimeMins: null, distanceKm: null };
 }
 
 /**
@@ -293,30 +280,20 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews, rating = 4.5) 
     : ['環境寧靜舒適', '適合家族聚會'];
   const defaultCons = ['建議提早預約營位'];
 
-  if (!genAI || !rawReviews) {
-    return { pros: defaultPros, cons: defaultCons };
-  }
+  if (!genAI || !rawReviews) return { pros: defaultPros, cons: defaultCons };
 
-  const candidateModels = [
-    'gemini-3.5-flash-lite', 
-    'gemini-3.1-flash-lite', 
-    'gemini-2.5-flash-lite', 
-    'gemini-3.5-flash'
-  ];
+  const candidateModels = ['gemini-3.5-flash', 'gemini-2.5-flash'];
 
   for (const modelName of candidateModels) {
     try {
       console.log(`⏳ [RPM 防呆] 等待 13 秒後發送 API 請求 (${modelName})...`);
       await sleep(13000);
-
       const model = genAI.getGenerativeModel({ model: modelName });
       const prompt = `根據「${campsiteName}」的資訊，摘要 2 個優點 (pros) 與 1 個缺點 (cons)。輸出標準 JSON 格式，繁體中文，每點 10 字以內。`;
 
       const result = await model.generateContent(prompt);
-      const responseText = result.response.text().trim();
-      const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const cleanJson = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
-
       return { 
         pros: (parsed.pros && parsed.pros.length > 0) ? parsed.pros : defaultPros, 
         cons: (parsed.cons && parsed.cons.length > 0) ? parsed.cons : defaultCons 
@@ -325,132 +302,148 @@ async function analyzeReviewsWithGemini(campsiteName, rawReviews, rating = 4.5) 
       console.warn(`⚠️ 模型 [${modelName}] 分析失敗... (${err.message})`);
     }
   }
-
   return { pros: defaultPros, cons: defaultCons };
 }
 
 /**
- * 🚀 主程式
+ * 🚀 主程式 (Safe Enrichment 模式)
  */
 async function main() {
-  console.log('🚀 開始執行全台灣營地自動爬蟲管線...');
+  console.log('🚀 開始執行全台灣營地自動爬蟲管線 (安全擴充模式)...');
 
   const browser = await chromium.launch({ 
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--lang=zh-TW']
   });
 
-  const { data: existingCampsites } = await supabase
-    .from('campsites')
-    .select('*');
-    
-  const existingMap = new Map();
+  // 1. 取得目前資料庫所有營地，並建立以「名稱」為 Key 的對照表，避免重複
+  const { data: existingCampsites } = await supabase.from('campsites').select('*');
+  const existingMapByName = new Map();
+  
   if (existingCampsites) {
     existingCampsites.forEach(site => {
-      existingMap.set(site.id, site);
+      existingMapByName.set(site.name, site);
     });
   }
 
   const campsites = await scrapeTaiwanCampsites(browser);
-  console.log(`✅ 共抓取到 ${campsites.length} 個營地，準備進行處理...`);
+  console.log(`✅ 共抓取到 ${campsites.length} 個營地，準備進行資料比對與安全擴充...`);
 
   for (let i = 0; i < campsites.length; i++) {
     const site = campsites[i];
     console.log(`\n-----------------------------------`);
     console.log(`[${i + 1}/${campsites.length}] 🔍 處理營地: ${site.name} (${site.region})`);
 
-    const cached = existingMap.get(site.id);
+    const cached = existingMapByName.get(site.name);
+    const updatePayload = {};
 
-    // 🏔️ [海拔]
-    let altitude;
-    if (cached && cached.altitude && cached.altitude !== '海拔未知') {
-      altitude = cached.altitude;
-    } else {
+    // 🏔️ [海拔]：若資料庫沒有，才呼叫 API 查
+    let altitude = cached?.altitude;
+    if (!altitude || altitude === '海拔未知') {
       altitude = await getRealAltitude(site.latitude, site.longitude);
+      if (cached && altitude && altitude !== '海拔未知') updatePayload.altitude = altitude;
     }
 
-    // 📞 [電話]：DOM 優先，若無則透過 Google Places API 搜尋
-    let finalPhone = site.domPhone || (cached ? cached.phone : null);
+    // 📞 [電話]：若資料庫沒有，才去抓
+    let finalPhone = cached?.phone;
     if (!finalPhone || finalPhone === '請洽官網/粉絲專頁') {
-      console.log(`📡 [呼叫 API] 透過 Google Places API 補全官方電話...`);
-      finalPhone = await fetchOfficialPhoneFromGoogle(site.name, site.region);
+      console.log(`📡 [補全電話] 透過 Google Places API 搜尋...`);
+      finalPhone = site.domPhone || await fetchOfficialPhoneFromGoogle(site.name, site.region);
+      if (cached && finalPhone && finalPhone !== '請洽官網/粉絲專頁') updatePayload.phone = finalPhone;
     }
 
-    // 💰 [價格 - 做法二]：DOM 優先，若無則利用 Playwright 搜尋 Google 收費關鍵字
-    let finalPrice = site.domPrice || (cached ? cached.price_range : null);
+    // 💰 [價格]：若資料庫沒有，才去搜
+    let finalPrice = cached?.price_range;
     if (!finalPrice || finalPrice === '請洽官網/訂位系統') {
-      console.log(`🔍 [做法二] 利用 Playwright 搜尋 Google 價格關鍵字...`);
-      finalPrice = await searchPriceWithPlaywright(browser, site.name, site.region);
+      console.log(`🔍 [補全價格] 利用 Playwright 搜尋 Google 價格關鍵字...`);
+      finalPrice = site.domPrice || await searchPriceWithPlaywright(browser, site.name, site.region);
+      if (cached && finalPrice && finalPrice !== '請洽官網/訂位系統') updatePayload.price_range = finalPrice;
     }
 
-    // 🚗 [車程]
+    // 🚗 [車程]：若資料庫缺任一出發點，就重新算並補上
     let driveData = {};
     const hasFullDriveData = cached && 
-      cached.drive_time_tainan && 
-      cached.drive_time_hsinchu && 
-      cached.drive_time_taipei && 
-      cached.drive_time_taichung;
+      cached.drive_time_tainan && cached.drive_time_hsinchu && 
+      cached.drive_time_taipei && cached.drive_time_taichung;
 
-    if (hasFullDriveData) {
-      driveData = {
-        drive_time_hsinchu: cached.drive_time_hsinchu,
-        distance_hsinchu: cached.distance_hsinchu,
-        drive_time_tainan: cached.drive_time_tainan,
-        distance_tainan: cached.distance_tainan,
-        drive_time_taipei: cached.drive_time_taipei,
-        distance_taipei: cached.distance_taipei,
-        drive_time_taichung: cached.drive_time_taichung,
-        distance_taichung: cached.distance_taichung,
-      };
-    } else {
+    if (!hasFullDriveData) {
+      console.log(`🚗 [補全車程] 呼叫 Google Distance Matrix...`);
       driveData = await fetchAllDriveTimes(site.name);
+      if (cached) {
+        if (!cached.drive_time_hsinchu) { updatePayload.drive_time_hsinchu = driveData.drive_time_hsinchu; updatePayload.distance_hsinchu = driveData.distance_hsinchu; }
+        if (!cached.drive_time_tainan) { updatePayload.drive_time_tainan = driveData.drive_time_tainan; updatePayload.distance_tainan = driveData.distance_tainan; }
+        if (!cached.drive_time_taipei) { updatePayload.drive_time_taipei = driveData.drive_time_taipei; updatePayload.distance_taipei = driveData.distance_taipei; }
+        if (!cached.drive_time_taichung) { updatePayload.drive_time_taichung = driveData.drive_time_taichung; updatePayload.distance_taichung = driveData.distance_taichung; }
+      }
+    } else {
+      // 保留原有數據給後續若為新增營地使用
+      driveData = {
+        drive_time_hsinchu: cached.drive_time_hsinchu, distance_hsinchu: cached.distance_hsinchu,
+        drive_time_tainan: cached.drive_time_tainan, distance_tainan: cached.distance_tainan,
+        drive_time_taipei: cached.drive_time_taipei, distance_taipei: cached.distance_taipei,
+        drive_time_taichung: cached.drive_time_taichung, distance_taichung: cached.distance_taichung,
+      };
     }
 
-    // 🤖 [AI 優缺點]
-    let pros, cons;
-    if (cached && cached.pros && cached.pros.length > 0) {
-      pros = cached.pros;
-      cons = cached.cons;
-    } else {
+    // 🤖 [AI 優缺點]：若資料庫沒有，才去分析
+    let pros = cached?.pros;
+    let cons = cached?.cons;
+    if (!pros || pros.length === 0 || !cons || cons.length === 0) {
+      console.log(`🤖 [補全優缺點] 呼叫 Gemini AI 分析...`);
       const aiResult = await analyzeReviewsWithGemini(site.name, site.rawReviews, site.rating);
       pros = aiResult.pros;
       cons = aiResult.cons;
+      if (cached) {
+        updatePayload.pros = pros;
+        updatePayload.cons = cons;
+      }
     }
 
     console.log(`summary -> 📞 電話: ${finalPhone} | 💰 價格: ${finalPrice} | 🏔️ ${altitude}`);
 
-    // 寫入 Supabase
-    const { error: campError } = await supabase.from('campsites').upsert({
-      id: site.id,
-      name: site.name,
-      altitude: altitude,
-      drive_time_hsinchu: driveData.drive_time_hsinchu,
-      distance_hsinchu: driveData.distance_hsinchu,
-      drive_time_tainan: driveData.drive_time_tainan,
-      distance_tainan: driveData.distance_tainan,
-      drive_time_taipei: driveData.drive_time_taipei,
-      distance_taipei: driveData.distance_taipei,
-      drive_time_taichung: driveData.drive_time_taichung,
-      distance_taichung: driveData.distance_taichung,
-      rating: site.rating,
-      phone: finalPhone,
-      price_range: finalPrice,
-      latitude: site.latitude,
-      longitude: site.longitude,
-      pros: pros,
-      cons: cons,
-      updated_at: new Date()
-    });
+    // 🎯 安全寫入邏輯
+    if (!cached) {
+      // 情況 A：這是一個全新的營地 (Insert)
+      console.log(`✨ [新增營地] 資料庫無此營地，執行 Insert...`);
+      const { error: insertError } = await supabase.from('campsites').insert([{
+        id: site.id,
+        name: site.name,
+        altitude: altitude,
+        phone: finalPhone,
+        price_range: finalPrice,
+        rating: site.rating,
+        latitude: site.latitude,
+        longitude: site.longitude,
+        pros: pros,
+        cons: cons,
+        drive_time_hsinchu: driveData.drive_time_hsinchu, distance_hsinchu: driveData.distance_hsinchu,
+        drive_time_tainan: driveData.drive_time_tainan, distance_tainan: driveData.distance_tainan,
+        drive_time_taipei: driveData.drive_time_taipei, distance_taipei: driveData.distance_taipei,
+        drive_time_taichung: driveData.drive_time_taichung, distance_taichung: driveData.distance_taichung,
+      }]);
 
-    if (campError) {
-      console.error(`❌ 寫入失敗 (${site.name}):`, campError.message);
+      if (insertError) console.error(`❌ 新增失敗:`, insertError.message);
+      else console.log(`✅ 新增成功！`);
+
     } else {
-      console.log(`✅ [${site.name}] 資料庫更新成功！`);
+      // 情況 B：營地已存在，只更新「原本是空」的欄位 (Patch)
+      if (Object.keys(updatePayload).length > 0) {
+        console.log(`🔄 [補全資料] 偵測到缺漏，準備填補:`, Object.keys(updatePayload));
+        const { error: updateError } = await supabase
+          .from('campsites')
+          .update(updatePayload)
+          .eq('id', cached.id);
+
+        if (updateError) console.error(`❌ 更新失敗:`, updateError.message);
+        else console.log(`✅ 安全填補成功！`);
+      } else {
+        console.log(`👌 [略過] 該營地資料已十分完整，不執行任何寫入。`);
+      }
     }
   }
 
   await browser.close();
-  console.log('\n🎉 所有營地資料更新完成！');
+  console.log('\n🎉 全台灣營地資料安全擴充執行完畢！');
 }
 
 main().catch(err => {
