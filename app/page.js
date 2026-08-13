@@ -57,6 +57,7 @@ export default function Home() {
 
   // 🎯 被選擇的營地物件
   const [selectedCamp, setSelectedCamp] = useState(null);
+  const [showOnlySelectedMap, setShowOnlySelectedMap] = useState(false);
 
   useEffect(() => {
     async function fetchCampsites() {
@@ -279,8 +280,31 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 mb-8 h-80 relative z-10">
-        <MapWithNoSSR campsites={sortedFilteredCampsites} mapMode={mapMode} onSelectCampsite={handleSelectCamp} selectedCampId={selectedCamp?.id} />
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8 overflow-hidden flex flex-col">
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center z-20 relative">
+          <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">🗺️ 地圖預覽</span>
+          <div className="flex items-center gap-3">
+            {selectedCamp && (
+              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors border border-amber-300">
+                <input 
+                  type="checkbox" 
+                  checked={showOnlySelectedMap} 
+                  onChange={(e) => setShowOnlySelectedMap(e.target.checked)} 
+                  className="w-3.5 h-3.5 accent-amber-600 rounded cursor-pointer" 
+                />
+                🎯 只看已選擇營地
+              </label>
+            )}
+          </div>
+        </div>
+        <div className="h-80 relative z-10 w-full">
+          <MapWithNoSSR 
+            campsites={showOnlySelectedMap && selectedCamp ? [selectedCamp] : sortedFilteredCampsites} 
+            mapMode={mapMode} 
+            onSelectCampsite={handleSelectCamp} 
+            selectedCampId={selectedCamp?.id} 
+          />
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
