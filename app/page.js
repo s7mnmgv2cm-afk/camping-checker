@@ -44,12 +44,13 @@ export default function Home() {
   const [minAltitude, setMinAltitude] = useState(0);
   const [maxAltitude, setMaxAltitude] = useState(2500);
   const [mapMode, setMapMode] = useState('2d');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [isNightDrive, setIsNightDrive] = useState(false);
 
   // 🎯 搜尋與篩選狀態
   const [searchName, setSearchName] = useState('');
   const [searchRegion, setSearchRegion] = useState('');
+  const [apiKey, setApiKey] = useState('');
   
   // 📌 待確認名單 (收藏) 狀態
   const [bookmarkedCamps, setBookmarkedCamps] = useState(new Set());
@@ -59,15 +60,30 @@ export default function Home() {
   const [selectedCamp, setSelectedCamp] = useState(null);
   const [showOnlySelectedMap, setShowOnlySelectedMap] = useState(false);
 
-  useEffect(() => {
-    async function fetchCampsites() {
-      setLoading(true);
-      const { data: campsitesData, error } = await supabase.from('campsites').select('*');
-      if (!error && campsitesData) setCampsites(campsitesData);
-      setLoading(false);
+  const handleSearch = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchName) params.append('searchName', searchName);
+      if (searchRegion) params.append('searchRegion', searchRegion);
+      if (apiKey) params.append('key', apiKey);
+      
+      const res = await fetch(`/api/campsites?${params.toString()}`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        alert(errorData.error || '搜尋失敗，請稍後再試。');
+        setLoading(false);
+        return;
+      }
+      
+      const data = await res.json();
+      setCampsites(data);
+    } catch (err) {
+      console.error(err);
+      alert('發生錯誤');
     }
-    fetchCampsites();
-  }, []);
+    setLoading(false);
+  };
 
   const parseAltitudeNum = (altStr) => {
     if (!altStr) return 0;
@@ -276,15 +292,30 @@ export default function Home() {
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 relative z-30">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-4">
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">🔍 營地名稱搜尋：</label>
-            <input type="text" placeholder="例如：馬雅竹軒" value={searchName} onChange={(e) => setSearchName(e.target.value)} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+            <label className="block text-sm font-bold text-slate-700 mb-2">🔍 營地名稱：</label>
+            <input type="text" placeholder="例如：馬雅竹軒" value={searchName} onChange={(e) => setSearchName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">📍 地區 / 縣市搜尋：</label>
-            <input type="text" placeholder="例如：新竹 或 五峰鄉" value={searchRegion} onChange={(e) => setSearchRegion(e.target.value)} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+            <label className="block text-sm font-bold text-slate-700 mb-2">📍 地區 / 縣市：</label>
+            <input type="text" placeholder="例如：新竹 或 五峰鄉" value={searchRegion} onChange={(e) => setSearchRegion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
           </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">🔑 VIP 金鑰 (選填)：</label>
+            <input type="password" placeholder="輸入 Key 以提高次數" value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+          </div>
+          <div className="flex items-end">
+            <button 
+              onClick={handleSearch} 
+              disabled={loading}
+              className={`w-full ${loading ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'} text-white text-base rounded-xl p-3 font-bold shadow transition-colors h-[50px]`}
+            >
+              {loading ? '⏳ 搜尋中...' : '🚀 立即搜尋'}
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-bold text-slate-700">🚗 出發地點：</label>
