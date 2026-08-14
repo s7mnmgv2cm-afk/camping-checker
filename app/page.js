@@ -45,7 +45,6 @@ export default function Home() {
   const [maxAltitude, setMaxAltitude] = useState(2500);
   const [mapMode, setMapMode] = useState('2d');
   const [loading, setLoading] = useState(true);
-  const [isNightDrive, setIsNightDrive] = useState(false);
 
   // 🎯 搜尋與篩選狀態
   const [searchName, setSearchName] = useState('');
@@ -57,7 +56,9 @@ export default function Home() {
 
   // 🎯 被選擇的營地物件
   const [selectedCamp, setSelectedCamp] = useState(null);
-  const [showOnlySelectedMap, setShowOnlySelectedMap] = useState(false);
+
+  // 🎯 提示詞複製狀態
+  const [isPromptCopied, setIsPromptCopied] = useState(false);
 
   useEffect(() => {
     async function fetchCampsites() {
@@ -82,8 +83,7 @@ export default function Home() {
   };
 
   const getCampDriveInfo = (site) => {
-    const fieldKey = isNightDrive ? `drive_time_${originKey}_fri` : `drive_time_${originKey}`;
-    const rawMins = site[fieldKey] ?? site.drive_time_mins;
+    const rawMins = site[`drive_time_${originKey}`] ?? site.drive_time_mins;
     const mins = rawMins !== null && rawMins !== undefined ? Number(rawMins) : null;
     const dist = site[`distance_${originKey}`] ?? site.distance_km ?? '距離確認中';
     return { mins, dist };
@@ -133,70 +133,58 @@ export default function Home() {
     setSelectedCamp(targetCamp);
   };
 
+  const handleGenerateAIPrompt = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    let season = '';
+    if (currentMonth >= 3 && currentMonth <= 5) season = '春季';
+    else if (currentMonth >= 6 && currentMonth <= 8) season = '夏季';
+    else if (currentMonth >= 9 && currentMonth <= 11) season = '秋季';
+    else season = '冬季';
+
+    // 擷取目前篩選出來的營地名稱（最多 5~10 個以免過長）
+    const topCamps = sortedFilteredCampsites.slice(0, 10).map(c => c.name).join(', ');
+
+    const query = `現在是台灣 ${currentMonth}月 (${season})，請幫我分析以下露營地的氣候、適合的海拔以及近期可觀察的生態，推薦最適合現在出發的：${topCamps}`;
+
+    const url = new URL("https://www.google.com/search");
+    url.searchParams.set("q", query);
+    url.searchParams.set("udm", "50"); // 觸發 Google AI 總結/特定視圖
+    url.searchParams.set("hl", "zh-TW");
+    
+    window.open(url.toString(), '_blank');
+  };
+
   const renderActionButtons = (site) => {
     const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`;
-    const btns = [];
     
-    // 如果有 booking_url，依據換行符號切割支援多個網址
-    if (site.booking_url) {
-      const urls = site.booking_url.split('\n').map(u => u.trim()).filter(Boolean);
-      const uniqueUrls = Array.from(new Set(urls));
-      
-      const typeCounts = {};
-      const btnConfigs = uniqueUrls.map(url => {
-        let type = 'other';
-        let baseText = '🏕️ 前往平台線上訂位';
-        
-        if (url.includes('icamping')) { type = 'icamping'; baseText = '🏕️ 前往 愛露營 訂位'; }
-        else if (url.includes('easycamp')) { type = 'easycamp'; baseText = '🏕️ 前往 露營樂 訂位'; }
-        else if (url.includes('asiacamp')) { type = 'asiacamp'; baseText = '🏕️ 前往 AsiaCamp 訂位'; }
-        else if (url.includes('campingdaddy')) { type = 'campingdaddy'; baseText = '🏕️ 前往 露營老爹 訂位'; }
-        else if (site.booking_type === 'line' || url.includes('line.me')) { type = 'line'; baseText = '💬 加 LINE 預約'; }
-        else if (site.booking_type === 'official_site') { type = 'official'; baseText = '🌐 前往官網預約'; }
-        
-        typeCounts[type] = (typeCounts[type] || 0) + 1;
-        return { url, type, baseText };
-      });
-      
-      const typeCurrent = {};
-      btnConfigs.forEach((config, idx) => {
-        typeCurrent[config.type] = (typeCurrent[config.type] || 0) + 1;
-        let btnText = config.baseText;
-        if (typeCounts[config.type] > 1) {
-          btnText += ` (${typeCurrent[config.type]})`;
-        }
-        
-        btns.push(
-          <a key={`booking-${idx}`} href={config.url} target="_blank" rel="noopener noreferrer" className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
-            {btnText}
-          </a>
-        );
-      });
-    } else if (site.booking_type === 'line' && site.line_id) {
-      const lineLink = `https://line.me/R/ti/p/${site.line_id.replace('@', '%40')}`;
-      btns.push(
-        <a key="line" href={lineLink} target="_blank" rel="noopener noreferrer" className="text-center bg-[#06C755] hover:bg-[#05b34c] text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
-          💬 加 LINE 預約 ({site.line_id})
-        </a>
-      );
+    // Google AI 專屬 URL
+    const googleAiUrl = new URL("https://www.google.com/search");
+    const queryStr = `${site.name} ${site.region || ''} ${site.location || ''} 露營資訊`.trim();
+    googleAiUrl.searchParams.set("q", queryStr);
+    googleAiUrl.searchParams.set("udm", "50");
+    googleAiUrl.searchParams.set("hl", "zh-TW");
+    const aiLink = googleAiUrl.toString();
+
+    let mainActionBtn = null;
+    if (site.booking_type === 'line') {
+      const lineLink = site.booking_url || `https://line.me/R/ti/p/${site.line_id?.replace('@', '%40')}`;
+      mainActionBtn = (<a href={lineLink} target="_blank" rel="noopener noreferrer" className="text-center bg-[#06C755] hover:bg-[#05b34c] text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">💬 加 LINE 預約 {site.line_id && `(${site.line_id})`}</a>);
+    } else if (['icamping', 'easycamp'].includes(site.booking_type) && site.booking_url) {
+      mainActionBtn = (<a href={site.booking_url} target="_blank" rel="noopener noreferrer" className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">🏕️ 前往平台線上訂位</a>);
+    } else if (site.booking_type === 'official_site' && site.booking_url) {
+      mainActionBtn = (<a href={site.booking_url} target="_blank" rel="noopener noreferrer" className="text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">🌐 前往官網預約</a>);
     } else if (site.phone) {
-      btns.push(
-        <a key="phone" href={`tel:${site.phone}`} className="text-center bg-rose-500 hover:bg-rose-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
-          📞 撥打電話預約
-        </a>
-      );
+      mainActionBtn = (<a href={`tel:${site.phone}`} className="text-center bg-rose-500 hover:bg-rose-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">📞 撥打電話預約</a>);
     } else {
       const searchBookingUrl = `https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營 預約')}`;
-      btns.push(
-        <a key="search" href={searchBookingUrl} target="_blank" rel="noopener noreferrer" className="text-center bg-slate-600 hover:bg-slate-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
-          🔍 搜尋訂位資訊
-        </a>
-      );
+      mainActionBtn = (<a href={searchBookingUrl} target="_blank" rel="noopener noreferrer" className="text-center bg-slate-600 hover:bg-slate-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">🔍 搜尋訂位資訊</a>);
     }
-
+    
     return (
       <div className="grid grid-cols-2 gap-2 mt-3 w-full">
-        {btns}
+        <a href={aiLink} target="_blank" rel="noopener noreferrer" className="col-span-2 text-center bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">🤖 Google AI 營地評價與摘要</a>
+        {mainActionBtn}
         <a href={googleMapUrl} target="_blank" rel="noopener noreferrer" className="text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">🗺️ Google 地圖</a>
       </div>
     );
@@ -206,9 +194,15 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-          <span>🏕️</span> 台灣露營地研究中心
+          <span>🏕️</span> 全台露營區即時 3D 地形與直達預約
         </h1>
         <div className="flex gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={handleGenerateAIPrompt}
+            className="px-4 py-1.5 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 border bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-transparent"
+          >
+            🤖 Google AI 即時分析推薦
+          </button>
           <div className="flex gap-1.5">
             <button
               onClick={() => setShowOnlyBookmarked(!showOnlyBookmarked)}
@@ -249,19 +243,7 @@ export default function Home() {
             <input type="text" placeholder="例如：新竹 或 五峰鄉" value={searchRegion} onChange={(e) => setSearchRegion(e.target.value)} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
           </div>
           <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-bold text-slate-700">🚗 出發地點：</label>
-              <button
-                onClick={() => setIsNightDrive(!isNightDrive)}
-                className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all border ${
-                  isNightDrive 
-                    ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' 
-                    : 'bg-amber-50 text-amber-700 border-amber-300 shadow-sm hover:bg-amber-100'
-                }`}
-              >
-                {isNightDrive ? '🌙 週五夜衝' : '☀️ 週末早衝'}
-              </button>
-            </div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">🚗 出發地點：</label>
             <select value={originKey} onChange={(e) => setOriginKey(e.target.value)} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner cursor-pointer">
               <option value="tainan">🌊 台南安平區</option>
               <option value="hsinchu">🚄 新竹高鐵站</option>
@@ -297,31 +279,8 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8 overflow-hidden flex flex-col">
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center z-20 relative">
-          <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">🗺️ 地圖預覽</span>
-          <div className="flex items-center gap-3">
-            {bookmarkedCamps.size > 0 && (
-              <label className="flex items-center gap-1.5 text-xs font-bold text-rose-700 cursor-pointer bg-rose-100 hover:bg-rose-200 px-3 py-1.5 rounded-lg transition-colors border border-rose-300">
-                <input 
-                  type="checkbox" 
-                  checked={showOnlySelectedMap} 
-                  onChange={(e) => setShowOnlySelectedMap(e.target.checked)} 
-                  className="w-3.5 h-3.5 accent-rose-600 rounded cursor-pointer" 
-                />
-                📌 地圖僅顯示待確認名單 ({bookmarkedCamps.size})
-              </label>
-            )}
-          </div>
-        </div>
-        <div className="h-80 relative z-10 w-full">
-          <MapWithNoSSR 
-            campsites={showOnlySelectedMap && bookmarkedCamps.size > 0 ? sortedFilteredCampsites.filter(site => bookmarkedCamps.has(site.id)) : sortedFilteredCampsites} 
-            mapMode={mapMode} 
-            onSelectCampsite={handleSelectCamp} 
-            selectedCampId={selectedCamp?.id} 
-          />
-        </div>
+      <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200 mb-8 h-80 relative z-10">
+        <MapWithNoSSR campsites={sortedFilteredCampsites} mapMode={mapMode} onSelectCampsite={handleSelectCamp} selectedCampId={selectedCamp?.id} />
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
@@ -380,6 +339,7 @@ export default function Home() {
               </div>
               <p className="text-sm text-slate-600 mb-3">⭐ Google 評分: {selectedCamp.rating || 4.5} | 🚗 車程: 約 {getCampDriveInfo(selectedCamp).mins || '確認中'} 分鐘 ({getCampDriveInfo(selectedCamp).dist})</p>
               <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
+                <span>💰 價格: <strong className="text-emerald-600">{selectedCamp.price_range || '以官網/訂位頁為準'}</strong></span>
                 <span>📞 電話: <strong className="text-blue-600">{selectedCamp.phone || '請洽官網/粉絲專頁'}</strong></span>
               </div>
               {((selectedCamp.pros && selectedCamp.pros.length > 0) || (selectedCamp.cons && selectedCamp.cons.length > 0)) && (
@@ -473,6 +433,7 @@ export default function Home() {
                   </div>
                   <p className="text-sm text-slate-600 mb-3">⭐ Google 評分: {site.rating || 4.5} | 🚗 車程: {mins ? `約 ${mins} 分鐘` : '確認中'} ({dist})</p>
                   <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
+                    <span>💰 價格: <strong className="text-emerald-600">{site.price_range || '以官網/訂位頁為準'}</strong></span>
                     <span>📞 電話: <strong className="text-blue-600">{site.phone || '請洽官網/粉絲專頁'}</strong></span>
                   </div>
                   {((site.pros && site.pros.length > 0) || (site.cons && site.cons.length > 0)) && (
@@ -514,6 +475,7 @@ export default function Home() {
                 <th className="p-3.5 font-bold">營地名稱</th>
                 <th className="p-3.5 font-bold">真實海拔</th>
                 <th className="p-3.5 font-bold">車程 / 距離 ({FIXED_ORIGINS[originKey]})</th>
+                <th className="p-3.5 font-bold">價格資訊</th>
                 <th className="p-3.5 font-bold">一鍵直達連結</th>
               </tr>
             </thead>
@@ -536,6 +498,7 @@ export default function Home() {
                     </td>
                     <td className="p-3.5 text-slate-600">{site.altitude || '標示中'}</td>
                     <td className="p-3.5 text-slate-600">{mins ? `${mins} 分鐘` : '確認中'} ({dist})</td>
+                    <td className="p-3.5 text-emerald-600 font-medium">{site.price_range || '以官網/訂位頁為準'}</td>
                     <td className="p-3.5">{renderActionButtons(site)}</td>
                   </tr>
                 );
