@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 // 使用 SERVICE_ROLE_KEY 以便讀寫 rate_limits 表 (繞過 RLS 或作為管理員)
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
