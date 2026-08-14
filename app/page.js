@@ -113,7 +113,7 @@ export default function Home() {
   // 🎯 1. 基礎過濾邏輯
   const filteredCampsites = campsites.filter((site) => {
     const { mins } = getCampDriveInfo(site);
-    const driveOk = mins !== null && !isNaN(mins) && mins > 0 && mins <= maxDriveTime;
+    const driveOk = (mins === null || isNaN(mins) || mins === 0) ? true : (mins <= maxDriveTime);
     const alt = parseAltitudeNum(site.altitude);
     const altOk = (site.altitude === '海拔未知' || !site.altitude) ? true : (alt >= minAltitude && alt <= maxAltitude);
     const nameMatch = searchName ? (site.name || '').toLowerCase().includes(searchName.toLowerCase()) : true;
@@ -610,3 +610,4 @@ export default function Home() {
     </main>
   );
 }
+
