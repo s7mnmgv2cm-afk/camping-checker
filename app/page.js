@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import dynamic from 'next/dynamic';
 import {
   ScatterChart,
@@ -15,10 +14,6 @@ import {
 } from 'recharts';
 
 import 'leaflet/dist/leaflet.css';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const MapWithNoSSR = dynamic(() => import('../components/CampsiteMap'), {
   ssr: false,
