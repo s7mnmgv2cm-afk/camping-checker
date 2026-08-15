@@ -32,6 +32,22 @@ const FIXED_ORIGINS = {
   taichung: '台中高鐵站'
 };
 
+// 📍 出發點對應的限制縣市 (非 VIP 專用)
+const ORIGIN_REGION_MAP = {
+  tainan: ['台南'],
+  hsinchu: ['新竹'],
+  taipei: ['台北', '新北'],
+  taichung: ['台中', '南投', '苗栗', '彰化'] // 台中附近也可以開放一點點，或者嚴格只給台中。嚴格遵守 user：同縣市
+};
+
+// 修正：嚴格遵守「同縣市」
+const STRICT_ORIGIN_REGION_MAP = {
+  tainan: ['台南'],
+  hsinchu: ['新竹'],
+  taipei: ['台北', '新北'],
+  taichung: ['台中']
+};
+
 export default function Home() {
   const [campsites, setCampsites] = useState([]);
   const [originKey, setOriginKey] = useState('tainan');
@@ -45,7 +61,9 @@ export default function Home() {
   // 🎯 搜尋與篩選狀態
   const [searchName, setSearchName] = useState('');
   const [searchRegion, setSearchRegion] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = useState(''); // 隱藏的 VIP 金鑰狀態
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
   
   // 📌 待確認名單 (收藏) 狀態
   const [bookmarkedCamps, setBookmarkedCamps] = useState(new Set());
@@ -56,7 +74,16 @@ export default function Home() {
   const [showOnlySelectedMap, setShowOnlySelectedMap] = useState(false);
 
   const handleSearch = async () => {
+    // 🎁 彩蛋：如果在名稱輸入 VIP 密碼，解鎖隱藏模式
+    if (searchName.trim().toLowerCase() === 'camp888') {
+      setApiKey('camp888');
+      setSearchName('');
+      alert('🎉 VIP 模式已解鎖！您現在可以使用無限制的車程搜尋，且享有更高搜尋額度！');
+      return;
+    }
+
     setLoading(true);
+    setCurrentPage(1); // 搜尋時重置頁碼
     try {
       const params = new URLSearchParams();
       if (searchName) params.append('searchName', searchName);
@@ -121,8 +148,20 @@ export default function Home() {
     const regionMatch = searchRegion ? regionText.includes(searchRegion.toLowerCase()) : true;
     const bookmarkOk = showOnlyBookmarked ? bookmarkedCamps.has(site.id) : true;
 
-    return driveOk && altOk && nameMatch && regionMatch && bookmarkOk;
+    // 🔒 非 VIP 只能搜尋跟出發地同縣市
+    let originRegionOk = true;
+    if (apiKey !== 'camp888') {
+      const allowedRegions = STRICT_ORIGIN_REGION_MAP[originKey] || [];
+      originRegionOk = allowedRegions.some(r => regionText.includes(r));
+    }
+
+    return driveOk && altOk && nameMatch && regionMatch && bookmarkOk && originRegionOk;
   });
+
+  // 當過濾條件改變時，自動回到第一頁
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [campsites, originKey, maxDriveTime, minAltitude, maxAltitude, searchName, searchRegion, showOnlyBookmarked]);
 
   // 🎯 2. 智慧排序邏輯：將「已加入待確認」的營地無條件置頂集中！
   const sortedFilteredCampsites = [...filteredCampsites].sort((a, b) => {
@@ -137,6 +176,13 @@ export default function Home() {
       const { mins, dist } = getCampDriveInfo(site);
       return { ...site, currentMins: mins, currentDist: dist, x: parseDistanceNum(dist), y: parseAltitudeNum(site.altitude) };
     });
+
+  // 🎯 3. 分頁邏輯
+  const totalPages = Math.max(1, Math.ceil(sortedFilteredCampsites.length / itemsPerPage));
+  const currentCampsites = sortedFilteredCampsites.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const handleSelectCamp = (camp) => {
     if (!camp) return;
@@ -296,9 +342,16 @@ export default function Home() {
             <label className="block text-sm font-bold text-slate-700 mb-2">📍 地區 / 縣市：</label>
             <input type="text" placeholder="例如：新竹 或 五峰鄉" value={searchRegion} onChange={(e) => setSearchRegion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
           </div>
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">🔑 VIP 金鑰 (選填)：</label>
-            <input type="password" placeholder="輸入 Key 以提高次數" value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+          <div className="flex flex-col justify-end">
+            {apiKey === 'camp888' ? (
+              <div className="bg-gradient-to-r from-amber-200 to-yellow-400 text-amber-900 font-bold p-3 rounded-xl shadow-sm border border-amber-300 flex items-center justify-center gap-2 h-[50px]">
+                👑 VIP 模式已啟用
+              </div>
+            ) : (
+              <div className="bg-slate-100 text-slate-500 text-xs p-3 rounded-xl border border-slate-200 flex flex-col justify-center h-[50px]">
+                💡 想獲得更豐富的功能與進階使用？請與網頁設計人員聯絡！
+              </div>
+            )}
           </div>
           <div className="flex items-end">
             <button 
@@ -353,9 +406,22 @@ export default function Home() {
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col justify-center">
             <div className="flex justify-between items-center mb-2">
               <label className="text-sm font-bold text-slate-700">⏳ {FIXED_ORIGINS[originKey]} 車程上限：</label>
-              <span className="text-sm font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">{maxDriveTime} 分鐘</span>
+              <span className="text-sm font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
+                {maxDriveTime === (apiKey === 'camp888' ? 300 : 60) ? `${maxDriveTime} 分鐘 (無上限)` : `${maxDriveTime} 分鐘`}
+              </span>
             </div>
-            <input type="range" min="20" max="300" step="10" value={maxDriveTime} onChange={(e) => setMaxDriveTime(Number(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 mt-3" />
+            <input 
+              type="range" 
+              min="20" 
+              max={apiKey === 'camp888' ? 300 : 60} 
+              step="10" 
+              value={maxDriveTime} 
+              onChange={(e) => setMaxDriveTime(Number(e.target.value))} 
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 mt-3" 
+            />
+            {apiKey !== 'camp888' && (
+              <p className="text-xs text-slate-500 mt-2">💡 一般使用者最高限制 1 小時 (60 分鐘)，且僅能查看出發地所在縣市之營地。</p>
+            )}
           </div>
         </div>
       </div>
@@ -506,63 +572,88 @@ export default function Home() {
           😔 沒有找到符合篩選條件的營地。
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          {sortedFilteredCampsites.map((site) => {
-            const { mins, dist } = getCampDriveInfo(site);
-            const isBookmarked = bookmarkedCamps.has(site.id);
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {currentCampsites.map((site) => {
+              const { mins, dist } = getCampDriveInfo(site);
+              const isBookmarked = bookmarkedCamps.has(site.id);
 
-            return (
-              <div
-                key={site.id}
-                className={`bg-white p-6 rounded-2xl shadow-sm border transition-all flex flex-col justify-between ${
-                  selectedCamp?.id === site.id 
-                    ? 'border-2 border-amber-500 shadow-md ring-2 ring-amber-200' 
-                    : isBookmarked ? 'border-2 border-rose-300 bg-rose-50' : 'border-slate-200 hover:shadow-md'
-                }`}
+              return (
+                <div
+                  key={site.id}
+                  className={`bg-white p-6 rounded-2xl shadow-sm border transition-all flex flex-col justify-between ${
+                    selectedCamp?.id === site.id 
+                      ? 'border-2 border-amber-500 shadow-md ring-2 ring-amber-200' 
+                      : isBookmarked ? 'border-2 border-rose-300 bg-rose-50' : 'border-slate-200 hover:shadow-md'
+                  }`}
+                >
+                  <div>
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900">{site.name}</h2>
+                        {site.altitude && <span className="inline-block mt-1 text-xs bg-sky-50 text-sky-700 font-semibold px-2.5 py-0.5 rounded-md border border-sky-100">⛰️ {site.altitude}</span>}
+                      </div>
+                      <button 
+                        onClick={(e) => toggleBookmark(e, site.id)}
+                        className={`text-2xl transition-transform hover:scale-110 ${isBookmarked ? 'text-rose-500' : 'text-slate-300 grayscale opacity-50'}`}
+                        title="加入/移除待確認名單"
+                      >
+                        {isBookmarked ? '📌' : '➕'}
+                      </button>
+                    </div>
+                    <p className="text-sm text-slate-600 mb-3">⭐ Google 評分: {site.rating || 4.5} | 🚗 車程: {mins ? `約 ${mins} 分鐘` : '確認中'} ({dist})</p>
+                    <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
+                      <span>📞 電話: <strong className="text-blue-600">{site.phone || '請洽官網/粉絲專頁'}</strong></span>
+                    </div>
+                    {((site.pros && site.pros.length > 0) || (site.cons && site.cons.length > 0)) && (
+                      <div className="space-y-2 pt-2 border-t border-slate-100 mb-2">
+                        {site.pros && site.pros.length > 0 && (
+                          <div>
+                            <span className="text-xs font-bold text-slate-500 block mb-1">👍 AI 整理優點：</span>
+                            <div className="flex flex-wrap gap-1.5">{site.pros.map((pro, i) => <span key={i} className="text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-0.5 rounded-md border border-emerald-100">{pro}</span>)}</div>
+                          </div>
+                        )}
+                        {site.cons && site.cons.length > 0 && (
+                          <div className="mt-1">
+                            <span className="text-xs font-bold text-slate-500 block mb-1">👎 AI 整理缺點：</span>
+                            <div className="flex flex-wrap gap-1.5">{site.cons.map((con, i) => <span key={i} className="text-xs bg-rose-50 text-rose-700 font-medium px-2.5 py-0.5 rounded-md border border-rose-100">{con}</span>)}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="pt-3 border-t border-slate-100 mt-2">
+                    <span className="text-xs font-bold text-slate-500 block mb-1">🔗 1秒直達價目與訂位專區：</span>
+                    {renderActionButtons(site)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 分頁控制列 */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-4 mb-8">
+              <button 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 shadow-sm transition-colors"
               >
-                <div>
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-900">{site.name}</h2>
-                      {site.altitude && <span className="inline-block mt-1 text-xs bg-sky-50 text-sky-700 font-semibold px-2.5 py-0.5 rounded-md border border-sky-100">⛰️ {site.altitude}</span>}
-                    </div>
-                    <button 
-                      onClick={(e) => toggleBookmark(e, site.id)}
-                      className={`text-2xl transition-transform hover:scale-110 ${isBookmarked ? 'text-rose-500' : 'text-slate-300 grayscale opacity-50'}`}
-                      title="加入/移除待確認名單"
-                    >
-                      {isBookmarked ? '📌' : '➕'}
-                    </button>
-                  </div>
-                  <p className="text-sm text-slate-600 mb-3">⭐ Google 評分: {site.rating || 4.5} | 🚗 車程: {mins ? `約 ${mins} 分鐘` : '確認中'} ({dist})</p>
-                  <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
-                    <span>📞 電話: <strong className="text-blue-600">{site.phone || '請洽官網/粉絲專頁'}</strong></span>
-                  </div>
-                  {((site.pros && site.pros.length > 0) || (site.cons && site.cons.length > 0)) && (
-                    <div className="space-y-2 pt-2 border-t border-slate-100 mb-2">
-                      {site.pros && site.pros.length > 0 && (
-                        <div>
-                          <span className="text-xs font-bold text-slate-500 block mb-1">👍 AI 整理優點：</span>
-                          <div className="flex flex-wrap gap-1.5">{site.pros.map((pro, i) => <span key={i} className="text-xs bg-emerald-50 text-emerald-700 font-medium px-2.5 py-0.5 rounded-md border border-emerald-100">{pro}</span>)}</div>
-                        </div>
-                      )}
-                      {site.cons && site.cons.length > 0 && (
-                        <div className="mt-1">
-                          <span className="text-xs font-bold text-slate-500 block mb-1">👎 AI 整理缺點：</span>
-                          <div className="flex flex-wrap gap-1.5">{site.cons.map((con, i) => <span key={i} className="text-xs bg-rose-50 text-rose-700 font-medium px-2.5 py-0.5 rounded-md border border-rose-100">{con}</span>)}</div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="pt-3 border-t border-slate-100 mt-2">
-                  <span className="text-xs font-bold text-slate-500 block mb-1">🔗 1秒直達價目與訂位專區：</span>
-                  {renderActionButtons(site)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                ◀ 上一頁
+              </button>
+              <span className="text-sm font-bold text-slate-600">
+                第 {currentPage} 頁 / 共 {totalPages} 頁
+              </span>
+              <button 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 shadow-sm transition-colors"
+              >
+                下一頁 ▶
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* 📋 下方營地快速對照表 */}
@@ -610,4 +701,3 @@ export default function Home() {
     </main>
   );
 }
-
