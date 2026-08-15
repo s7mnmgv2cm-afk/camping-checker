@@ -51,7 +51,7 @@ const STRICT_ORIGIN_REGION_MAP = {
 export default function Home() {
   const [campsites, setCampsites] = useState([]);
   const [originKey, setOriginKey] = useState('tainan');
-  const [maxDriveTime, setMaxDriveTime] = useState(120);
+  const [maxDriveTime, setMaxDriveTime] = useState(90);
   const [minAltitude, setMinAltitude] = useState(0);
   const [maxAltitude, setMaxAltitude] = useState(2500);
   const [mapMode, setMapMode] = useState('2d');
@@ -221,13 +221,9 @@ export default function Home() {
   const renderActionButtons = (site) => {
     const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`;
     
-    // Google AI 專屬 URL
-    const googleAiUrl = new URL("https://www.google.com/search");
-    const queryStr = `${site.name} ${site.region || ''} ${site.location || ''} 露營資訊`.trim();
-    googleAiUrl.searchParams.set("q", queryStr);
-    googleAiUrl.searchParams.set("udm", "50");
-    googleAiUrl.searchParams.set("hl", "zh-TW");
-    const aiLink = googleAiUrl.toString();
+    // 🤖 讓使用者點擊按鈕直接進入 Gemini 得到營地評價
+    const promptText = `請根據網路上最新的真實評價，告訴我「${site.name} ${site.region || ''} ${site.location || ''}」這間露營區的：\n1. 衛浴設備的好壞與乾淨程度\n2. 硬地營位（或草地/雨棚）的實際狀況\n3. 綜合優缺點\n\n⚠️ 請務必基於真實網友回饋，不可捏造資訊。`;
+    const aiLink = `https://gemini.google.com/app?q=${encodeURIComponent(promptText)}`;
 
     let btns = [];
     
@@ -414,20 +410,20 @@ export default function Home() {
             <div className="flex justify-between items-center mb-2">
               <label className="text-sm font-bold text-slate-700">⏳ {FIXED_ORIGINS[originKey]} 車程上限：</label>
               <span className="text-sm font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
-                {maxDriveTime === (apiKey === 'camp888' ? 300 : 60) ? `${maxDriveTime} 分鐘 (無上限)` : `${maxDriveTime} 分鐘`}
+                {maxDriveTime === (apiKey === 'camp888' ? 300 : 90) ? `${maxDriveTime} 分鐘 (無上限)` : `${maxDriveTime} 分鐘`}
               </span>
             </div>
             <input 
               type="range" 
               min="20" 
-              max={apiKey === 'camp888' ? 300 : 60} 
+              max={apiKey === 'camp888' ? 300 : 90} 
               step="10" 
               value={maxDriveTime} 
               onChange={(e) => setMaxDriveTime(Number(e.target.value))} 
               className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 mt-3" 
             />
             {apiKey !== 'camp888' && (
-              <p className="text-xs text-slate-500 mt-2">💡 一般使用者最高限制 1 小時 (60 分鐘)，且僅能查看出發地所在縣市之營地。</p>
+              <p className="text-xs text-slate-500 mt-2">💡 一般使用者最高限制 1.5 小時 (90 分鐘)，且僅能查看出發地所在縣市之營地。</p>
             )}
           </div>
         </div>
