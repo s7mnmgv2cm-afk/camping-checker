@@ -81,8 +81,8 @@ export async function GET(request) {
       query = query.or(`region.ilike.%${searchRegion}%,location.ilike.%${searchRegion}%`);
     }
 
-    // 預設最多回傳 100 筆，避免一次傳輸太大
-    query = query.limit(100);
+    // 將數量限制放寬至 1000 筆，確保前端地圖能獲得完整資料進行車程篩選
+    query = query.limit(1000);
 
     const { data: campsites, error } = await query;
 
