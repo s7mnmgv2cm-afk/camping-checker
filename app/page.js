@@ -89,6 +89,8 @@ export default function Home() {
       if (searchName) params.append('searchName', searchName);
       if (searchRegion) params.append('searchRegion', searchRegion);
       if (apiKey) params.append('key', apiKey);
+      if (originKey) params.append('originKey', originKey);
+
       
       const res = await fetch(`/api/campsites?${params.toString()}`);
       if (!res.ok) {
@@ -108,10 +110,15 @@ export default function Home() {
   };
 
   const parseAltitudeNum = (altStr) => {
-    if (!altStr) return 0;
-    const match = altStr.match(/\d+/);
-    return match ? parseInt(match[0], 10) : 0;
+    if (!altStr || altStr === '海拔未知') return 0;
+    const match = altStr.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
   };
+
+  // 當選擇的出發地改變時，自動重新向後端請求資料（因為後端會根據出發地限制回傳範圍）
+  useEffect(() => {
+    handleSearch();
+  }, [originKey]);
 
   const parseDistanceNum = (distStr) => {
     if (!distStr) return 0;
