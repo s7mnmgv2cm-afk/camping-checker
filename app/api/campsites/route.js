@@ -24,8 +24,23 @@ export async function GET(request) {
     const originKey = searchParams.get('originKey') || '';
     const key = searchParams.get('key') || '';
     
+    // 簡易防機器人：檢查 User-Agent
+    const userAgent = (request.headers.get('user-agent') || '').toLowerCase();
+    const isBot = !userAgent || userAgent.includes('curl') || userAgent.includes('python') || userAgent.includes('bot') || userAgent.includes('spider') || userAgent.includes('postman') || userAgent.includes('wget');
+    if (isBot) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // 判斷金鑰是否正確
     const isVip = key === process.env.SEARCH_VIP_KEY;
+    
+    // 強制 originKey 驗證 (非 VIP)
+    if (!isVip) {
+      if (!originKey || !STRICT_ORIGIN_REGION_MAP[originKey]) {
+        return NextResponse.json({ error: 'Bad Request: Missing or invalid originKey' }, { status: 400 });
+      }
+    }
+
     const limit = isVip ? 20 : 3;
     
     // 取得 IP 或識別碼
