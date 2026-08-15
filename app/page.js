@@ -631,28 +631,6 @@ export default function Home() {
             })}
           </div>
 
-          {/* 分頁控制列 */}
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-4 mb-8">
-              <button 
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 shadow-sm transition-colors"
-              >
-                ◀ 上一頁
-              </button>
-              <span className="text-sm font-bold text-slate-600">
-                第 {currentPage} 頁 / 共 {totalPages} 頁
-              </span>
-              <button 
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 shadow-sm transition-colors"
-              >
-                下一頁 ▶
-              </button>
-            </div>
-          )}
         </>
       )}
 
@@ -672,7 +650,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedFilteredCampsites.map((site) => {
+              {currentCampsites.map((site) => {
                 const { mins, dist } = getCampDriveInfo(site);
                 const isBookmarked = bookmarkedCamps.has(site.id);
                 return (
@@ -698,6 +676,35 @@ export default function Home() {
           </table>
         </div>
       </div>
+
+      {/* 分頁控制列 (移至最下方) */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4 mb-12">
+          <button 
+            onClick={() => {
+              setCurrentPage(p => Math.max(1, p - 1));
+              window.scrollTo({ top: document.body.scrollHeight / 2, behavior: 'smooth' });
+            }}
+            disabled={currentPage === 1}
+            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 shadow-sm transition-colors"
+          >
+            ◀ 上一頁
+          </button>
+          <span className="text-sm font-bold text-slate-600">
+            第 {currentPage} 頁 / 共 {totalPages} 頁
+          </span>
+          <button 
+            onClick={() => {
+              setCurrentPage(p => Math.min(totalPages, p + 1));
+              window.scrollTo({ top: document.body.scrollHeight / 2, behavior: 'smooth' });
+            }}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 shadow-sm transition-colors"
+          >
+            下一頁 ▶
+          </button>
+        </div>
+      )}
     </main>
   );
 }
