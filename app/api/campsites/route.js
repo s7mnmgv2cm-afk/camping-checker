@@ -110,7 +110,7 @@ export async function GET(request) {
       if (originKey) {
         const allowedRegions = STRICT_ORIGIN_REGION_MAP[originKey] || [];
         if (allowedRegions.length > 0) {
-          const orConditions = allowedRegions.map(r => `region.ilike.%${r}%,location.ilike.%${r}%,address.ilike.%${r}%`).join(',');
+          const orConditions = allowedRegions.map(r => `region.ilike.%${r}%,location.ilike.%${r}%`).join(',');
           query = query.or(orConditions);
         }
       }
