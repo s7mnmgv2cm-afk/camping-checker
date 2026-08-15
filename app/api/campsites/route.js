@@ -3,6 +3,14 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const STRICT_ORIGIN_REGION_MAP = {
+  tainan: ['台南'],
+  hsinchu: ['新竹'],
+  taipei: ['台北', '新北'],
+  taichung: ['台中']
+};
+
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 // 使用 SERVICE_ROLE_KEY 以便讀寫 rate_limits 表 (繞過 RLS 或作為管理員)
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,6 +21,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const searchName = searchParams.get('searchName') || '';
     const searchRegion = searchParams.get('searchRegion') || '';
+    const originKey = searchParams.get('originKey') || '';
     const key = searchParams.get('key') || '';
     
     // 判斷金鑰是否正確
@@ -81,8 +90,21 @@ export async function GET(request) {
       query = query.or(`region.ilike.%${searchRegion}%,location.ilike.%${searchRegion}%`);
     }
 
-    // 將數量限制放寬至 1000 筆，確保前端地圖能獲得完整資料進行車程篩選
-    query = query.limit(1000);
+    // 🔒 真正的後端防盜：如果沒有 VIP 金鑰，強制啟動嚴格過濾
+    if (!isVip) {
+      if (originKey) {
+        const allowedRegions = STRICT_ORIGIN_REGION_MAP[originKey] || [];
+        if (allowedRegions.length > 0) {
+          const orConditions = allowedRegions.map(r => `region.ilike.%${r}%,location.ilike.%${r}%,address.ilike.%${r}%`).join(',');
+          query = query.or(orConditions);
+        }
+      }
+      // 限制回傳數量為 50 筆
+      query = query.limit(50);
+    } else {
+      // VIP 放寬至 1000 筆，確保前端地圖能獲得完整資料進行全台車程篩選
+      query = query.limit(1000);
+    }
 
     const { data: campsites, error } = await query;
 
