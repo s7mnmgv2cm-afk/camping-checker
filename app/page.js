@@ -1,4 +1,4 @@
-'use client';
+`'use client';
 
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
@@ -278,7 +278,7 @@ export default function Home() {
     const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`;
     
     // 🤖 讓使用者點擊按鈕直接進入 Gemini 得到營地評價
-    const promptText = `請根據網路上最新的真實評價，告訴我「${site.name} ${site.region || ''} ${site.location || ''}」這間露營區的：\n1. 衛浴設備的好壞與乾淨程度\n2. 硬地營位（或草地/雨棚）的實際狀況\n3. 綜合優缺點\n\n⚠️ 請務必基於真實網友回饋，不可捏造資訊。`;
+    const promptText = `請根據網路上最新的真實評價，告訴我「${site.name} ${site.region || ''} ${site.location || ''}」這間露營區的：\n1. 衛浴設備的好壞與乾淨程度\n2. 營位（或草地/雨棚）的實際狀況\n3. 營地大小\n4. 適合小孩玩嗎?\n5. 可以生火嗎?\n6. 未來三個月此營區氣候狀態, 早上和夜間溫度\n7. 綜合優缺點\n\n⚠️ 請務必基於真實網友回饋，不可捏造資訊。`;
     const aiLink = `https://gemini.google.com/app?q=${encodeURIComponent(promptText)}`;
 
     let btns = [];
