@@ -1,4 +1,4 @@
-`'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
@@ -97,8 +97,8 @@ export default function Home() {
       if (apiKey) params.append('key', apiKey);
       if (originKey) params.append('originKey', originKey);
 
-      
-      const res = await fetch(`/api/campsites?${params.toString()}`);
+      const queryString = params.toString();
+      const res = await fetch('/api/campsites?' + queryString);
       if (!res.ok) {
         const errorData = await res.json();
         alert(errorData.error || '搜尋失敗，請稍後再試。');
