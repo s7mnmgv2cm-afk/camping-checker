@@ -98,7 +98,12 @@ export default function Home() {
       if (originKey) params.append('originKey', originKey);
 
       const queryString = params.toString();
-      const res = await fetch('/api/campsites?' + queryString);
+      const res = await fetch('/api/campsites?' + queryString, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        }
+      });
       if (!res.ok) {
         const errorData = await res.json();
         alert(errorData.error || '搜尋失敗，請稍後再試。');
@@ -200,9 +205,22 @@ export default function Home() {
       originRegionOk = allowedRegions.some(r => regionText.includes(r));
     }
 
+    // 🏷️ 標籤智慧過濾 (使用同義詞擴充比對)
+    const TAG_SYNONYMS = {
+      '大草皮': ['大草皮', '草皮', '草地', '草坪', '寬廣的空間'],
+      '少帳包區': ['少帳包區', '包區', '小區', '小包區', '隱私', '獨立營位'],
+      '雲海': ['雲海', '大景', '絕美景觀', '山景', '視野'],
+      '夜景': ['夜景', '百萬夜景', '星空', '星星', '夜間景觀', '俯瞰'],
+      '乾濕分離': ['乾濕分離', '乾溼分離', '舒適衛浴', '五星級衛浴', '乾淨衛浴'],
+      '無小黑蚊': ['無小黑蚊', '沒蚊子', '蚊蟲較少', '蚊蟲少', '沒有蚊蟲'],
+      '有餐點外送服務': ['外送', 'foodpanda', 'uber eats', '熊貓', '叫外送', '外送服務', '叫餐']
+    };
+
     const tagsOk = selectedTags.size === 0 || Array.from(selectedTags).every(tag => {
       const textToSearch = `${site.name || ''} ${(site.pros || []).join(' ')} ${(site.cons || []).join(' ')}`.toLowerCase();
-      return textToSearch.includes(tag.toLowerCase());
+      // 如果標籤有定義同義詞，只要命中任何一個同義詞即可
+      const synonyms = TAG_SYNONYMS[tag] || [tag];
+      return synonyms.some(synonym => textToSearch.includes(synonym.toLowerCase()));
     });
 
     return driveOk && altOk && nameMatch && regionMatch && bookmarkOk && originRegionOk && tagsOk;
