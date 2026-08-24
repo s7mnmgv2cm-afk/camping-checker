@@ -67,7 +67,6 @@ export default function Home() {
   // 🎯 搜尋與篩選狀態
   const [searchName, setSearchName] = useState('');
   const [searchRegion, setSearchRegion] = useState('');
-  const [apiKey, setApiKey] = useState(''); // 隱藏的 VIP 金鑰狀態
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
   
@@ -80,21 +79,12 @@ export default function Home() {
   const [showOnlySelectedMap, setShowOnlySelectedMap] = useState(false);
 
   const handleSearch = async () => {
-    // 🎁 彩蛋：如果在名稱輸入 VIP 密碼，解鎖隱藏模式
-    if (searchName.trim().toLowerCase() === 'camp888') {
-      setApiKey('camp888');
-      setSearchName('');
-      alert('🎉 VIP 模式已解鎖！您現在可以使用無限制的車程搜尋，且享有更高搜尋額度！');
-      return;
-    }
-
     setLoading(true);
     setCurrentPage(1); // 搜尋時重置頁碼
     try {
       const params = new URLSearchParams();
       if (searchName) params.append('searchName', searchName);
       if (searchRegion) params.append('searchRegion', searchRegion);
-      if (apiKey) params.append('key', apiKey);
       if (originKey) params.append('originKey', originKey);
 
       const queryString = params.toString();
@@ -169,7 +159,7 @@ export default function Home() {
     if (preset === 'summer') {
       setMinAltitude(800);
       setMaxAltitude(2500);
-      setMaxDriveTime(apiKey === 'camp888' ? 300 : 90);
+      setMaxDriveTime(300);
     } else if (preset === 'family') {
       setMinAltitude(0);
       setMaxAltitude(2500);
@@ -178,12 +168,12 @@ export default function Home() {
     } else if (preset === 'view') {
       setMinAltitude(500);
       setMaxAltitude(2500);
-      setMaxDriveTime(apiKey === 'camp888' ? 300 : 90);
+      setMaxDriveTime(300);
       setSelectedTags(new Set(['雲海']));
     } else if (preset === 'reset') {
       setMinAltitude(0);
       setMaxAltitude(2500);
-      setMaxDriveTime(apiKey === 'camp888' ? 300 : 90);
+      setMaxDriveTime(300);
     }
   };
 
@@ -198,12 +188,8 @@ export default function Home() {
     const regionMatch = searchRegion ? regionText.includes(searchRegion.toLowerCase()) : true;
     const bookmarkOk = showOnlyBookmarked ? bookmarkedCamps.has(site.id) : true;
 
-    // 🔒 非 VIP 只能搜尋跟出發地同縣市
+    // 🔒 解鎖限制，允許搜尋所有縣市
     let originRegionOk = true;
-    if (apiKey !== 'camp888') {
-      const allowedRegions = STRICT_ORIGIN_REGION_MAP[originKey] || [];
-      originRegionOk = allowedRegions.some(r => regionText.includes(r));
-    }
 
     // 🏷️ 標籤智慧過濾 (使用同義詞擴充比對)
     const TAG_SYNONYMS = {
@@ -454,15 +440,9 @@ export default function Home() {
             <input type="text" placeholder="例如：新竹 或 五峰鄉" value={searchRegion} onChange={(e) => setSearchRegion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="w-full bg-slate-50 border border-slate-300 text-slate-800 text-base rounded-xl p-3 font-semibold outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
           </div>
           <div className="flex flex-col justify-end">
-            {apiKey === 'camp888' ? (
-              <div className="bg-gradient-to-r from-amber-200 to-yellow-400 text-amber-900 font-bold p-3 rounded-xl shadow-sm border border-amber-300 flex items-center justify-center gap-2 h-[50px]">
-                👑 VIP 模式已啟用
-              </div>
-            ) : (
-              <div className="bg-slate-100 text-slate-500 text-xs p-3 rounded-xl border border-slate-200 flex flex-col justify-center h-[50px]">
-                💡 想獲得更豐富的功能與進階使用？請與網頁設計人員聯絡！
-              </div>
-            )}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-800 text-xs p-3 rounded-xl border border-indigo-100 flex flex-col justify-center h-[50px]">
+              💡 享受無限制車程與跨縣市探索！
+            </div>
           </div>
           <div className="flex items-end">
             <button 
@@ -518,21 +498,18 @@ export default function Home() {
             <div className="flex justify-between items-center mb-2">
               <label className="text-sm font-bold text-slate-700">⏳ {FIXED_ORIGINS[originKey]} 車程上限：</label>
               <span className="text-sm font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
-                {maxDriveTime === (apiKey === 'camp888' ? 300 : 90) ? `${maxDriveTime} 分鐘 (無上限)` : `${maxDriveTime} 分鐘`}
+                {maxDriveTime === 300 ? `${maxDriveTime} 分鐘 (無上限)` : `${maxDriveTime} 分鐘`}
               </span>
             </div>
             <input 
               type="range" 
               min="20" 
-              max={apiKey === 'camp888' ? 300 : 90} 
+              max={300} 
               step="10" 
               value={maxDriveTime} 
               onChange={(e) => setMaxDriveTime(Number(e.target.value))} 
               className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 mt-3" 
             />
-            {apiKey !== 'camp888' && (
-              <p className="text-xs text-slate-500 mt-2">💡 一般使用者最高限制 1.5 小時 (90 分鐘)，且僅能查看出發地所在縣市之營地。</p>
-            )}
           </div>
         </div>
       </div>
