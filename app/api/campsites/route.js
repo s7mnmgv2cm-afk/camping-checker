@@ -22,7 +22,6 @@ export async function GET(request) {
     const searchName = searchParams.get('searchName') || '';
     const searchRegion = searchParams.get('searchRegion') || '';
     const originKey = searchParams.get('originKey') || '';
-    const key = searchParams.get('key') || '';
     
     // 簡易防機器人：檢查 User-Agent
     const userAgent = (request.headers.get('user-agent') || '').toLowerCase();
@@ -31,21 +30,11 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 判斷金鑰是否正確
-    const isVip = key === process.env.SEARCH_VIP_KEY;
-    
-    // 強制 originKey 驗證 (非 VIP)
-    if (!isVip) {
-      if (!originKey || !STRICT_ORIGIN_REGION_MAP[originKey]) {
-        return NextResponse.json({ error: 'Bad Request: Missing or invalid originKey' }, { status: 400 });
-      }
-    }
-
-    const limit = isVip ? 20 : 3;
+    const limit = 20; // 統一放寬額度
     
     // 取得 IP 或識別碼
     const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown-ip';
-    const identifier = isVip ? `vip-${key}` : `ip-${ip}`;
+    const identifier = `ip-${ip}`;
 
     // 實作 Rate Limiting
     const { data: limitData, error: limitError } = await supabase
@@ -83,7 +72,7 @@ export async function GET(request) {
         // 一分鐘內
         if (limitData.count >= limit) {
           return NextResponse.json(
-            { error: '太多次搜尋請求。請稍後再試，或輸入有效 VIP 金鑰以獲得更高額度。' },
+            { error: '太多次搜尋請求，請稍後再試。' },
             { status: 429 }
           );
         }
@@ -105,21 +94,8 @@ export async function GET(request) {
       query = query.or(`region.ilike.%${searchRegion}%,location.ilike.%${searchRegion}%`);
     }
 
-    // 🔒 真正的後端防盜：如果沒有 VIP 金鑰，強制啟動嚴格過濾
-    if (!isVip) {
-      if (originKey) {
-        const allowedRegions = STRICT_ORIGIN_REGION_MAP[originKey] || [];
-        if (allowedRegions.length > 0) {
-          const orConditions = allowedRegions.map(r => `region.ilike.%${r}%,location.ilike.%${r}%`).join(',');
-          query = query.or(orConditions);
-        }
-      }
-      // 限制回傳數量為 50 筆
-      query = query.limit(50);
-    } else {
-      // VIP 放寬至 1000 筆，確保前端地圖能獲得完整資料進行全台車程篩選
-      query = query.limit(1000);
-    }
+    // 統一放寬至 1000 筆，確保前端地圖能獲得完整資料進行全台車程篩選
+    query = query.limit(1000);
 
     const { data: campsites, error } = await query;
 
