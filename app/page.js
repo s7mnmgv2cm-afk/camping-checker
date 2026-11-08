@@ -36,22 +36,6 @@ const FIXED_ORIGINS = {
   taichung: '台中高鐵站'
 };
 
-// 📍 出發點對應的限制縣市 (非 VIP 專用)
-const ORIGIN_REGION_MAP = {
-  tainan: ['台南'],
-  hsinchu: ['新竹'],
-  taipei: ['台北', '新北'],
-  taichung: ['台中', '南投', '苗栗', '彰化'] // 台中附近也可以開放一點點，或者嚴格只給台中。嚴格遵守 user：同縣市
-};
-
-// 修正：嚴格遵守「同縣市」
-const STRICT_ORIGIN_REGION_MAP = {
-  tainan: ['台南'],
-  hsinchu: ['新竹'],
-  taipei: ['台北', '新北'],
-  taichung: ['台中']
-};
-
 const POPULAR_TAGS = ['大草皮', '少帳包區', '雲海', '夜景', '乾濕分離', '無小黑蚊', '有餐點外送服務'];
 
 export default function Home() {
@@ -81,7 +65,6 @@ export default function Home() {
   // ❤️ 我的最愛營地 狀態 (支援 localStorage 持久化儲存)
   const [favoriteCamps, setFavoriteCamps] = useState(new Set());
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
-  const [showOnlyFavoriteMap, setShowOnlyFavoriteMap] = useState(false);
 
   // 📝 露營註解與紀錄 (時間、天氣、評價、注意事項)
   const [userNotes, setUserNotes] = useState({});
@@ -96,11 +79,16 @@ export default function Home() {
 
   // 📱 AR 實境陀螺儀搭帳方位指引 Modal 狀態
   const [arModalCamp, setArModalCamp] = useState(null);
+  const [arModalWind, setArModalWind] = useState(null);
   const [showArGuide, setShowArGuide] = useState(true);
+
+  const handleOpenAR = (camp, windData) => {
+    setArModalCamp(camp);
+    setArModalWind(windData || null);
+  };
 
   // 🎯 被選擇的營地物件
   const [selectedCamp, setSelectedCamp] = useState(null);
-  const [showOnlySelectedMap, setShowOnlySelectedMap] = useState(false);
 
   // 讀取本機儲存的「我的最愛」與「露營註解」
   useEffect(() => {
@@ -294,20 +282,6 @@ export default function Home() {
     const favOk = showOnlyFavorites ? favoriteCamps.has(site.id) : true;
     const notesOk = showOnlyWithNotes ? (userNotes[site.id] && userNotes[site.id].length > 0) : true;
 
-    // 🔒 解鎖限制，允許搜尋所有縣市
-    let originRegionOk = true;
-
-    // 🏷️ 標籤智慧過濾 (使用同義詞擴充比對)
-    const TAG_SYNONYMS = {
-      '大草皮': ['大草皮', '草皮', '草地', '草坪', '寬廣的空間'],
-      '少帳包區': ['少帳包區', '包區', '小區', '小包區', '隱私', '獨立營位'],
-      '雲海': ['雲海', '大景', '絕美景觀', '山景', '視野'],
-      '夜景': ['夜景', '百萬夜景', '星空', '星星', '夜間景觀', '俯瞰'],
-      '乾濕分離': ['乾濕分離', '乾溼分離', '舒適衛浴', '五星級衛浴', '乾淨衛浴'],
-      '無小黑蚊': ['無小黑蚊', '沒蚊子', '蚊蟲較少', '蚊蟲少', '沒有蚊蟲'],
-      '有餐點外送服務': ['外送', 'foodpanda', 'uber eats', '熊貓', '叫外送', '外送服務', '叫餐']
-    };
-
     const tagsOk = selectedTags.size === 0 || Array.from(selectedTags).every(tag => {
       const textToSearch = `${site.name || ''} ${(site.pros || []).join(' ')} ${(site.cons || []).join(' ')}`.toLowerCase();
       // 如果標籤有定義同義詞，只要命中任何一個同義詞即可
@@ -315,7 +289,7 @@ export default function Home() {
       return synonyms.some(synonym => textToSearch.includes(synonym.toLowerCase()));
     });
 
-    return driveOk && altOk && nameMatch && regionMatch && bookmarkOk && favOk && notesOk && originRegionOk && tagsOk;
+    return driveOk && altOk && nameMatch && regionMatch && bookmarkOk && favOk && notesOk && tagsOk;
   });
 
   // 當過濾條件改變時，自動回到第一頁
@@ -399,9 +373,7 @@ export default function Home() {
 
   const renderActionButtons = (site) => {
     const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.name)}`;
-    const originName = FIXED_ORIGINS[originKey] || '台南安平區';
-    const originShort = originKey === 'tainan' ? '台南' : originKey === 'hsinchu' ? '新竹' : originKey === 'taipei' ? '台北' : '台中';
-    const routePlanUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originName)}&destination=${encodeURIComponent(site.name)}&travelmode=driving`;
+    // 不給起點：由 Google Maps 自動偵測使用者所在 GPS 位置，一鍵開啟語音路線導航
     const gpsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(site.name)}&travelmode=driving`;
     
     // 🤖 讓使用者點擊按鈕直接進入 Google Search AI 總結
@@ -473,39 +445,72 @@ export default function Home() {
 
     return (
       <div className="grid grid-cols-2 gap-2 mt-3 w-full">
-        {/* 訂位按鈕 (優先最醒目) */}
-        {btns}
+        {/* 訂位按鈕 (優先最醒目，佔滿兩欄) */}
+        <div className="col-span-2">
+          {btns}
+        </div>
 
-        {/* 🚗 行車路徑規劃 (從所選出發地) */}
-        <a
-          href={routePlanUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
-          title={`使用 Google Maps 規劃從 [${originName}] 開車到營地的最佳路線`}
-        >
-          🚗 行車規劃 (從{originShort})
-        </a>
-
-        {/* 🧭 即時 GPS 導航 */}
+        {/* 🧭 即時行車導航 (自動抓取目前 GPS 位置) */}
         <a
           href={gpsNavUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
-          title="開啟 Google Maps 即時開啟導航 (以您目前所在位置為起點)"
+          className="col-span-2 sm:col-span-1 text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+          title="開啟 Google Maps，自動抓取您目前 GPS 位置直接啟動語音導航"
         >
-          🧭 即時 GPS 導航
+          <span>🧭</span> Google 地圖導航 (GPS)
         </a>
 
         {/* Google AI 營地評價 */}
-        <a href={aiLink} target="_blank" rel="noopener noreferrer" className="text-center bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
-          🤖 AI 評價摘要
+        <a 
+          href={aiLink} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="col-span-2 sm:col-span-1 text-center bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-2 px-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+        >
+          <span>🤖</span> AI 評價摘要
         </a>
+      </div>
+    );
+  };
 
-        {/* Google 地圖搜尋 */}
-        <a href={googleMapUrl} target="_blank" rel="noopener noreferrer" className="text-center bg-slate-600 hover:bg-slate-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
-          🗺️ Google 地圖
+  // 📋 表格模式專用的輕量操作按鈕
+  const renderTableActions = (site) => {
+    const gpsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(site.name)}&travelmode=driving`;
+    let bookUrl = null;
+    let bookLabel = '🏕️ 前往訂位';
+    if (site.booking_url) {
+      bookUrl = site.booking_url.split('\n')[0].trim();
+      if (bookUrl.includes('icamping')) bookLabel = '🏕️ 愛露營';
+      else if (bookUrl.includes('easycamp')) bookLabel = '🏕️ 露營樂';
+    } else if (site.booking_type === 'line' && site.line_id) {
+      bookUrl = `https://line.me/R/ti/p/${site.line_id.replace('@', '%40')}`;
+      bookLabel = '💬 加 LINE';
+    } else if (site.phone) {
+      bookUrl = `tel:${site.phone}`;
+      bookLabel = `📞 ${site.phone}`;
+    } else {
+      bookUrl = `https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營 預約')}`;
+      bookLabel = '🔍 搜尋訂位';
+    }
+
+    return (
+      <div className="flex flex-col gap-1.5 min-w-[120px]">
+        <a
+          href={bookUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors shadow-sm"
+        >
+          {bookLabel}
+        </a>
+        <a
+          href={gpsNavUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+        >
+          🧭 導航地圖
         </a>
       </div>
     );
@@ -744,6 +749,68 @@ export default function Home() {
 
                 </div>
               </div>
+
+              {/* 演算法多目標權衡機制 (Multi-Objective Optimization) */}
+              <div className="pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                  <span className="text-xs font-black text-amber-400 tracking-wider uppercase flex items-center gap-1.5">
+                    ⚖️ 我們的演算法在背景進行了「多目標權衡（Multi-Objective Optimization）」：
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    核心原則：安全抗風 ＞ 遮陽避晨曬 ＞ 景觀視野
+                  </span>
+                </div>
+                
+                <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <table className="w-full text-left text-xs bg-slate-950/70 border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/15 bg-white/5 text-slate-300 font-bold">
+                        <th className="p-2.5 sm:p-3">現場氣候條件</th>
+                        <th className="p-2.5 sm:p-3">系統決策邏輯</th>
+                        <th className="p-2.5 sm:p-3">AR 準心指引建議</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-[11px] sm:text-xs text-slate-200">
+                      <tr>
+                        <td className="p-2.5 sm:p-3 font-semibold text-emerald-300 whitespace-nowrap">
+                          🍃 微風 / 無風時<br />
+                          <span className="text-[10px] text-slate-400 font-mono">風速 &lt; 15 km/h</span>
+                        </td>
+                        <td className="p-2.5 sm:p-3 font-medium text-amber-300">
+                          ☀️ 防晨曬熱醒優先
+                        </td>
+                        <td className="p-2.5 sm:p-3 text-slate-300">
+                          強制引導準心至 <strong className="text-amber-400 font-mono">240°~270° (西南西)</strong>，太陽在帳篷正背後，享受睡到自然醒。
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 sm:p-3 font-semibold text-rose-300 whitespace-nowrap">
+                          💨 強風警戒時<br />
+                          <span className="text-[10px] text-slate-400 font-mono">風速 &gt; 25 km/h</span>
+                        </td>
+                        <td className="p-2.5 sm:p-3 font-medium text-rose-300">
+                          🛡️ 結構抗風安全優先
+                        </td>
+                        <td className="p-2.5 sm:p-3 text-slate-300">
+                          提示長軸平行來風破風；若側向曬太陽，建議將天幕迎風側壓低斜搭（A-Frame）阻擋側風與側光。
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 sm:p-3 font-semibold text-sky-300 whitespace-nowrap">
+                          ⛰️ 一般山區氣候<br />
+                          <span className="text-[10px] text-slate-400 font-mono">風速 15~25 km/h</span>
+                        </td>
+                        <td className="p-2.5 sm:p-3 font-medium text-sky-300">
+                          ⚖️ 兼顧破風與避曬
+                        </td>
+                        <td className="p-2.5 sm:p-3 text-slate-300">
+                          自動抓取風向與日出夾角的中間平衡點（長軸順風、帳門背日），兼顧舒適與安全。
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -866,47 +933,14 @@ export default function Home() {
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8 overflow-hidden flex flex-col">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center z-20 relative flex-wrap gap-2">
-          <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">🗺️ 地圖預覽</span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {favoriteCamps.size > 0 && (
-              <label className="flex items-center gap-1.5 text-xs font-bold text-rose-700 cursor-pointer bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition-colors border border-rose-200">
-                <input 
-                  type="checkbox" 
-                  checked={showOnlyFavoriteMap} 
-                  onChange={(e) => {
-                    setShowOnlyFavoriteMap(e.target.checked);
-                    if (e.target.checked) setShowOnlySelectedMap(false);
-                  }} 
-                  className="w-3.5 h-3.5 accent-rose-600 rounded cursor-pointer" 
-                />
-                ❤️ 僅顯示我的最愛 ({favoriteCamps.size})
-              </label>
-            )}
-            {bookmarkedCamps.size > 0 && (
-              <label className="flex items-center gap-1.5 text-xs font-bold text-amber-700 cursor-pointer bg-amber-50 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg transition-colors border border-amber-200">
-                <input 
-                  type="checkbox" 
-                  checked={showOnlySelectedMap} 
-                  onChange={(e) => {
-                    setShowOnlySelectedMap(e.target.checked);
-                    if (e.target.checked) setShowOnlyFavoriteMap(false);
-                  }} 
-                  className="w-3.5 h-3.5 accent-amber-600 rounded cursor-pointer" 
-                />
-                📌 僅顯示待確認 ({bookmarkedCamps.size})
-              </label>
-            )}
-          </div>
+          <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">🗺️ 地圖分佈預覽</span>
+          <span className="text-xs text-slate-500 font-medium bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm">
+            📍 顯示目前符合條件的 <strong className="text-blue-600 font-mono">{sortedFilteredCampsites.length}</strong> 處營地（與上方篩選條件即時連動）
+          </span>
         </div>
         <div className="h-80 relative z-10 w-full">
           <MapWithNoSSR 
-            campsites={
-              showOnlyFavoriteMap && favoriteCamps.size > 0 
-                ? sortedFilteredCampsites.filter(site => favoriteCamps.has(site.id))
-                : (showOnlySelectedMap && bookmarkedCamps.size > 0 
-                    ? sortedFilteredCampsites.filter(site => bookmarkedCamps.has(site.id)) 
-                    : sortedFilteredCampsites)
-            } 
+            campsites={sortedFilteredCampsites} 
             mapMode={mapMode} 
             onSelectCampsite={handleSelectCamp} 
             selectedCampId={selectedCamp?.id} 
@@ -989,12 +1023,18 @@ export default function Home() {
                     <button onClick={(e) => toggleBookmark(e, selectedCamp.id)} className={`text-sm px-2.5 py-1 rounded-lg border transition-colors ${bookmarkedCamps.has(selectedCamp.id) ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}>
                       {bookmarkedCamps.has(selectedCamp.id) ? '📌 待確認' : '➕ 待確認'}
                     </button>
-                    <button
-                      onClick={() => setActiveNoteCamp(selectedCamp)}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors flex items-center gap-1 shadow-sm"
-                    >
-                      📝 露營札記 / 註解 ({userNotes[selectedCamp.id]?.length || 0})
-                    </button>
+                    {userNotes[selectedCamp.id]?.length > 0 ? (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 shadow-sm flex items-center gap-1">
+                        📝 已有 {userNotes[selectedCamp.id].length} 筆札記
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setActiveNoteCamp(selectedCamp)}
+                        className="text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-200 hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-1 shadow-sm"
+                      >
+                        ➕ 撰寫札記
+                      </button>
+                    )}
                   </div>
                   {selectedCamp.altitude && <span className="inline-block mt-1 text-xs bg-sky-50 text-sky-700 font-semibold px-2.5 py-0.5 rounded-md border border-sky-100">⛰️ {selectedCamp.altitude}</span>}
                 </div>
@@ -1026,8 +1066,16 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
-                <span>📞 電話: <strong className="text-blue-600">{selectedCamp.phone || '請洽官網/粉絲專頁'}</strong></span>
+              <div className="bg-slate-50 p-2.5 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
+                <span>
+                  📞 預約電話: {selectedCamp.phone ? (
+                    <a href={`tel:${selectedCamp.phone}`} className="text-blue-600 hover:underline font-bold">
+                      {selectedCamp.phone} (點擊撥號)
+                    </a>
+                  ) : (
+                    <strong className="text-slate-400">請洽官網/粉專</strong>
+                  )}
+                </span>
               </div>
 
               {/* 札記預覽 */}
@@ -1258,8 +1306,16 @@ export default function Home() {
                       </button>
                     </div>
 
-                    <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
-                      <span>📞 電話: <strong className="text-blue-600">{site.phone || '請洽官網/粉絲專頁'}</strong></span>
+                    <div className="bg-slate-50 p-2.5 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
+                      <span>
+                        📞 預約電話: {site.phone ? (
+                          <a href={`tel:${site.phone}`} className="text-blue-600 hover:underline font-bold">
+                            {site.phone} (點擊撥號)
+                          </a>
+                        ) : (
+                          <strong className="text-slate-400">請洽官網/粉專</strong>
+                        )}
+                      </span>
                     </div>
 
                     {/* 📝 使用者個人註解與露營紀錄 */}
@@ -1362,8 +1418,8 @@ export default function Home() {
                 <th className="p-3.5 font-bold">營地名稱</th>
                 <th className="p-3.5 font-bold">真實海拔</th>
                 <th className="p-3.5 font-bold">車程 / 距離 ({FIXED_ORIGINS[originKey]})</th>
-                <th className="p-3.5 font-bold">我的札記</th>
-                <th className="p-3.5 font-bold">一鍵直達連結</th>
+                <th className="p-3.5 font-bold">特色功能與分析</th>
+                <th className="p-3.5 font-bold">預約與導航</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1426,7 +1482,7 @@ export default function Home() {
                         </button>
                       </div>
                     </td>
-                    <td className="p-3.5">{renderActionButtons(site)}</td>
+                    <td className="p-3.5">{renderTableActions(site)}</td>
                   </tr>
                 );
               })}
@@ -1554,8 +1610,23 @@ export default function Home() {
                           </div>
                         </div>
                         
-                        <div className="p-4 border-t border-slate-100 bg-slate-50 mt-auto">
-                          {renderActionButtons(site)}
+                        <div className="p-3 border-t border-slate-100 bg-slate-50 mt-auto flex flex-col gap-1.5">
+                          <a
+                            href={site.booking_url ? site.booking_url.split('\n')[0].trim() : (site.phone ? `tel:${site.phone}` : `https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營 預約')}`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                          >
+                            🏕️ 前往預約 / 訂位
+                          </a>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(site.name)}&travelmode=driving`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+                          >
+                            🧭 Google 導航
+                          </a>
                         </div>
                       </div>
                     );
@@ -1583,10 +1654,7 @@ export default function Home() {
         campsite={weatherModalCamp}
         isOpen={!!weatherModalCamp}
         onClose={() => setWeatherModalCamp(null)}
-        originKey={originKey}
-        originName={FIXED_ORIGINS[originKey]}
-        onOpenSafeRoute={setSafeRouteModalCamp}
-        onOpenAR={setArModalCamp}
+        onOpenAR={handleOpenAR}
       />
 
       {/* 🛡️ 最安全行車路徑分析 Modal */}
@@ -1594,7 +1662,6 @@ export default function Home() {
         campsite={safeRouteModalCamp}
         isOpen={!!safeRouteModalCamp}
         onClose={() => setSafeRouteModalCamp(null)}
-        originKey={originKey}
         originName={FIXED_ORIGINS[originKey]}
         userNotes={safeRouteModalCamp ? (userNotes[safeRouteModalCamp.id] || []) : []}
       />
@@ -1603,7 +1670,12 @@ export default function Home() {
       <CampsiteARModal
         campsite={arModalCamp}
         isOpen={!!arModalCamp}
-        onClose={() => setArModalCamp(null)}
+        onClose={() => {
+          setArModalCamp(null);
+          setArModalWind(null);
+        }}
+        windDir={arModalWind?.windDir ?? 45}
+        windSpeed={arModalWind?.windSpeed ?? 10}
       />
 
     </main>
