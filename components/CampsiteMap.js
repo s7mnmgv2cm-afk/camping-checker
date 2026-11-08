@@ -23,7 +23,17 @@ const selectedIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-export default function CampsiteMap({ campsites, mapMode, onSelectCampsite, selectedCampId }) {
+// 我的最愛地圖 Icon (紅色)
+const favoriteIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+export default function CampsiteMap({ campsites, mapMode, onSelectCampsite, selectedCampId, favoriteCamps = new Set() }) {
   // 預設中心點：台灣中部附近，適合作為全台檢視視角
   const position = [24.0, 120.9];
 
@@ -48,13 +58,21 @@ export default function CampsiteMap({ campsites, mapMode, onSelectCampsite, sele
       {campsites.map((site) => {
         if (!site.latitude || !site.longitude) return null;
         const isSelected = selectedCampId === site.id;
+        const isFav = favoriteCamps instanceof Set ? favoriteCamps.has(site.id) : (Array.isArray(favoriteCamps) ? favoriteCamps.includes(site.id) : false);
+
+        let iconToUse = defaultIcon;
+        if (isSelected) {
+          iconToUse = selectedIcon;
+        } else if (isFav) {
+          iconToUse = favoriteIcon;
+        }
 
         return (
           <Marker
             key={site.id}
             position={[site.latitude, site.longitude]}
-            icon={isSelected ? selectedIcon : defaultIcon}
-            zIndexOffset={isSelected ? 1000 : 0}
+            icon={iconToUse}
+            zIndexOffset={isSelected ? 1000 : (isFav ? 500 : 0)}
             eventHandlers={{
               click: () => {
                 if (onSelectCampsite) {
@@ -65,7 +83,10 @@ export default function CampsiteMap({ campsites, mapMode, onSelectCampsite, sele
           >
             <Popup>
               <div className="p-1 font-sans">
-                <h3 className="font-bold text-slate-900 text-sm mb-1.5">{site.name}</h3>
+                <h3 className="font-bold text-slate-900 text-sm mb-1.5 flex items-center gap-1">
+                  {isFav && <span className="text-rose-500">❤️</span>}
+                  {site.name}
+                </h3>
                 <p className="text-xs bg-sky-50 text-sky-700 font-semibold px-2 py-1 rounded border border-sky-100 mt-1 mb-0 flex items-center gap-1">
                   ⛰️ {site.altitude || '海拔未知'}
                 </p>
