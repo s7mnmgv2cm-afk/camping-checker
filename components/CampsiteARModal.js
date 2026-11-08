@@ -262,12 +262,13 @@ export default function CampsiteARModal({
             </div>
           )}
 
-          {/* 2. AR HUD: Top Rolling Compass Ribbon */}
-          <div className="absolute top-16 left-0 right-0 z-20 flex flex-col items-center pointer-events-none">
-            <div className="relative w-80 sm:w-96 h-11 bg-slate-900/75 backdrop-blur-md border border-white/15 rounded-full overflow-hidden shadow-lg flex items-center justify-center">
+          {/* 2. AR HUD: Top Rolling Compass Ribbon & Pitching Guidance Badge */}
+          <div className="absolute top-14 left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3">
+            {/* Compass Ribbon */}
+            <div className="relative w-72 sm:w-96 h-10 bg-slate-900/80 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-lg flex items-center justify-center">
               {/* Center Sight Line */}
               <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 shadow-[0_0_8px_#f59e0b]"></div>
-              <div className="absolute bottom-0 text-[9px] text-amber-400 font-mono font-bold z-10">▲ {heading}°</div>
+              <div className="absolute bottom-0.5 text-[9px] text-amber-400 font-mono font-bold z-10">▲ {heading}°</div>
 
               {/* Ticks Ribbon */}
               <div
@@ -293,6 +294,43 @@ export default function CampsiteARModal({
                 ))}
               </div>
             </div>
+
+            {/* Turn Arrows Guidance Banner - Positioned right below Compass, never overlapping cards */}
+            <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-white/25 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
+              {isAligned ? (
+                <div>
+                  <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-extrabold text-xs sm:text-sm">
+                    <span>🎯 完美搭帳朝向（{heading}°）</span>
+                  </div>
+                  <p className="text-[10px] sm:text-[11px] text-emerald-200/90 mt-0.5 leading-tight">
+                    ✨ 帳門對此方位！06:00~07:30 晨曬在背後不熱醒，避開主風向
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-center gap-1.5 text-amber-400 font-black text-xs sm:text-sm">
+                    {azimuthDiff > 0 ? (
+                      <>
+                        <span className="animate-pulse">👉 請向右轉動</span>
+                        <span className="font-mono text-sm sm:text-base bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/30">
+                          {Math.abs(Math.round(azimuthDiff))}°
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="animate-pulse">👈 請向左轉動</span>
+                        <span className="font-mono text-sm sm:text-base bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/30">
+                          {Math.abs(Math.round(azimuthDiff))}°
+                        </span>
+                      </>
+                    )}
+                    <span className="text-slate-400 font-normal text-[10px] sm:text-xs">
+                      | 目標: <strong className="text-amber-300 font-mono">{recommendedDoorAzimuth}°</strong> (西南西)
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 3. AR HUD: Floating Sun Markers in Sky Dome */}
@@ -303,7 +341,7 @@ export default function CampsiteARModal({
               // Angular difference between device pitch and sun elevation
               const elDiff = sun.elevation - pitch;
 
-              // Camera field of view (FOV): approx +/- 35 deg horizontal, +/- 25 deg vertical
+              // Camera field of view (FOV): approx +/- 38 deg horizontal, +/- 28 deg vertical
               const inFOV = Math.abs(azDiff) < 38 && Math.abs(elDiff) < 28;
 
               // Map angles to screen percentage (0% to 100%)
@@ -334,10 +372,10 @@ export default function CampsiteARModal({
             })}
           </div>
 
-          {/* 4. AR Central Reticle & Real-time Pitching Guidance */}
-          <div className="absolute z-20 pointer-events-none flex flex-col items-center justify-center">
+          {/* 4. AR Central Reticle (Uncluttered) */}
+          <div className="absolute z-10 pointer-events-none flex flex-col items-center justify-center">
             {/* Target Reticle */}
-            <div className={`relative w-44 h-44 sm:w-52 sm:h-52 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
+            <div className={`relative w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
               isAligned 
                 ? 'border-emerald-400 shadow-[0_0_30px_#10b981] scale-105 bg-emerald-500/10' 
                 : 'border-white/30 border-dashed'
@@ -345,78 +383,47 @@ export default function CampsiteARModal({
               {/* Crosshairs */}
               <div className="absolute w-full h-0.5 bg-white/20"></div>
               <div className="absolute h-full w-0.5 bg-white/20"></div>
-              <div className="w-4 h-4 rounded-full border border-white/60"></div>
+              <div className={`w-4 h-4 rounded-full border transition-colors ${
+                isAligned ? 'border-emerald-400 bg-emerald-400/40 scale-125' : 'border-white/60'
+              }`}></div>
               
               {isAligned && (
-                <div className="absolute -top-3 px-3 py-0.5 bg-emerald-500 text-slate-950 font-black text-[11px] rounded-full shadow animate-bounce">
-                  🎯 完美搭帳朝向！
-                </div>
-              )}
-            </div>
-
-            {/* Turn Arrows Guidance Banner */}
-            <div className="mt-4 px-4 py-2 rounded-2xl bg-slate-900/90 border border-white/20 backdrop-blur-md text-center max-w-xs shadow-2xl">
-              {isAligned ? (
-                <div>
-                  <span className="text-emerald-400 font-extrabold text-sm block">
-                    ✨ 推薦帳門正對此方位（{heading}°）
-                  </span>
-                  <p className="text-[11px] text-slate-200 mt-0.5">
-                    清晨 6:00~7:30 晨曬位於背後，不會直射內帳熱醒；且避開主風向灌風！
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-center gap-1.5 text-amber-400 font-black text-sm">
-                    {azimuthDiff > 0 ? (
-                      <>
-                        <span>👉 請向右轉動</span>
-                        <span className="font-mono text-base">{Math.abs(Math.round(azimuthDiff))}°</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>👈 請向左轉動</span>
-                        <span className="font-mono text-base">{Math.abs(Math.round(azimuthDiff))}°</span>
-                      </>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-300 mt-0.5">
-                    尋找最優搭帳朝向：<strong className="text-amber-300">{recommendedDoorAzimuth}° (西南西)</strong>
-                  </p>
+                <div className="absolute -top-3 px-3 py-0.5 bg-emerald-500 text-slate-950 font-black text-[11px] rounded-full shadow-lg animate-bounce">
+                  🎯 完美朝向！
                 </div>
               )}
             </div>
           </div>
 
-          {/* 5. Left Floating Gyro Pitch/Roll Leveler (水準儀) */}
-          <div className="absolute bottom-24 left-4 z-20 bg-slate-900/85 backdrop-blur-md border border-white/15 p-3 rounded-2xl text-[11px] space-y-1 shadow-lg pointer-events-none">
-            <span className="text-slate-400 font-bold block mb-1">📐 地勢水準與傾角：</span>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-300">前後傾斜:</span>
-              <span className={`font-mono font-bold ${Math.abs(pitch) > 5 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {pitch > 0 ? `上坡 +${pitch}°` : `下坡 ${pitch}°`}
-              </span>
+          {/* 5. Bottom HUD Status Row (Leveler & Wind Side-by-Side, Never Colliding) */}
+          <div className="absolute bottom-3 left-3 right-3 z-20 flex justify-between items-end gap-2 pointer-events-none">
+            {/* Left Floating Gyro Pitch/Roll Leveler (水準儀) */}
+            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2 sm:p-2.5 rounded-2xl text-[10px] sm:text-[11px] space-y-0.5 shadow-lg max-w-[48%]">
+              <span className="text-slate-400 font-bold block truncate">📐 地勢傾角</span>
+              <div className="flex items-center gap-1.5 font-mono font-bold">
+                <span className={Math.abs(pitch) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
+                  {pitch > 0 ? `坡 +${pitch}°` : `坡 ${pitch}°`}
+                </span>
+                <span className="text-slate-500">|</span>
+                <span className={Math.abs(roll) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
+                  {roll > 0 ? `右 +${roll}°` : `左 ${roll}°`}
+                </span>
+              </div>
+              <p className="text-[9px] text-sky-300 font-medium truncate pt-0.5 border-t border-white/10">
+                💡 睡墊頭朝上坡
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-300">左右傾斜:</span>
-              <span className={`font-mono font-bold ${Math.abs(roll) > 5 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {roll}°
-              </span>
-            </div>
-            <p className="text-[10px] text-sky-300 pt-1 border-t border-white/10 font-medium">
-              💡 睡墊頭部請朝向上坡方向
-            </p>
-          </div>
 
-          {/* 6. Right Floating Wind Stream HUD */}
-          <div className="absolute bottom-24 right-4 z-20 bg-slate-900/85 backdrop-blur-md border border-white/15 p-3 rounded-2xl text-[11px] space-y-1 shadow-lg pointer-events-none text-right">
-            <span className="text-slate-400 font-bold block mb-1">💨 即時氣流風向：</span>
-            <span className="text-sky-300 font-extrabold text-xs block">
-              來風 {windDir}° ({windSpeed} km/h)
-            </span>
-            <p className="text-[10px] text-slate-300 pt-1 border-t border-white/10">
-              隧道帳長軸平行風向<br />天幕主脊線破風擺設
-            </p>
+            {/* Right Floating Wind Stream HUD */}
+            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2 sm:p-2.5 rounded-2xl text-[10px] sm:text-[11px] space-y-0.5 shadow-lg max-w-[48%] text-right">
+              <span className="text-slate-400 font-bold block truncate">💨 即時氣流風向</span>
+              <div className="text-sky-300 font-extrabold font-mono text-[11px] sm:text-xs truncate">
+                來風 {windDir}° ({windSpeed}km/h)
+              </div>
+              <p className="text-[9px] text-slate-300 truncate pt-0.5 border-t border-white/10">
+                長軸平行風向破風
+              </p>
+            </div>
           </div>
 
         </div>
