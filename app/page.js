@@ -49,6 +49,82 @@ const TAG_SYNONYMS = {
   '有餐點外送服務': ['有餐點外送服務', '餐點外送', '外送', '代訂餐點', '早餐', '下午茶']
 };
 
+// 📜 系統版本更新歷程紀錄 (Version History Changelog)
+const APP_VERSION = 'v2.5.0';
+const VERSION_HISTORY = [
+  {
+    version: 'v2.5.0',
+    date: '2026-11-08',
+    isLatest: true,
+    tag: '獨家黑科技 & 易讀性全進化',
+    changes: [
+      { badge: '✨ 獨家黑科技', text: 'AR 實境搭帳導引儀升級為點擊展開全螢幕獨立圖文解說彈窗，兼顧主頁面呼吸感與行動瀏覽。' },
+      { badge: '⛅ 標題強化', text: '「營地名稱 - 天氣預報 & 日照風向羅盤」標題顯著放大，戶外強光下閱讀清晰不費力。' },
+      { badge: '🎨 字型規範', text: '全站網頁最小字型基準統一（淘汰所有 sub-12px 微型字），符合 WCAG 高易讀性排版。' },
+      { badge: '🛡️ 篩選修復', text: '補齊特色標籤同義詞字典 (TAG_SYNONYMS)，解決點選情境預設集與特色標籤時引發的客戶端例外。' },
+      { badge: '📜 版本歷程', text: '頂部與頁尾新增系統版本號 (History)，點擊可隨時查閱即時更新日誌與里程碑。' }
+    ]
+  },
+  {
+    version: 'v2.4.0',
+    date: '2026-11-08',
+    tag: 'WebAR 太陽天文實境透視',
+    changes: [
+      { badge: '📱 實境相機', text: '結合天文太陽天球運行軌跡演算法與手機後置相機 WebAR 實境透視草地。' },
+      { badge: '🧭 智能指引', text: '360° 實時滾動刻度羅盤帶與多目標決策準心（防 06:00 晨曬溫室效應 ✕ 平行氣流破風）。' },
+      { badge: '📐 陀螺儀', text: '手機水平陀螺儀地勢量測（前後 Pitch / 左右 Roll），指引睡墊頭部朝向上坡。' }
+    ]
+  },
+  {
+    version: 'v2.3.0',
+    date: '2026-11-07',
+    tag: '極致氣象模型與即時風向',
+    changes: [
+      { badge: '⛅ 數值氣象', text: '整合 Open-Meteo 高解析數值氣象模型，即時演算全台營地 7 日逐日氣溫、降雨機率。' },
+      { badge: '💨 蒲福風級', text: '整合蒲福風級 (Beaufort scale) 與抗風營釘下釘裝備建議。' },
+      { badge: '🌅 晨昏計算', text: '營地日出、日落與黃金晨曦時刻精確計算。' }
+    ]
+  },
+  {
+    version: 'v2.2.0',
+    date: '2026-11-07',
+    tag: '安全行車導引與冗餘重構',
+    changes: [
+      { badge: '🛡️ 安全分析', text: '最安全行車路徑分析（避開高危險險降坡、產業農路與刮底盤路段）。' },
+      { badge: '🧹 介面精簡', text: '移除多餘重複導航按鈕，簡化為單一智慧 GPS 導航與電話撥號功能。' },
+      { badge: '⚡ 安心路況', text: '行車路徑自動依 GPS 與起點快速規劃，提供安心路況指引。' }
+    ]
+  },
+  {
+    version: 'v2.1.0',
+    date: '2026-10-20',
+    tag: '多維度篩選與營地 PK 比較',
+    changes: [
+      { badge: '👶 快速情境', text: '快速情境預設集（夏天避暑聖地、親子輕鬆露、我要看大景）一鍵套用。' },
+      { badge: '⚖️ 營地 PK', text: '營地即時 PK 評估工具，支援多營地橫向參數並排評分。' },
+      { badge: '🗺️ 雙模地圖', text: '2D 平面分布圖與 3D 衛星高程圖實時聯動。' }
+    ]
+  },
+  {
+    version: 'v2.0.0',
+    date: '2026-09-15',
+    tag: '露營札記與個人化離線儲存',
+    changes: [
+      { badge: '📝 露營札記', text: '露營札記 / 註解系統（自訂日期、天氣、評價與注意事項本地持久化）。' },
+      { badge: '❤️ 我的最愛', text: '我的最愛與待確認營地快捷收藏清單。' },
+      { badge: '🤖 Google AI', text: 'Google AI 營地評價與自然語言即時分析推薦。' }
+    ]
+  },
+  {
+    version: 'v1.0.0',
+    date: '2026-08-15',
+    tag: '初始版本上線',
+    changes: [
+      { badge: '🏕️ 基礎建設', text: '全台主要露營地海量資料庫建立，涵蓋車程、海拔、電話與特色標籤。' }
+    ]
+  }
+];
+
 export default function Home() {
   const [campsites, setCampsites] = useState([]);
   const [originKey, setOriginKey] = useState('tainan');
@@ -92,6 +168,7 @@ export default function Home() {
   const [arModalCamp, setArModalCamp] = useState(null);
   const [arModalWind, setArModalWind] = useState(null);
   const [showArGuideModal, setShowArGuideModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const handleOpenAR = (camp, windData) => {
     setArModalCamp(camp);
@@ -530,19 +607,31 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-          <span>🏕️</span> 台灣露營地研究中心
-        </h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
+            <span>🏕️</span> 台灣露營地研究中心
+          </h1>
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="px-2.5 py-1 text-xs font-black rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all flex items-center gap-1.5 shadow-sm transform hover:scale-105 cursor-pointer"
+            title="點擊查看版本更新歷程 (Version History)"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="font-mono">{APP_VERSION}</span>
+            <span className="text-xs text-indigo-500 font-bold hidden sm:inline">📜 更新歷程</span>
+          </button>
+        </div>
         <div className="flex gap-2 self-start sm:self-auto flex-wrap">
           <button
             onClick={handleGenerateAIPrompt}
-            className="px-4 py-1.5 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 border bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-transparent"
+            className="px-4 py-2 text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 border bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-transparent"
           >
             🤖 Google AI 即時分析推薦
           </button>
           <button
             onClick={() => setShowArGuideModal(true)}
-            className="px-3.5 py-1.5 text-xs font-black rounded-lg transition-all shadow-sm flex items-center gap-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 transform hover:scale-105"
+            className="px-4 py-2 text-sm font-black rounded-xl transition-all shadow-md flex items-center gap-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 transform hover:scale-105"
           >
             <span>✨</span> 獨家黑科技：AR 搭帳
           </button>
@@ -604,41 +693,41 @@ export default function Home() {
       </div>
 
       {/* ✨ 獨家黑科技：按鈕點擊打開圖文解說 */}
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 rounded-2xl border border-indigo-500/30 shadow-lg">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-2xl shadow-md flex-shrink-0">
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-3xl shadow-lg flex-shrink-0">
             📱
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black px-2.5 py-0.5 rounded-full uppercase tracking-wide">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-xs sm:text-sm bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-sm">
                 ✨ 獨家黑科技
               </span>
-              <h2 className="text-base sm:text-lg font-black text-white">
+              <h2 className="text-lg sm:text-2xl font-black text-white tracking-wide">
                 AR 實境搭帳導引儀：太陽軌跡 ✕ 陀螺儀防晨曬
               </h2>
             </div>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">
-              結合天體日照演算法與即時風向，站在草地上 1 秒找出最佳帳門方位！
+            <p className="text-sm sm:text-base text-slate-200 mt-1.5 leading-relaxed">
+              結合天體日照演算法與即時風向，站在草地上 1 秒找出避晨曬、破側風的最佳帳門方位！
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-shrink-0">
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-shrink-0 mt-2 sm:mt-0">
           <button
             type="button"
             onClick={() => {
               const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
               if (targetCamp) handleOpenAR(targetCamp);
             }}
-            className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-md transition-all transform hover:scale-105 flex items-center justify-center gap-1.5"
+            className="flex-1 sm:flex-none px-5 py-3 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-sm sm:text-base rounded-xl shadow-lg transition-all transform hover:scale-105 flex items-center justify-center gap-2"
           >
             <span>🚀</span> 立即體驗 AR
           </button>
           <button
             type="button"
             onClick={() => setShowArGuideModal(true)}
-            className="flex-1 sm:flex-none px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 transition-all flex items-center justify-center gap-1.5 shadow hover:bg-white/25"
+            className="flex-1 sm:flex-none px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-black text-sm sm:text-base rounded-xl border border-white/25 transition-all flex items-center justify-center gap-2 shadow hover:bg-white/25"
           >
             <span>📖</span> 點擊打開圖文解說
           </button>
@@ -1082,7 +1171,7 @@ export default function Home() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h2 className="text-xl font-bold text-slate-900">{site.name}</h2>
                           {isFav && (
-                            <span className="text-[11px] font-black bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full border border-rose-200 flex items-center gap-0.5">
+                            <span className="text-xs font-black bg-rose-100 text-rose-700 px-2.5 py-0.5 rounded-full border border-rose-200 flex items-center gap-0.5">
                               ❤️ 最愛
                             </span>
                           )}
@@ -1109,11 +1198,11 @@ export default function Home() {
                     <p className="text-sm text-slate-600 mb-2">⭐ Google 評分: {site.rating || 4.5} | 🚗 車程: {mins ? `約 ${mins} 分鐘` : '確認中'} ({dist})</p>
                     
                     {/* 核心特色功能快捷按鈕 (單一排版，不再與下方導航按鈕重複) */}
-                    <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+                    <div className="flex items-center gap-2 flex-wrap mb-2.5">
                       <button
                         type="button"
                         onClick={() => setArModalCamp(site)}
-                        className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 transition-colors flex items-center gap-1 shadow-sm"
+                        className="text-xs sm:text-sm font-black px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 transition-all flex items-center gap-1.5 shadow-sm transform hover:scale-105"
                         title="開啟手機相機與陀螺儀，以 AR 實境透視太陽方位與搭帳指南"
                       >
                         📱 AR 搭帳
@@ -1121,7 +1210,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => setSafeRouteModalCamp(site)}
-                        className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 transition-colors flex items-center gap-1 shadow-sm"
+                        className="text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 transition-colors flex items-center gap-1.5 shadow-sm"
                         title="分析前往此營地最安全的行車路徑、會車難度與防刮底盤建議"
                       >
                         🛡️ 安全路徑
@@ -1129,7 +1218,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => setWeatherModalCamp(site)}
-                        className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 transition-colors flex items-center gap-1 shadow-sm"
+                        className="text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 transition-colors flex items-center gap-1.5 shadow-sm"
                       >
                         ⛅ 天氣 & 羅盤
                       </button>
@@ -1153,7 +1242,7 @@ export default function Home() {
                         <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
                           📝 我的露營札記 / 註解
                           {campNotes.length > 0 && (
-                            <span className="bg-blue-100 text-blue-700 font-black px-1.5 py-0.2 rounded-full text-[10px]">
+                            <span className="bg-blue-100 text-blue-700 font-black px-2 py-0.5 rounded-full text-xs">
                               {campNotes.length} 筆
                             </span>
                           )}
@@ -1181,7 +1270,7 @@ export default function Home() {
                               </span>
                             </div>
                             {campNotes.length > 1 && (
-                              <span className="text-[10px] text-slate-400">還有其他 {campNotes.length - 1} 筆紀錄</span>
+                              <span className="text-xs text-slate-500 font-medium">還有其他 {campNotes.length - 1} 筆紀錄</span>
                             )}
                           </div>
                           {latestNote.precautions && (
@@ -1406,7 +1495,7 @@ export default function Home() {
                               <span className="text-xs font-bold text-slate-700">📝 個人筆記 ({campNotes.length})</span>
                               <button
                                 onClick={() => setActiveNoteCamp(site)}
-                                className="text-[11px] font-bold text-blue-600 hover:underline"
+                                className="text-xs font-bold text-blue-600 hover:underline"
                               >
                                 {campNotes.length > 0 ? '編輯' : '+填寫'}
                               </button>
@@ -1512,16 +1601,16 @@ export default function Home() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-150">
           <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 text-white w-full max-w-4xl max-h-[92vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-indigo-500/30">
             {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-white/10 flex justify-between items-center bg-slate-900/90 backdrop-blur-md flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 uppercase tracking-wide">
+            <div className="px-6 py-5 border-b border-white/10 flex justify-between items-center bg-slate-900/95 backdrop-blur-md flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-black bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 uppercase tracking-wide shadow-md">
                   ✨ 獨家黑科技
                 </span>
-                <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                <h2 className="text-lg sm:text-2xl font-black text-white flex items-center gap-2">
                   <span>📱</span> AR 實境搭帳導引儀：圖文使用說明與科學原理
                 </h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -1529,13 +1618,13 @@ export default function Home() {
                     const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
                     if (targetCamp) handleOpenAR(targetCamp);
                   }}
-                  className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 font-black text-xs rounded-xl shadow transition-all flex items-center gap-1"
+                  className="px-4 py-2 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg transition-all flex items-center gap-1.5 transform hover:scale-105"
                 >
                   <span>🚀</span> 立即體驗 AR
                 </button>
                 <button
                   onClick={() => setShowArGuideModal(false)}
-                  className="text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 border border-white/15 px-3 py-1.5 rounded-xl font-bold text-xs transition-colors"
+                  className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3.5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-colors"
                 >
                   ✕ 關閉
                 </button>
@@ -1543,76 +1632,76 @@ export default function Home() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-6">
+            <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-7 text-white">
               {/* 現場實地三步驟圖解 */}
               <div>
-                <span className="text-xs font-black text-amber-400 tracking-wider block mb-3 uppercase">
+                <span className="text-sm font-black text-amber-400 tracking-wider block mb-3 uppercase">
                   📍 現場操作三部曲（拿起手機，站在營位中央即可使用）：
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   
                   {/* Step 1 */}
-                  <div className="bg-slate-800/80 rounded-2xl p-4 border border-white/10 flex flex-col justify-between shadow-sm">
+                  <div className="bg-slate-800/80 rounded-2xl p-4 sm:p-5 border border-white/10 flex flex-col justify-between shadow-sm">
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">1</span>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="w-7 h-7 rounded-full bg-amber-400 text-slate-950 font-black text-sm flex items-center justify-center">1</span>
                         <span className="text-xs font-bold text-slate-400">啟用後置鏡頭與羅盤</span>
                       </div>
-                      <h3 className="font-extrabold text-sm text-white mb-2">📱 舉起手機，環顧現場</h3>
+                      <h3 className="font-extrabold text-base text-white mb-2">📱 舉起手機，環顧現場</h3>
                       
                       <div className="bg-slate-950/70 rounded-xl p-3 border border-white/10 text-center mb-3">
-                        <div className="w-full h-7 bg-slate-900 rounded-full border border-white/20 flex items-center justify-center text-[10px] text-amber-400 font-mono mb-2">
+                        <div className="w-full h-8 bg-slate-900 rounded-full border border-white/20 flex items-center justify-center text-xs text-amber-400 font-mono mb-2">
                           ▲ 100° 東 (E) 滾動刻度帶
                         </div>
                         <div className="text-2xl animate-bounce">☀️</div>
-                        <span className="text-[10px] text-amber-300 block font-semibold mt-1">透視天空日出／正午／日落方位</span>
+                        <span className="text-xs text-amber-300 block font-semibold mt-1">透視天空日出／正午／日落方位</span>
                       </div>
 
-                      <p className="text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                         在營地按任一卡片的「📱 AR 搭帳」，手機會開啟鏡頭透視草地，畫面上方即時顯示 360° 羅盤刻度帶與太陽天球軌跡。
                       </p>
                     </div>
                   </div>
 
                   {/* Step 2 */}
-                  <div className="bg-slate-800/80 rounded-2xl p-4 border border-amber-400/30 flex flex-col justify-between shadow-sm">
+                  <div className="bg-slate-800/80 rounded-2xl p-4 sm:p-5 border border-amber-400/30 flex flex-col justify-between shadow-sm">
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">2</span>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="w-7 h-7 rounded-full bg-amber-400 text-slate-950 font-black text-sm flex items-center justify-center">2</span>
                         <span className="text-xs font-bold text-amber-300">智慧角度差值引導</span>
                       </div>
-                      <h3 className="font-extrabold text-sm text-white mb-2">🧭 跟隨上方箭頭旋轉身體</h3>
+                      <h3 className="font-extrabold text-base text-white mb-2">🧭 跟隨上方箭頭旋轉身體</h3>
                       
                       <div className="bg-slate-950/70 rounded-xl p-3 border border-amber-400/40 text-center mb-3">
-                        <div className="px-2.5 py-1.5 bg-amber-400/20 border border-amber-400/50 rounded-lg text-amber-300 font-black text-xs mb-1.5 inline-block">
+                        <div className="px-3 py-1.5 bg-amber-400/20 border border-amber-400/50 rounded-lg text-amber-300 font-black text-xs sm:text-sm mb-1.5 inline-block">
                           👈 請向左轉動 64°
                         </div>
-                        <span className="text-[10px] text-slate-400 block font-mono">尋找最優目標：250° (西南西)</span>
+                        <span className="text-xs text-slate-400 block font-mono">尋找最優目標：250° (西南西)</span>
                       </div>
 
-                      <p className="text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                         系統依據營地所在經緯度自動計算最佳搭帳朝向（240°~270° 西南西）。請照著頂部箭頭提示的角度旋轉身體。
                       </p>
                     </div>
                   </div>
 
                   {/* Step 3 */}
-                  <div className="bg-slate-800/80 rounded-2xl p-4 border border-emerald-500/30 flex flex-col justify-between shadow-sm">
+                  <div className="bg-slate-800/80 rounded-2xl p-4 sm:p-5 border border-emerald-500/30 flex flex-col justify-between shadow-sm">
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="w-6 h-6 rounded-full bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center">3</span>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="w-7 h-7 rounded-full bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center">3</span>
                         <span className="text-xs font-bold text-emerald-400">準心鎖定 ✕ 平整鋪墊</span>
                       </div>
-                      <h3 className="font-extrabold text-sm text-white mb-2">🎯 準心轉綠，立即下釘</h3>
+                      <h3 className="font-extrabold text-base text-white mb-2">🎯 準心轉綠，立即下釘</h3>
                       
                       <div className="bg-emerald-950/40 rounded-xl p-3 border border-emerald-500/40 text-center mb-3">
                         <div className="w-10 h-10 mx-auto rounded-full border-2 border-emerald-400 flex items-center justify-center text-xs font-bold text-emerald-300 shadow-[0_0_15px_#10b981] mb-1">
                           ┼
                         </div>
-                        <span className="text-[11px] text-emerald-400 font-black block">🎯 完美搭帳朝向！</span>
+                        <span className="text-xs sm:text-sm text-emerald-400 font-black block">🎯 完美搭帳朝向！</span>
                       </div>
 
-                      <p className="text-xs text-slate-300 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                         當準心亮起翡翠綠光圈，代表帳門正對此方位！清晨 06:00~07:30 晨曬在帳篷背後，不會把內帳烤熱。
                       </p>
                     </div>
@@ -1623,34 +1712,34 @@ export default function Home() {
 
               {/* 背後科學原理圖解 */}
               <div className="pt-4 border-t border-white/10">
-                <span className="text-xs font-black text-sky-400 tracking-wider block mb-3 uppercase">
+                <span className="text-sm font-black text-sky-400 tracking-wider block mb-3 uppercase">
                   🔬 為什麼這樣搭？背後的露營科學三大定律：
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   
-                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-white/5 space-y-1">
-                    <span className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-1.5">
+                    <span className="text-amber-400 font-bold text-sm flex items-center gap-1.5">
                       ☀️ 1. 避開清晨 06:00 晨曬溫室效應
                     </span>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
                       台灣夏季早晨 6 點太陽便自東北東升起，若帳門朝東，晨光直射內帳會瞬間升溫破 35°C 悶熱難耐！將帳門朝向西南西（240°~270°），內帳處於背光陰影區，享受睡到自然醒。
                     </p>
                   </div>
 
-                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-white/5 space-y-1">
-                    <span className="text-sky-400 font-bold text-xs flex items-center gap-1.5">
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-1.5">
+                    <span className="text-sky-400 font-bold text-sm flex items-center gap-1.5">
                       💨 2. 平行氣流破風，狂風不倒帳
                     </span>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
                       右下角即時風向顯示來風方向。隧道帳長軸須平行風向，讓流線圓弧迎風破風；天幕主脊線順風擺設，能減少 60% 以上側受風壓，避免營釘在強陣風下被拔起。
                     </p>
                   </div>
 
-                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-white/5 space-y-1">
-                    <span className="text-emerald-400 font-bold text-xs flex items-center gap-1.5">
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-1.5">
+                    <span className="text-emerald-400 font-bold text-sm flex items-center gap-1.5">
                       📐 3. 水平儀偵測地勢，防睡覺血液倒流
                     </span>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
                       手機平放於草地可量測前後與左右傾角。若斜度 &gt; 5°，睡墊頭部必須朝向上坡方向，避免夜間睡覺時腦部充血頭痛或整個人滑下充氣床墊。
                     </p>
                   </div>
@@ -1661,57 +1750,57 @@ export default function Home() {
               {/* 演算法多目標權衡機制 (Multi-Objective Optimization) */}
               <div className="pt-4 border-t border-white/10">
                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                  <span className="text-xs font-black text-amber-400 tracking-wider uppercase flex items-center gap-1.5">
+                  <span className="text-sm font-black text-amber-400 tracking-wider uppercase flex items-center gap-1.5">
                     ⚖️ 我們的演算法在背景進行了「多目標權衡（Multi-Objective Optimization）」：
                   </span>
-                  <span className="text-[11px] text-slate-400 font-medium">
+                  <span className="text-xs text-slate-400 font-medium">
                     核心原則：安全抗風 ＞ 遮陽避晨曬 ＞ 景觀視野
                   </span>
                 </div>
                 
                 <div className="overflow-x-auto rounded-xl border border-white/10">
-                  <table className="w-full text-left text-xs bg-slate-950/70 border-collapse">
+                  <table className="w-full text-left text-xs sm:text-sm bg-slate-950/70 border-collapse">
                     <thead>
                       <tr className="border-b border-white/15 bg-white/5 text-slate-300 font-bold">
-                        <th className="p-2.5 sm:p-3">現場氣候條件</th>
-                        <th className="p-2.5 sm:p-3">系統決策邏輯</th>
-                        <th className="p-2.5 sm:p-3">AR 準心指引建議</th>
+                        <th className="p-3">現場氣候條件</th>
+                        <th className="p-3">系統決策邏輯</th>
+                        <th className="p-3">AR 準心指引建議</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5 text-[11px] sm:text-xs text-slate-200">
+                    <tbody className="divide-y divide-white/5 text-xs sm:text-sm text-slate-200">
                       <tr>
-                        <td className="p-2.5 sm:p-3 font-semibold text-emerald-300 whitespace-nowrap">
+                        <td className="p-3 font-semibold text-emerald-300 whitespace-nowrap">
                           🍃 微風 / 無風時<br />
-                          <span className="text-[10px] text-slate-400 font-mono">風速 &lt; 15 km/h</span>
+                          <span className="text-xs text-slate-400 font-mono">風速 &lt; 15 km/h</span>
                         </td>
-                        <td className="p-2.5 sm:p-3 font-medium text-amber-300">
+                        <td className="p-3 font-medium text-amber-300">
                           ☀️ 防晨曬熱醒優先
                         </td>
-                        <td className="p-2.5 sm:p-3 text-slate-300">
+                        <td className="p-3 text-slate-300">
                           強制引導準心至 <strong className="text-amber-400 font-mono">240°~270° (西南西)</strong>，太陽在帳篷正背後，享受睡到自然醒。
                         </td>
                       </tr>
                       <tr>
-                        <td className="p-2.5 sm:p-3 font-semibold text-rose-300 whitespace-nowrap">
+                        <td className="p-3 font-semibold text-rose-300 whitespace-nowrap">
                           💨 強風警戒時<br />
-                          <span className="text-[10px] text-slate-400 font-mono">風速 &gt; 25 km/h</span>
+                          <span className="text-xs text-slate-400 font-mono">風速 &gt; 25 km/h</span>
                         </td>
-                        <td className="p-2.5 sm:p-3 font-medium text-rose-300">
+                        <td className="p-3 font-medium text-rose-300">
                           🛡️ 結構抗風安全優先
                         </td>
-                        <td className="p-2.5 sm:p-3 text-slate-300">
+                        <td className="p-3 text-slate-300">
                           提示長軸平行來風破風；若側向曬太陽，建議將天幕迎風側壓低斜搭（A-Frame）阻擋側風與側光。
                         </td>
                       </tr>
                       <tr>
-                        <td className="p-2.5 sm:p-3 font-semibold text-sky-300 whitespace-nowrap">
+                        <td className="p-3 font-semibold text-sky-300 whitespace-nowrap">
                           ⛰️ 一般山區氣候<br />
-                          <span className="text-[10px] text-slate-400 font-mono">風速 15~25 km/h</span>
+                          <span className="text-xs text-slate-400 font-mono">風速 15~25 km/h</span>
                         </td>
-                        <td className="p-2.5 sm:p-3 font-medium text-sky-300">
+                        <td className="p-3 font-medium text-sky-300">
                           ⚖️ 兼顧破風與避曬
                         </td>
-                        <td className="p-2.5 sm:p-3 text-slate-300">
+                        <td className="p-3 text-slate-300">
                           自動抓取風向與日出夾角的中間平衡點（長軸順風、帳門背日），兼顧舒適與安全。
                         </td>
                       </tr>
@@ -1729,6 +1818,98 @@ export default function Home() {
                 className="px-5 py-1.5 bg-white text-slate-950 hover:bg-slate-200 font-black text-xs rounded-xl shadow transition-colors"
               >
                 關閉說明
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📜 網頁頁腳 & 版號資訊 */}
+      <footer className="mt-12 pt-6 pb-4 border-t border-slate-200 text-center text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-3">
+        <p>© 2026 台灣露營地研究中心 · 整合全台營地數據、天體天文模型與數值氣象預報</p>
+        <button
+          type="button"
+          onClick={() => setShowHistoryModal(true)}
+          className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1.5 transition-colors cursor-pointer"
+        >
+          <span>📜</span> 目前系統版本：<strong className="font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">{APP_VERSION} (查看完整更新日誌)</strong>
+        </button>
+      </footer>
+
+      {/* 📜 系統版本更新歷程 Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-white text-slate-900 w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex justify-between items-center flex-wrap gap-2">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">📜</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg sm:text-xl font-black text-white">版本更新歷程 (Version History)</h2>
+                    <span className="text-xs font-mono font-bold bg-emerald-500 text-slate-950 px-2.5 py-0.5 rounded-full">
+                      最新 {APP_VERSION}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">追蹤台灣露營地研究中心的每項功能進化與改版紀錄</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-colors"
+              >
+                ✕ 關閉
+              </button>
+            </div>
+
+            {/* Modal Body: Timeline */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {VERSION_HISTORY.map((ver) => (
+                <div key={ver.version} className="relative pl-6 pb-6 border-l-2 border-indigo-200 last:border-transparent last:pb-0">
+                  {/* Timeline Dot */}
+                  <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-white shadow ${
+                    ver.isLatest ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-400'
+                  }`}></div>
+
+                  <div className="flex items-baseline justify-between flex-wrap gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-black text-slate-900 font-mono">{ver.version}</span>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {ver.tag}
+                      </span>
+                      {ver.isLatest && (
+                        <span className="text-xs font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          Current
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-mono text-slate-400 font-medium">{ver.date}</span>
+                  </div>
+
+                  <ul className="space-y-2 text-xs sm:text-sm text-slate-700">
+                    {ver.changes.map((c, cIdx) => (
+                      <li key={cIdx} className="flex items-start gap-2">
+                        <span className="font-bold text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 flex-shrink-0 mt-0.5">
+                          {c.badge}
+                        </span>
+                        <span className="leading-relaxed">{c.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+              <span>持續迭代優化中 · 感謝露友的使用與回饋</span>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow transition-colors"
+              >
+                關閉
               </button>
             </div>
           </div>
