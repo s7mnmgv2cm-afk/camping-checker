@@ -50,7 +50,6 @@ export default function CampsiteARModal({
   const [heading, setHeading] = useState(0); // 0° to 360° (Compass Azimuth)
   const [pitch, setPitch] = useState(15); // -90° to 90° (Tilt front/back / elevation)
   const [roll, setRoll] = useState(0); // -90° to 90° (Tilt left/right)
-  const [isManualSim, setIsManualSim] = useState(false);
   
   // Selected simulation mode (Summer / Winter / Current)
   const [seasonMode, setSeasonMode] = useState('current');
@@ -137,7 +136,6 @@ export default function CampsiteARModal({
       setPitch(Math.round(currentPitch));
       setRoll(Math.round(currentRoll));
       setPermissionGranted(true);
-      setIsManualSim(false);
     };
 
     if (typeof DeviceOrientationEvent !== 'undefined') {

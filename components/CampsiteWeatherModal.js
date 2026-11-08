@@ -76,7 +76,7 @@ function calculateSolarPosition(date, lat, lng) {
   };
 }
 
-export default function CampsiteWeatherModal({ campsite, isOpen, onClose, originKey, originName, onOpenSafeRoute, onOpenAR }) {
+export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpenAR }) {
   const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -182,10 +182,6 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, origin
   const windEndX = CX - (windArrowLength / 2) * Math.cos(windSourceRad);
   const windEndY = CY - (windArrowLength / 2) * Math.sin(windSourceRad);
 
-  // Driving route URLs
-  const fromSelectedOriginUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originName || '台南安平區')}&destination=${encodeURIComponent(campsite.name)}&travelmode=driving`;
-  const fromGpsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(campsite.name)}&travelmode=driving`;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
       <div className="bg-white w-full max-w-4xl max-h-[94vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
@@ -221,49 +217,6 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, origin
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
-
-          {/* 🚗 快速行車路徑規劃橫幅 */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🚗</span>
-                <span className="font-extrabold text-sm sm:text-base">行車導航與路徑規劃</span>
-              </div>
-              <p className="text-xs text-blue-100 mt-0.5">
-                目前出發點：<strong className="underline decoration-blue-300 underline-offset-2">{originName || '台南安平區'}</strong> | 支援即時 GPS 一鍵直達
-              </p>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {onOpenSafeRoute && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenSafeRoute(campsite);
-                  }}
-                  className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center gap-1.5"
-                >
-                  🛡️ 查看最安全行車路徑分析
-                </button>
-              )}
-              <a
-                href={fromSelectedOriginUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3.5 py-2 bg-white text-blue-700 hover:bg-blue-50 font-bold text-xs rounded-xl shadow transition-colors flex items-center gap-1.5"
-              >
-                🛣️ 從 [{originName || '所選地點'}] 開車規劃
-              </a>
-              <a
-                href={fromGpsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 font-black text-xs rounded-xl shadow transition-colors flex items-center gap-1.5"
-              >
-                🧭 從目前 GPS 位置導航
-              </a>
-            </div>
-          </div>
 
           {loading ? (
             <div className="text-center py-16 text-slate-500 font-medium">
@@ -338,7 +291,7 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, origin
                         type="button"
                         onClick={() => {
                           onClose();
-                          onOpenAR(campsite);
+                          onOpenAR(campsite, { windDir, windSpeed });
                         }}
                         className="px-3 py-1 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 font-black text-xs rounded-full shadow flex items-center gap-1 transition-all"
                       >

@@ -73,7 +73,6 @@ export default function CampsiteSafeRouteModal({
   campsite,
   isOpen,
   onClose,
-  originKey = 'tainan',
   originName = '台南安平區',
   userNotes = []
 }) {
@@ -84,8 +83,7 @@ export default function CampsiteSafeRouteModal({
 
   if (!isOpen || !campsite || !profile) return null;
 
-  // Google Maps safe driving route URL
-  const safeRouteUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originName)}&destination=${encodeURIComponent(campsite.name)}&travelmode=driving`;
+  // Google Maps direct GPS navigation URL (不給起點，由手機自動抓取 GPS 即刻導航)
   const gpsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(campsite.name)}&travelmode=driving`;
 
   // AI Safety Analysis Query
@@ -259,23 +257,14 @@ export default function CampsiteSafeRouteModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-              <a
-                href={safeRouteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center justify-center gap-1.5 text-center"
-              >
-                🚗 從 [{originName}] 導航路徑
-              </a>
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <a
                 href={gpsNavUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center justify-center gap-1.5 text-center"
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center justify-center gap-1.5 text-center"
               >
-                🧭 從當前 GPS 位置安全導航
+                🧭 即時安全導航 (自動抓取目前 GPS 位置)
               </a>
 
               <a
