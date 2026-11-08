@@ -472,32 +472,8 @@ export default function Home() {
 
     return (
       <div className="grid grid-cols-2 gap-2 mt-3 w-full">
-        {/* 📱 AR 實境陀螺儀搭帳方位指引 */}
-        <button
-          type="button"
-          onClick={() => setArModalCamp(site)}
-          className="col-span-2 text-center bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow"
-        >
-          <span>📱</span> AR 實境相機透視：陀螺儀搭帳方位＆太陽軌跡指引 <span>☀️</span>
-        </button>
-
-        {/* 🛡️ 最安全行車路徑分析 */}
-        <button
-          type="button"
-          onClick={() => setSafeRouteModalCamp(site)}
-          className="col-span-2 text-center bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 hover:from-emerald-700 hover:to-cyan-800 text-white font-bold py-2 px-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow"
-        >
-          <span>🛡️</span> 分析最安全到營地的行車路徑 (防迷路／避開農路／會車評估)
-        </button>
-
-        {/* ⛅ 天氣預報與日照風向羅盤按鈕 */}
-        <button
-          type="button"
-          onClick={() => setWeatherModalCamp(site)}
-          className="col-span-2 text-center bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-bold py-2 px-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow"
-        >
-          <span>⛅</span> 天氣預報、日出日落 & 太陽方位／風向羅盤 <span>🧭</span>
-        </button>
+        {/* 訂位按鈕 (優先最醒目) */}
+        {btns}
 
         {/* 🚗 行車路徑規劃 (從所選出發地) */}
         <a
@@ -518,11 +494,8 @@ export default function Home() {
           className="text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
           title="開啟 Google Maps 即時開啟導航 (以您目前所在位置為起點)"
         >
-          🧭 即時導航 (GPS)
+          🧭 即時 GPS 導航
         </a>
-
-        {/* 訂位按鈕 */}
-        {btns}
 
         {/* Google AI 營地評價 */}
         <a href={aiLink} target="_blank" rel="noopener noreferrer" className="text-center bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 shadow-sm">
@@ -853,65 +826,35 @@ export default function Home() {
                     >
                       📝 露營札記 / 註解 ({userNotes[selectedCamp.id]?.length || 0})
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setSafeRouteModalCamp(selectedCamp)}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1 shadow-sm"
-                    >
-                      🛡️ 最安全路徑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setWeatherModalCamp(selectedCamp)}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white transition-all flex items-center gap-1 shadow-sm"
-                    >
-                      ⛅ 天氣與日照風向
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setArModalCamp(selectedCamp)}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 font-black transition-all flex items-center gap-1 shadow-sm"
-                    >
-                      📱 AR 實境搭帳
-                    </button>
                   </div>
                   {selectedCamp.altitude && <span className="inline-block mt-1 text-xs bg-sky-50 text-sky-700 font-semibold px-2.5 py-0.5 rounded-md border border-sky-100">⛰️ {selectedCamp.altitude}</span>}
                 </div>
               </div>
               <p className="text-sm text-slate-600 mb-3">⭐ Google 評分: {selectedCamp.rating || 4.5} | 🚗 車程: 約 {getCampDriveInfo(selectedCamp).mins || '確認中'} 分鐘 ({getCampDriveInfo(selectedCamp).dist})</p>
               
-              {/* 快速導航與安全路徑快捷列 */}
-              <div className="flex gap-2 flex-wrap mb-3">
+              {/* 核心功能快捷列 (單一排版，每項功能僅出現一次) */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
                 <button
                   type="button"
                   onClick={() => setArModalCamp(selectedCamp)}
-                  className="px-3 py-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-xs rounded-xl shadow-sm transition-colors flex items-center gap-1"
+                  className="px-2.5 py-2 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1"
                 >
-                  📱 AR 實境相機與陀螺儀透視
+                  📱 AR 實境搭帳
                 </button>
                 <button
                   type="button"
                   onClick={() => setSafeRouteModalCamp(selectedCamp)}
-                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center gap-1"
+                  className="px-2.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1"
                 >
-                  🛡️ 最安全路徑分析 (避開危險農路)
+                  🛡️ 最安全路徑
                 </button>
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(FIXED_ORIGINS[originKey] || '台南安平區')}&destination=${encodeURIComponent(selectedCamp.name)}&travelmode=driving`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center gap-1"
+                <button
+                  type="button"
+                  onClick={() => setWeatherModalCamp(selectedCamp)}
+                  className="px-2.5 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1"
                 >
-                  🚗 行車規劃 (從{FIXED_ORIGINS[originKey]})
-                </a>
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedCamp.name)}&travelmode=driving`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center gap-1"
-                >
-                  🧭 即時 GPS 導航
-                </a>
+                  ⛅ 天氣與風向
+                </button>
               </div>
 
               <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
@@ -1119,7 +1062,7 @@ export default function Home() {
                     </div>
                     <p className="text-sm text-slate-600 mb-2">⭐ Google 評分: {site.rating || 4.5} | 🚗 車程: {mins ? `約 ${mins} 分鐘` : '確認中'} ({dist})</p>
                     
-                    {/* 快捷導航與天氣預報按鈕列 */}
+                    {/* 核心特色功能快捷按鈕 (單一排版，不再與下方導航按鈕重複) */}
                     <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
                       <button
                         type="button"
@@ -1144,24 +1087,6 @@ export default function Home() {
                       >
                         ⛅ 天氣 & 羅盤
                       </button>
-                      <a
-                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(FIXED_ORIGINS[originKey] || '台南安平區')}&destination=${encodeURIComponent(site.name)}&travelmode=driving`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center gap-1 shadow-sm"
-                        title={`規劃從 ${FIXED_ORIGINS[originKey]} 開車至營地`}
-                      >
-                        🚗 路線規劃
-                      </a>
-                      <a
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(site.name)}&travelmode=driving`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors flex items-center gap-1 shadow-sm"
-                        title="以目前所在 GPS 位置進行導航"
-                      >
-                        🧭 導航
-                      </a>
                     </div>
 
                     <div className="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-wrap justify-between items-center text-xs font-semibold text-slate-700 gap-2">
@@ -1299,6 +1224,13 @@ export default function Home() {
                     <td className="p-3.5 text-slate-600">{mins ? `${mins} 分鐘` : '確認中'} ({dist})</td>
                     <td className="p-3.5">
                       <div className="flex flex-col gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setArModalCamp(site)}
+                          className="text-xs px-2 py-1 rounded-lg border font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-colors flex items-center justify-center gap-1"
+                        >
+                          📱 AR 搭帳
+                        </button>
                         <button
                           type="button"
                           onClick={() => setSafeRouteModalCamp(site)}
