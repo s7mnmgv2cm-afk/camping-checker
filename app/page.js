@@ -96,6 +96,7 @@ export default function Home() {
 
   // 📱 AR 實境陀螺儀搭帳方位指引 Modal 狀態
   const [arModalCamp, setArModalCamp] = useState(null);
+  const [showArGuide, setShowArGuide] = useState(true);
 
   // 🎯 被選擇的營地物件
   const [selectedCamp, setSelectedCamp] = useState(null);
@@ -577,6 +578,174 @@ export default function Home() {
             <button onClick={() => setMapMode('2d')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mapMode === '2d' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}>🗺️ 2D 平面圖</button>
             <button onClick={() => setMapMode('3d')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mapMode === '3d' ? 'bg-blue-600 text-white shadow' : 'text-slate-600'}`}>⛰️ 衛星高程圖</button>
           </div>
+        </div>
+      </div>
+
+      {/* 📱 AR 實境搭帳導引：主畫面圖文原理與使用教學 */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-7 shadow-xl border border-indigo-500/20 mb-6 relative overflow-hidden">
+        {/* 背景裝飾光暈 */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div className="relative z-10">
+          {/* 標題與操作按鈕 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 uppercase tracking-wide shadow-sm">
+                  ✨ 獨家黑科技
+                </span>
+                <span className="text-xs text-indigo-300 font-bold">WebAR ✕ 太陽天文物理 ✕ 陀螺儀</span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                <span>📱</span> AR 實境搭帳導引儀：圖文使用說明與科學原理
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1 leading-relaxed">
+                結合「即時天文太陽軌跡」、「開放氣象氣流風向」與「手機水平陀螺儀」，站在草地上舉起手機，1 秒找出避晨曬、抗側風的最佳搭帳朝向！
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2 self-start sm:self-center flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
+                  if (targetCamp) setArModalCamp(targetCamp);
+                }}
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg transition-all transform hover:scale-105 flex items-center gap-1.5"
+              >
+                <span>🚀</span> 立即體驗 AR 導引
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowArGuide(!showArGuide)}
+                className="px-3 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/10 transition-colors"
+              >
+                {showArGuide ? '▲ 收合圖文' : '▼ 展開圖文說明'}
+              </button>
+            </div>
+          </div>
+
+          {showArGuide && (
+            <div className="mt-5 space-y-6 animate-in fade-in duration-200">
+              {/* 現場實地三步驟圖解 */}
+              <div>
+                <span className="text-xs font-black text-amber-400 tracking-wider block mb-3 uppercase">
+                  📍 現場操作三部曲（拿起手機，站在營位中央即可使用）：
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  
+                  {/* Step 1 */}
+                  <div className="bg-slate-800/80 rounded-2xl p-4 border border-white/10 flex flex-col justify-between shadow-sm">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">1</span>
+                        <span className="text-xs font-bold text-slate-400">啟用後置鏡頭與羅盤</span>
+                      </div>
+                      <h3 className="font-extrabold text-sm text-white mb-2">📱 舉起手機，環顧現場</h3>
+                      
+                      {/* 圖解示意 Mockup */}
+                      <div className="bg-slate-950/70 rounded-xl p-3 border border-white/10 text-center mb-3">
+                        <div className="w-full h-7 bg-slate-900 rounded-full border border-white/20 flex items-center justify-center text-[10px] text-amber-400 font-mono mb-2">
+                          ▲ 100° 東 (E) 滾動刻度帶
+                        </div>
+                        <div className="text-2xl animate-bounce">☀️</div>
+                        <span className="text-[10px] text-amber-300 block font-semibold mt-1">透視天空日出／正午／日落方位</span>
+                      </div>
+
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        在營地按任一卡片的「📱 AR 搭帳」，手機會開啟鏡頭透視草地，畫面上方即時顯示 360° 羅盤刻度帶與太陽天球軌跡。
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="bg-slate-800/80 rounded-2xl p-4 border border-amber-400/30 flex flex-col justify-between shadow-sm">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">2</span>
+                        <span className="text-xs font-bold text-amber-300">智慧角度差值引導</span>
+                      </div>
+                      <h3 className="font-extrabold text-sm text-white mb-2">🧭 跟隨上方箭頭旋轉身體</h3>
+                      
+                      {/* 圖解示意 Mockup */}
+                      <div className="bg-slate-950/70 rounded-xl p-3 border border-amber-400/40 text-center mb-3">
+                        <div className="px-2.5 py-1.5 bg-amber-400/20 border border-amber-400/50 rounded-lg text-amber-300 font-black text-xs mb-1.5 inline-block">
+                          👈 請向左轉動 64°
+                        </div>
+                        <span className="text-[10px] text-slate-400 block font-mono">尋找最優目標：250° (西南西)</span>
+                      </div>
+
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        系統依據營地所在經緯度自動計算最佳搭帳朝向（240°~270° 西南西）。請照著頂部箭頭提示的角度旋轉身體。
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="bg-slate-800/80 rounded-2xl p-4 border border-emerald-500/30 flex flex-col justify-between shadow-sm">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center">3</span>
+                        <span className="text-xs font-bold text-emerald-400">準心鎖定 ✕ 平整鋪墊</span>
+                      </div>
+                      <h3 className="font-extrabold text-sm text-white mb-2">🎯 準心轉綠，立即下釘</h3>
+                      
+                      {/* 圖解示意 Mockup */}
+                      <div className="bg-emerald-950/40 rounded-xl p-3 border border-emerald-500/40 text-center mb-3">
+                        <div className="w-10 h-10 mx-auto rounded-full border-2 border-emerald-400 flex items-center justify-center text-xs font-bold text-emerald-300 shadow-[0_0_15px_#10b981] mb-1">
+                          ┼
+                        </div>
+                        <span className="text-[11px] text-emerald-400 font-black block">🎯 完美搭帳朝向！</span>
+                      </div>
+
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        當準心亮起翡翠綠光圈，代表帳門正對此方位！清晨 06:00~07:30 晨曬在帳篷背後，不會把內帳烤熱。
+                      </p>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* 背後科學原理圖解 */}
+              <div className="pt-4 border-t border-white/10">
+                <span className="text-xs font-black text-sky-400 tracking-wider block mb-3 uppercase">
+                  🔬 為什麼這樣搭？背後的露營科學三大定律：
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  
+                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-white/5 space-y-1">
+                    <span className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
+                      ☀️ 1. 避開清晨 06:00 晨曬溫室效應
+                    </span>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      台灣夏季早晨 6 點太陽便自東北東升起，若帳門朝東，晨光直射內帳會瞬間升溫破 35°C 悶熱難耐！將帳門朝向西南西（240°~270°），內帳處於背光陰影區，享受睡到自然醒。
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-white/5 space-y-1">
+                    <span className="text-sky-400 font-bold text-xs flex items-center gap-1.5">
+                      💨 2. 平行氣流破風，狂風不倒帳
+                    </span>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      右下角即時風向顯示來風方向。隧道帳長軸須平行風向，讓流線圓弧迎風破風；天幕主脊線順風擺設，能減少 60% 以上側受風壓，避免營釘在強陣風下被拔起。
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-white/5 space-y-1">
+                    <span className="text-emerald-400 font-bold text-xs flex items-center gap-1.5">
+                      📐 3. 水平儀偵測地勢，防睡覺血液倒流
+                    </span>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      手機平放於草地可量測前後與左右傾角。若斜度 &gt; 5°，睡墊頭部必須朝向上坡方向，避免夜間睡覺時腦部充血頭痛或整個人滑下充氣床墊。
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
