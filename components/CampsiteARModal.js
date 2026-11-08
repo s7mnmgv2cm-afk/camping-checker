@@ -65,14 +65,18 @@ export default function CampsiteARModal({
   campsite,
   isOpen,
   onClose,
-  windDir = 45, // default NE 45
-  windSpeed = 10
+  windDir: propWindDir,
+  windSpeed: propWindSpeed
 }) {
   const videoRef = useRef(null);
   const [hasCamera, setHasCamera] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
   
+  // Realtime Live Wind State (auto-fetched for campsite GPS coordinates)
+  const [liveWind, setLiveWind] = useState(null);
+  const [loadingWind, setLoadingWind] = useState(false);
+
   // Gyroscope / Orientation state
   const [heading, setHeading] = useState(0); // 0° to 360° (Compass Azimuth)
   const [pitch, setPitch] = useState(0); // -90° to 90° (地勢前後傾角，平放桌面為 0°)
@@ -84,6 +88,46 @@ export default function CampsiteARModal({
 
   const lat = campsite?.latitude ? Number(campsite.latitude) : 24.1;
   const lng = campsite?.longitude ? Number(campsite.longitude) : 121.0;
+
+  // Auto-fetch real-time live wind from Open-Meteo for the campsite's exact coordinates
+  useEffect(() => {
+    if (!isOpen || !campsite) return;
+
+    if (propWindDir !== undefined && propWindSpeed !== undefined && propWindDir !== null) {
+      setLiveWind({ windDir: propWindDir, windSpeed: propWindSpeed });
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingWind(true);
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m&timezone=Asia%2FTaipei`;
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error('Wind fetch failed');
+        return res.json();
+      })
+      .then(data => {
+        if (isMounted && data?.current) {
+          setLiveWind({
+            windDir: Math.round(data.current.wind_direction_10m ?? 0),
+            windSpeed: Math.round(data.current.wind_speed_10m ?? 0)
+          });
+          setLoadingWind(false);
+        }
+      })
+      .catch(err => {
+        console.warn('Realtime wind fetch notice:', err);
+        if (isMounted) setLoadingWind(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, campsite, lat, lng, propWindDir, propWindSpeed]);
+
+  const windDir = liveWind?.windDir ?? (propWindDir !== undefined && propWindDir !== null ? propWindDir : 45);
+  const windSpeed = liveWind?.windSpeed ?? (propWindSpeed !== undefined && propWindSpeed !== null ? propWindSpeed : 10);
 
   // 1. Calculate Sun milestones for current or selected season
   const sunMilestones = useMemo(() => {
@@ -484,12 +528,15 @@ export default function CampsiteARModal({
 
             {/* Right Floating Wind Stream HUD */}
             <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] text-right">
-              <span className="text-slate-400 font-bold block truncate">💨 即時氣流風向</span>
+              <span className="text-slate-400 font-bold flex items-center justify-end gap-1.5 truncate">
+                <span className={`w-1.5 h-1.5 rounded-full ${loadingWind ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`}></span>
+                <span>💨 即時氣流風向</span>
+              </span>
               <div className="text-sky-300 font-extrabold font-mono text-xs sm:text-sm truncate">
-                來風 {windDir}° ({windSpeed}km/h)
+                來風 {windDir}° {getHeadingDirectionName(windDir)}
               </div>
               <p className="text-xs text-slate-300 truncate pt-0.5 border-t border-white/10">
-                長軸平行風向破風
+                {windSpeed} km/h · 長軸平行風向破風
               </p>
             </div>
           </div>
