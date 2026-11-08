@@ -34,6 +34,33 @@ function calculateSolarPosition(date, lat, lng) {
   };
 }
 
+// Helper: Convert degree (0~360) to 16-point traditional compass direction name
+export const getHeadingDirectionName = (deg) => {
+  if (deg === null || deg === undefined || isNaN(deg)) return '正北 (N)';
+  const normalized = (deg % 360 + 360) % 360;
+  const directions = [
+    { name: '正北 (N)', min: 348.75, max: 11.25 },
+    { name: '北北東 (NNE)', min: 11.25, max: 33.75 },
+    { name: '東北 (NE)', min: 33.75, max: 56.25 },
+    { name: '東北東 (ENE)', min: 56.25, max: 78.75 },
+    { name: '正東 (E)', min: 78.75, max: 101.25 },
+    { name: '東南東 (ESE)', min: 101.25, max: 123.75 },
+    { name: '東南 (SE)', min: 123.75, max: 146.25 },
+    { name: '南南東 (SSE)', min: 146.25, max: 168.75 },
+    { name: '正南 (S)', min: 168.75, max: 191.25 },
+    { name: '南南西 (SSW)', min: 191.25, max: 213.75 },
+    { name: '西南 (SW)', min: 213.75, max: 236.25 },
+    { name: '西南西 (WSW)', min: 236.25, max: 258.75 },
+    { name: '正西 (W)', min: 258.75, max: 281.25 },
+    { name: '西北西 (WNW)', min: 281.25, max: 303.75 },
+    { name: '西北 (NW)', min: 303.75, max: 326.25 },
+    { name: '北北西 (NNW)', min: 326.25, max: 348.75 }
+  ];
+  if (normalized >= 348.75 || normalized < 11.25) return '正北 (N)';
+  const match = directions.find(d => normalized >= d.min && normalized < d.max);
+  return match ? match.name : `${Math.round(normalized)}°`;
+};
+
 export default function CampsiteARModal({
   campsite,
   isOpen,
@@ -208,29 +235,35 @@ export default function CampsiteARModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-hidden select-none">
       <div className="relative w-full h-full sm:max-w-4xl sm:max-h-[92vh] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden bg-slate-900 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150">
         
-        {/* Top Header Floating Glass Bar */}
-        <div className="absolute top-0 left-0 right-0 z-30 px-4 py-3 bg-slate-900/80 backdrop-blur-md border-b border-white/10 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📱</span>
-            <div>
-              <h2 className="text-base sm:text-lg font-black flex items-center gap-1.5 text-white">
+        {/* Top Header Floating Glass Bar - Relative in flex-col flow so it NEVER overlaps AR viewport elements */}
+        <div className="relative shrink-0 z-30 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-slate-900/90 backdrop-blur-md border-b border-white/10 flex justify-between items-center shadow-lg">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl shrink-0">📱</span>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-black flex items-center gap-1.5 text-white truncate">
                 AR 實境相機陀螺儀：營地搭帳方位建議
               </h2>
-              <p className="text-xs sm:text-sm text-slate-200">
-                {campsite.name} | 即時方位角：<strong className="text-amber-400 font-mono text-xs sm:text-sm">{heading}°</strong> | 鏡頭仰角：<strong className="text-sky-300 font-mono text-xs sm:text-sm">{camElevation}°</strong>
+              <p className="text-xs text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate">
+                <span className="text-slate-300 font-bold">{campsite?.name || '露營區'}</span>
+                <span className="text-slate-500">|</span>
+                <span className="text-amber-300 font-semibold">
+                  即時面向：<strong className="text-amber-400 font-mono font-black">{heading}°</strong>（{getHeadingDirectionName(heading)}）
+                </span>
+                <span className="text-slate-500">|</span>
+                <span className="text-sky-300 font-medium">仰角：{camElevation}°</span>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors"
+            className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors ml-2 shrink-0"
           >
             ✕ 關閉
           </button>
         </div>
 
         {/* Main AR Viewport (Camera Video + AR Canvas HUD) */}
-        <div className="relative flex-1 w-full h-full overflow-hidden flex items-center justify-center bg-slate-950">
+        <div className="relative flex-1 w-full overflow-hidden flex items-center justify-center bg-slate-950">
           
           {/* 1. Live Rear Camera View */}
           <video
@@ -250,7 +283,7 @@ export default function CampsiteARModal({
                   {cameraError || 'AR 實境全景模擬模式'}
                 </p>
                 <p className="text-xs text-slate-400 mb-3">
-                  用手機開啟本頁面可直接啟動相機與真實陀螺儀！目前可透過下方滑桿旋轉模擬手機朝向。
+                  用手機開啟本頁面可直接啟動相機與真實陀螺儀！目前可透過下方按鈕旋轉模擬手機朝向。
                 </p>
                 <div className="flex justify-center gap-2">
                   <button
@@ -271,12 +304,30 @@ export default function CampsiteARModal({
           )}
 
           {/* 2. AR HUD: Top Rolling Compass Ribbon & Pitching Guidance Badge */}
-          <div className="absolute top-14 left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3">
+          <div 
+            style={{ top: '12px' }}
+            className="absolute left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3"
+          >
+            {/* Realtime Facing Direction Badge - Prominent and Crystal Clear */}
+            <div className="mb-2 px-3.5 py-1 rounded-full bg-slate-950/90 border border-amber-400/50 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs sm:text-sm animate-in fade-in duration-150">
+              <span className="text-amber-400 font-black flex items-center gap-1">
+                <span>🧭 目前面向：</span>
+              </span>
+              <span className="font-mono font-black text-amber-300 text-sm sm:text-base">
+                {heading}°
+              </span>
+              <span className="font-black text-slate-950 bg-amber-400 px-2 py-0.5 rounded-md text-xs sm:text-sm shadow-sm">
+                {getHeadingDirectionName(heading)}
+              </span>
+            </div>
+
             {/* Compass Ribbon */}
-            <div className="relative w-72 sm:w-96 h-10 bg-slate-900/80 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-lg flex items-center justify-center">
+            <div className="relative w-72 sm:w-96 h-10 bg-slate-900/85 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center">
               {/* Center Sight Line */}
               <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 shadow-[0_0_8px_#f59e0b]"></div>
-              <div className="absolute bottom-0.5 text-xs text-amber-400 font-mono font-bold z-10">▲ {heading}°</div>
+              <div className="absolute bottom-0.5 text-xs text-amber-300 font-mono font-black z-10 px-1.5 py-0.2 rounded bg-slate-950/80 border border-amber-400/30">
+                ▲ {heading}°
+              </div>
 
               {/* Ticks Ribbon */}
               <div
@@ -381,7 +432,7 @@ export default function CampsiteARModal({
           </div>
 
           {/* 4. AR Central Reticle (Uncluttered) */}
-          <div className="absolute z-10 pointer-events-none flex flex-col items-center justify-center">
+          <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center">
             {/* Target Reticle */}
             <div className={`relative w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
               isAligned 
