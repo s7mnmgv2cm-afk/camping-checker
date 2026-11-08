@@ -963,7 +963,7 @@ export default function Home() {
               <div className="grid grid-cols-3 gap-2 mb-3">
                 <button
                   type="button"
-                  onClick={() => setArModalCamp(selectedCamp)}
+                  onClick={() => handleOpenAR(selectedCamp)}
                   className="px-2.5 py-2 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1"
                 >
                   📱 AR 實境搭帳
@@ -1201,7 +1201,7 @@ export default function Home() {
                     <div className="flex items-center gap-2 flex-wrap mb-2.5">
                       <button
                         type="button"
-                        onClick={() => setArModalCamp(site)}
+                        onClick={() => handleOpenAR(site)}
                         className="text-xs sm:text-sm font-black px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 transition-all flex items-center gap-1.5 shadow-sm transform hover:scale-105"
                         title="開啟手機相機與陀螺儀，以 AR 實境透視太陽方位與搭帳指南"
                       >
@@ -1369,7 +1369,7 @@ export default function Home() {
                       <div className="flex flex-col gap-1.5">
                         <button
                           type="button"
-                          onClick={() => setArModalCamp(site)}
+                          onClick={() => handleOpenAR(site)}
                           className="text-xs px-2 py-1 rounded-lg border font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-colors flex items-center justify-center gap-1"
                         >
                           📱 AR 搭帳
@@ -1592,8 +1592,8 @@ export default function Home() {
           setArModalCamp(null);
           setArModalWind(null);
         }}
-        windDir={arModalWind?.windDir ?? 45}
-        windSpeed={arModalWind?.windSpeed ?? 10}
+        windDir={arModalWind?.windDir}
+        windSpeed={arModalWind?.windSpeed}
       />
 
       {/* ✨ 獨家黑科技：AR 實境搭帳圖文解說 Modal (點擊按鈕彈出) */}
