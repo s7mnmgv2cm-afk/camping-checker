@@ -48,8 +48,9 @@ export default function CampsiteARModal({
   
   // Gyroscope / Orientation state
   const [heading, setHeading] = useState(0); // 0° to 360° (Compass Azimuth)
-  const [pitch, setPitch] = useState(15); // -90° to 90° (Tilt front/back / elevation)
-  const [roll, setRoll] = useState(0); // -90° to 90° (Tilt left/right)
+  const [pitch, setPitch] = useState(0); // -90° to 90° (地勢前後傾角，平放桌面為 0°)
+  const [roll, setRoll] = useState(0); // -90° to 90° (地勢左右側傾，平放桌面為 0°)
+  const [camElevation, setCamElevation] = useState(0); // -90° to 90° (相機鏡頭仰角，水平為 0°，垂直朝天為 90°)
   
   // Selected simulation mode (Summer / Winter / Current)
   const [seasonMode, setSeasonMode] = useState('current');
@@ -129,12 +130,21 @@ export default function CampsiteARModal({
         currentHeading = (360 - e.alpha) % 360;
       }
 
-      const currentPitch = e.beta !== null ? Math.max(-80, Math.min(80, e.beta - 45)) : 15;
-      const currentRoll = e.gamma !== null ? Math.max(-60, Math.min(60, e.gamma)) : 0;
+      // 1. 地勢水平傾角 (Ground Pitch & Roll)：手機平放於桌上或草皮時，W3C 標準 beta 與 gamma 皆為 0°
+      const rawBeta = e.beta !== null ? e.beta : 0;
+      const rawGamma = e.gamma !== null ? e.gamma : 0;
+
+      // 平放桌面時前後傾角為 0°（正值代表頭高腳低，負值代表頭低腳高）
+      const groundPitch = Math.max(-90, Math.min(90, Math.round(rawBeta)));
+      const groundRoll = Math.max(-90, Math.min(90, Math.round(rawGamma)));
+
+      // 2. 鏡頭仰角 (Camera Elevation)：當手機直立面向地平線 (beta=90°)，相機仰角為 0°；仰天時仰角為正，平放桌面時鏡頭朝下 (-90°)
+      const cameraElevation = Math.max(-90, Math.min(90, Math.round(90 - rawBeta)));
 
       setHeading(Math.round(currentHeading));
-      setPitch(Math.round(currentPitch));
-      setRoll(Math.round(currentRoll));
+      setPitch(groundPitch);
+      setRoll(groundRoll);
+      setCamElevation(cameraElevation);
       setPermissionGranted(true);
     };
 
@@ -203,11 +213,11 @@ export default function CampsiteARModal({
           <div className="flex items-center gap-2">
             <span className="text-xl">📱</span>
             <div>
-              <h2 className="text-sm sm:text-base font-black flex items-center gap-1.5 text-white">
+              <h2 className="text-base sm:text-lg font-black flex items-center gap-1.5 text-white">
                 AR 實境相機陀螺儀：營地搭帳方位建議
               </h2>
-              <p className="text-[11px] text-slate-300">
-                {campsite.name} | 即時方位角：<strong className="text-amber-400 font-mono text-xs">{heading}°</strong> | 鏡頭仰角：<strong className="text-sky-300 font-mono text-xs">{pitch}°</strong>
+              <p className="text-xs sm:text-sm text-slate-200">
+                {campsite.name} | 即時方位角：<strong className="text-amber-400 font-mono text-xs sm:text-sm">{heading}°</strong> | 鏡頭仰角：<strong className="text-sky-300 font-mono text-xs sm:text-sm">{camElevation}°</strong>
               </p>
             </div>
           </div>
@@ -266,7 +276,7 @@ export default function CampsiteARModal({
             <div className="relative w-72 sm:w-96 h-10 bg-slate-900/80 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-lg flex items-center justify-center">
               {/* Center Sight Line */}
               <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 shadow-[0_0_8px_#f59e0b]"></div>
-              <div className="absolute bottom-0.5 text-[9px] text-amber-400 font-mono font-bold z-10">▲ {heading}°</div>
+              <div className="absolute bottom-0.5 text-xs text-amber-400 font-mono font-bold z-10">▲ {heading}°</div>
 
               {/* Ticks Ribbon */}
               <div
@@ -282,7 +292,7 @@ export default function CampsiteARModal({
                         className="absolute flex flex-col items-center"
                         style={{ left: `${t.deg * 4}px` }}
                       >
-                        <span className={`text-[10px] font-black ${t.deg === 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+                        <span className={`text-xs font-black ${t.deg === 0 ? 'text-rose-400' : 'text-slate-200'}`}>
                           {t.label}
                         </span>
                         <div className={`w-0.5 h-2 mt-0.5 ${t.deg === 0 ? 'bg-rose-400' : 'bg-slate-400'}`}></div>
@@ -300,7 +310,7 @@ export default function CampsiteARModal({
                   <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-extrabold text-xs sm:text-sm">
                     <span>🎯 完美搭帳朝向（{heading}°）</span>
                   </div>
-                  <p className="text-[10px] sm:text-[11px] text-emerald-200/90 mt-0.5 leading-tight">
+                  <p className="text-xs text-emerald-200/90 mt-0.5 leading-tight">
                     ✨ 帳門對此方位！06:00~07:30 晨曬在背後不熱醒，避開主風向
                   </p>
                 </div>
@@ -322,7 +332,7 @@ export default function CampsiteARModal({
                         </span>
                       </>
                     )}
-                    <span className="text-slate-400 font-normal text-[10px] sm:text-xs">
+                    <span className="text-slate-300 font-medium text-xs">
                       | 目標: <strong className="text-amber-300 font-mono">{recommendedDoorAzimuth}°</strong> (西南西)
                     </span>
                   </div>
@@ -336,8 +346,8 @@ export default function CampsiteARModal({
             {sunMilestones.map(sun => {
               // Angular difference between device heading and sun azimuth
               const azDiff = (sun.azimuth - heading + 540) % 360 - 180;
-              // Angular difference between device pitch and sun elevation
-              const elDiff = sun.elevation - pitch;
+              // Angular difference between device camera elevation and sun elevation
+              const elDiff = sun.elevation - camElevation;
 
               // Camera field of view (FOV): approx +/- 38 deg horizontal, +/- 28 deg vertical
               const inFOV = Math.abs(azDiff) < 38 && Math.abs(elDiff) < 28;
@@ -360,10 +370,10 @@ export default function CampsiteARModal({
                       ☀️
                     </div>
                   </div>
-                  <div className="bg-slate-900/90 border border-amber-400/60 text-white px-2.5 py-1 rounded-xl text-[11px] font-bold shadow-xl backdrop-blur-md mt-1 text-center whitespace-nowrap">
+                  <div className="bg-slate-900/90 border border-amber-400/60 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-xl backdrop-blur-md mt-1 text-center whitespace-nowrap">
                     <span className="text-amber-300 block">{sun.label}</span>
-                    <span className="text-[10px] text-slate-300">方位 {sun.azimuth}° | 仰角 {sun.elevation}°</span>
-                    <span className="text-[9px] text-emerald-400 block font-semibold">{sun.tag}</span>
+                    <span className="text-xs text-slate-300">方位 {sun.azimuth}° | 仰角 {sun.elevation}°</span>
+                    <span className="text-xs text-emerald-400 block font-semibold">{sun.tag}</span>
                   </div>
                 </div>
               );
@@ -386,7 +396,7 @@ export default function CampsiteARModal({
               }`}></div>
               
               {isAligned && (
-                <div className="absolute -top-3 px-3 py-0.5 bg-emerald-500 text-slate-950 font-black text-[11px] rounded-full shadow-lg animate-bounce">
+                <div className="absolute -top-3.5 px-3.5 py-1 bg-emerald-500 text-slate-950 font-black text-xs rounded-full shadow-lg animate-bounce">
                   🎯 完美朝向！
                 </div>
               )}
@@ -396,29 +406,38 @@ export default function CampsiteARModal({
           {/* 5. Bottom HUD Status Row (Leveler & Wind Side-by-Side, Never Colliding) */}
           <div className="absolute bottom-3 left-3 right-3 z-20 flex justify-between items-end gap-2 pointer-events-none">
             {/* Left Floating Gyro Pitch/Roll Leveler (水準儀) */}
-            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2 sm:p-2.5 rounded-2xl text-[10px] sm:text-[11px] space-y-0.5 shadow-lg max-w-[48%]">
+            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%]">
               <span className="text-slate-400 font-bold block truncate">📐 地勢傾角</span>
               <div className="flex items-center gap-1.5 font-mono font-bold">
-                <span className={Math.abs(pitch) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
-                  {pitch > 0 ? `坡 +${pitch}°` : `坡 ${pitch}°`}
-                </span>
-                <span className="text-slate-500">|</span>
-                <span className={Math.abs(roll) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
-                  {roll > 0 ? `右 +${roll}°` : `左 ${roll}°`}
-                </span>
+                {Math.abs(pitch) <= 2 && Math.abs(roll) <= 2 ? (
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <span>平坦 0°</span>
+                    <span className="text-xs bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-sans font-bold">水平</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className={Math.abs(pitch) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
+                      {pitch > 0 ? `坡 +${pitch}°` : `坡 ${pitch}°`}
+                    </span>
+                    <span className="text-slate-500">|</span>
+                    <span className={Math.abs(roll) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
+                      {roll > 0 ? `右 +${roll}°` : `左 ${roll}°`}
+                    </span>
+                  </>
+                )}
               </div>
-              <p className="text-[9px] text-sky-300 font-medium truncate pt-0.5 border-t border-white/10">
-                💡 睡墊頭朝上坡
+              <p className="text-xs text-sky-300 font-medium truncate pt-0.5 border-t border-white/10">
+                {Math.abs(pitch) <= 2 && Math.abs(roll) <= 2 ? '✅ 地面平整 適合搭帳' : '💡 睡墊頭朝上坡'}
               </p>
             </div>
 
             {/* Right Floating Wind Stream HUD */}
-            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2 sm:p-2.5 rounded-2xl text-[10px] sm:text-[11px] space-y-0.5 shadow-lg max-w-[48%] text-right">
+            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] text-right">
               <span className="text-slate-400 font-bold block truncate">💨 即時氣流風向</span>
-              <div className="text-sky-300 font-extrabold font-mono text-[11px] sm:text-xs truncate">
+              <div className="text-sky-300 font-extrabold font-mono text-xs sm:text-sm truncate">
                 來風 {windDir}° ({windSpeed}km/h)
               </div>
-              <p className="text-[9px] text-slate-300 truncate pt-0.5 border-t border-white/10">
+              <p className="text-xs text-slate-300 truncate pt-0.5 border-t border-white/10">
                 長軸平行風向破風
               </p>
             </div>
