@@ -1,38 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-
-// Astronomical calculation for Sun Elevation and Azimuth
-function calculateSolarPosition(date, lat, lng) {
-  const rad = Math.PI / 180;
-  const startOfYear = new Date(date.getFullYear(), 0, 1);
-  const dayOfYear = Math.floor((date - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
-  const hour = date.getHours() + date.getMinutes() / 60;
-  
-  const gamma = (2 * Math.PI / 365) * (dayOfYear - 1 + (hour - 12) / 24);
-  const eqtime = 229.18 * (0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma) - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma));
-  const decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma) - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma) - 0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma);
-  
-  const timeOffset = eqtime + 4 * lng - 480; // UTC+8
-  const tst = hour * 60 + timeOffset;
-  const ha = (tst / 4 - 180) * rad;
-  const latRad = lat * rad;
-  
-  const sinElev = Math.sin(latRad) * Math.sin(decl) + Math.cos(latRad) * Math.cos(decl) * Math.cos(ha);
-  const elev = Math.asin(Math.max(-1, Math.min(1, sinElev)));
-  
-  const sinZenith = Math.cos(elev);
-  let azRad = Math.acos(Math.max(-1, Math.min(1, (Math.sin(decl) - Math.sin(latRad) * sinElev) / (Math.cos(latRad) * sinZenith))));
-  let az = azRad / rad;
-  if (Math.sin(ha) > 0) {
-    az = 360 - az;
-  }
-  
-  return {
-    elevation: Math.round(elev / rad * 10) / 10,
-    azimuth: Math.round(az * 10) / 10
-  };
-}
+import {
+  radecToAltAz,
+  calculateSolarPosition,
+  getMoonPhaseInfo,
+  CELESTIAL_TARGETS,
+  STARGAZING_GUIDE
+} from '../lib/astronomy';
 
 // Helper: Convert degree (0~360) to 16-point traditional compass direction name
 export const getHeadingDirectionName = (deg) => {
@@ -61,6 +36,16 @@ export const getHeadingDirectionName = (deg) => {
   return match ? match.name : `${Math.round(normalized)}°`;
 };
 
+// Calculate angular separation between two horizontal coordinates (in degrees)
+function getAngularSeparation(az1, el1, az2, el2) {
+  const rad = Math.PI / 180;
+  const el1Rad = el1 * rad;
+  const el2Rad = el2 * rad;
+  const dAzRad = (az1 - az2) * rad;
+  const cosDist = Math.sin(el1Rad) * Math.sin(el2Rad) + Math.cos(el1Rad) * Math.cos(el2Rad) * Math.cos(dAzRad);
+  return Math.acos(Math.max(-1, Math.min(1, cosDist))) / rad;
+}
+
 export default function CampsiteARModal({
   campsite,
   isOpen,
@@ -74,6 +59,9 @@ export default function CampsiteARModal({
   const [cameraError, setCameraError] = useState(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
   
+  // AR View Mode: 'sun' (太陽搭帳導引) | 'stars' (夜間星空圖)
+  const [arViewMode, setArViewMode] = useState('sun');
+
   // Location Mode: 'campsite' (營地座標) | 'current' (目前所在地 GPS)
   const [locationMode, setLocationMode] = useState(initialLocationMode);
   const [userCoords, setUserCoords] = useState(null);
@@ -88,10 +76,20 @@ export default function CampsiteARModal({
   const [heading, setHeading] = useState(0); // 0° to 360° (Compass Azimuth)
   const [pitch, setPitch] = useState(0); // -90° to 90° (地勢前後傾角，平放桌面為 0°)
   const [roll, setRoll] = useState(0); // -90° to 90° (地勢左右側傾，平放桌面為 0°)
-  const [camElevation, setCamElevation] = useState(0); // -90° to 90° (相機鏡頭仰角，水平為 0°，垂直朝天為 90°)
+  const [camElevation, setCamElevation] = useState(25); // -90° to 90° (鏡頭仰角，預設 25° 仰望星空)
   
-  // Selected simulation mode (Summer / Winter / Current)
+  // Sun Simulation mode (Summer / Winter / Current)
   const [seasonMode, setSeasonMode] = useState('current');
+
+  // Star Simulation mode (Realtime / 20:00 / 23:00 / 02:00 / 04:30)
+  const [simStarHour, setSimStarHour] = useState('now');
+
+  // Stargazing Guide Drawer / Modal state
+  const [showStargazingGuide, setShowStargazingGuide] = useState(false);
+  const [guideActiveSection, setGuideActiveSection] = useState(0);
+
+  // Manual Star Target selection
+  const [selectedStarTarget, setSelectedStarTarget] = useState(null);
 
   const campLat = campsite?.latitude ? Number(campsite.latitude) : 24.1;
   const campLng = campsite?.longitude ? Number(campsite.longitude) : 121.0;
@@ -216,14 +214,68 @@ export default function CampsiteARModal({
 
   // Recommended tent door orientation (Default: 250° WSW to prevent morning direct sunlight)
   const recommendedDoorAzimuth = useMemo(() => {
-    // If strong wind (>20km/h), prioritize wind alignment
     if (windSpeed > 20) {
-      // Point door to leeward (downwind) side
       return (windDir + 180) % 360;
     }
-    // Normal weather: point to West-Southwest (250°) to avoid 06:00~07:30 morning sun
     return 250;
   }, [windDir, windSpeed]);
+
+  // 2. Active observation date for Stargazing
+  const activeStarDate = useMemo(() => {
+    const now = new Date();
+    if (simStarHour === 'now') return now;
+    const d = new Date(now);
+    if (simStarHour === '20:00') {
+      d.setHours(20, 0, 0, 0);
+    } else if (simStarHour === '23:00') {
+      d.setHours(23, 0, 0, 0);
+    } else if (simStarHour === '02:00') {
+      d.setHours(2, 0, 0, 0);
+      if (now.getHours() > 4) d.setDate(d.getDate() + 1);
+    } else if (simStarHour === '04:30') {
+      d.setHours(4, 30, 0, 0);
+      if (now.getHours() > 4) d.setDate(d.getDate() + 1);
+    }
+    return d;
+  }, [simStarHour]);
+
+  // 3. Moon Phase Information for active observation date
+  const moonInfo = useMemo(() => {
+    return getMoonPhaseInfo(activeStarDate);
+  }, [activeStarDate]);
+
+  // 4. Compute real-time horizontal coordinates (Azimuth & Elevation) for CELESTIAL_TARGETS
+  const computedStars = useMemo(() => {
+    return CELESTIAL_TARGETS.map(target => {
+      const pos = radecToAltAz(target.ra, target.dec, activeStarDate, lat, lng);
+      return {
+        ...target,
+        azimuth: pos.azimuth,
+        elevation: pos.elevation
+      };
+    });
+  }, [activeStarDate, lat, lng]);
+
+  // 5. Detect Star locked by Central Reticle
+  const lockedStar = useMemo(() => {
+    if (arViewMode !== 'stars') return null;
+    let closest = null;
+    let minSep = 999;
+
+    for (const star of computedStars) {
+      if (star.elevation < -5) continue;
+      const sep = getAngularSeparation(heading, camElevation, star.azimuth, star.elevation);
+      if (sep < minSep) {
+        minSep = sep;
+        closest = star;
+      }
+    }
+
+    if (minSep <= 14) {
+      return { ...closest, separation: Math.round(minSep * 10) / 10 };
+    }
+    return null;
+  }, [arViewMode, computedStars, heading, camElevation]);
 
   // Request Gyroscope & Camera Permissions on open
   useEffect(() => {
@@ -231,7 +283,6 @@ export default function CampsiteARModal({
 
     let localStream = null;
 
-    // Start rear camera
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
@@ -246,32 +297,25 @@ export default function CampsiteARModal({
         setHasCamera(true);
       })
       .catch(err => {
-        console.warn('Camera access error or desktop:', err);
+        console.warn('Camera access notice:', err);
         setCameraError('未偵測到後置鏡頭或未允許相機權限，已啟動 AR 實境全景模擬器。');
         setHasCamera(false);
       });
     }
 
-    // Start Orientation / Gyro
     const handleOrientation = (e) => {
       let currentHeading = 0;
       if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-        // iOS Safari provides true compass heading directly
         currentHeading = e.webkitCompassHeading;
       } else if (e.alpha !== null) {
-        // Android Chrome
         currentHeading = (360 - e.alpha) % 360;
       }
 
-      // 1. 地勢水平傾角 (Ground Pitch & Roll)：手機平放於桌上或草皮時，W3C 標準 beta 與 gamma 皆為 0°
       const rawBeta = e.beta !== null ? e.beta : 0;
       const rawGamma = e.gamma !== null ? e.gamma : 0;
 
-      // 平放桌面時前後傾角為 0°（正值代表頭高腳低，負值代表頭低腳高）
       const groundPitch = Math.max(-90, Math.min(90, Math.round(rawBeta)));
       const groundRoll = Math.max(-90, Math.min(90, Math.round(rawGamma)));
-
-      // 2. 鏡頭仰角 (Camera Elevation)：當手機直立面向地平線 (beta=90°)，相機仰角為 0°；仰天時仰角為正，平放桌面時鏡頭朝下 (-90°)
       const cameraElevation = Math.max(-90, Math.min(90, Math.round(90 - rawBeta)));
 
       setHeading(Math.round(currentHeading));
@@ -283,7 +327,6 @@ export default function CampsiteARModal({
 
     if (typeof DeviceOrientationEvent !== 'undefined') {
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ requires user gesture
         DeviceOrientationEvent.requestPermission()
           .then(res => {
             if (res === 'granted') {
@@ -304,7 +347,6 @@ export default function CampsiteARModal({
     };
   }, [isOpen]);
 
-  // Request explicit permission on button click (for iOS Safari strict policy)
   const handleRequestMotionPermission = () => {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       DeviceOrientationEvent.requestPermission()
@@ -312,7 +354,7 @@ export default function CampsiteARModal({
           if (res === 'granted') {
             setPermissionGranted(true);
           } else {
-            alert('需允許裝置動作與方向感測，方能自動轉動羅盤與太陽方位。');
+            alert('需允許裝置動作與方向感測，方能自動轉動羅盤與星空天體方位。');
           }
         })
         .catch(console.error);
@@ -339,45 +381,79 @@ export default function CampsiteARModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-hidden select-none">
-      <div className="relative w-full h-full sm:max-w-4xl sm:max-h-[92vh] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden bg-slate-900 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative w-full h-full sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150">
         
-        {/* Top Header Floating Glass Bar - Relative in flex-col flow so it NEVER overlaps AR viewport elements */}
-        <div className="relative shrink-0 z-30 px-3.5 sm:px-4 py-2 sm:py-2.5 bg-slate-900/95 backdrop-blur-md border-b border-white/10 flex justify-between items-center shadow-lg gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xl shrink-0">📱</span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-base font-black flex items-center gap-1.5 text-white">
-                  AR 實境搭帳導引儀
-                </h2>
+        {/* Top Header Floating Glass Bar */}
+        <div className="relative shrink-0 z-30 px-3 py-2 bg-slate-900/95 backdrop-blur-md border-b border-white/10 flex justify-between items-center shadow-lg gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm sm:text-base font-black flex items-center gap-1.5 text-white shrink-0">
+                <span>{arViewMode === 'sun' ? '☀️' : '🌌'}</span>
+                <span>{arViewMode === 'sun' ? 'AR 實境搭帳導引' : 'AR 夜間星空導引'}</span>
+              </h2>
 
-                {/* 📍 測量定位切換器 (營地 vs 目前所在地) */}
-                <div className="inline-flex items-center bg-slate-950/85 p-0.5 rounded-lg border border-white/20 text-xs shadow-inner">
-                  <button
-                    type="button"
-                    onClick={() => setLocationMode('campsite')}
-                    className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
-                      locationMode === 'campsite'
-                        ? 'bg-amber-500 text-slate-950 shadow-sm'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    <span>🏕️ 營地模式</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSwitchToGPS}
-                    className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
-                      locationMode === 'current'
-                        ? 'bg-sky-500 text-slate-950 shadow-sm'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    <span>📍 目前所在地</span>
-                    {isLocating && <span className="animate-spin text-xs">⏳</span>}
-                  </button>
-                </div>
+              {/* ☀️ 太陽 vs 🌌 星空 模式切換 */}
+              <div className="inline-flex items-center bg-slate-950 p-0.5 rounded-lg border border-indigo-400/30 text-xs shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setArViewMode('sun')}
+                  className={`px-2 py-0.5 rounded-md font-black transition-all flex items-center gap-1 ${
+                    arViewMode === 'sun'
+                      ? 'bg-amber-500 text-slate-950 shadow-md'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <span>☀️ 日照</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setArViewMode('stars')}
+                  className={`px-2 py-0.5 rounded-md font-black transition-all flex items-center gap-1 ${
+                    arViewMode === 'stars'
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <span>🌌 星空</span>
+                </button>
               </div>
+
+              {/* 📍 測量定位切換器 (營地 vs 目前所在地) */}
+              <div className="inline-flex items-center bg-slate-950/85 p-0.5 rounded-lg border border-white/20 text-xs shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setLocationMode('campsite')}
+                  className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
+                    locationMode === 'campsite'
+                      ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <span>🏕️ 營地</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSwitchToGPS}
+                  className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
+                    locationMode === 'current'
+                      ? 'bg-sky-500 text-slate-950 shadow-sm'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <span>📍 GPS</span>
+                  {isLocating && <span className="animate-spin text-xs">⏳</span>}
+                </button>
+              </div>
+
+              {/* 觀星重點手冊按鈕 */}
+              <button
+                type="button"
+                onClick={() => setShowStargazingGuide(true)}
+                className="px-2 py-0.5 bg-gradient-to-r from-purple-600/80 to-indigo-600/80 hover:from-purple-600 hover:to-indigo-600 border border-purple-400/40 text-purple-100 hover:text-white rounded-lg text-xs font-black shadow-md transition-all flex items-center gap-1 shrink-0"
+              >
+                <span>📖 觀星指南</span>
+              </button>
+            </div>
 
               <p className="text-xs text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate mt-0.5">
                 <span className="text-slate-300 font-bold flex items-center gap-1">
@@ -390,20 +466,28 @@ export default function CampsiteARModal({
                 </span>
                 <span className="text-slate-500">|</span>
                 <span className="text-amber-300 font-semibold">
-                  即時面向：<strong className="text-amber-400 font-mono font-black">{heading}°</strong>（{getHeadingDirectionName(heading)}）
+                  面向：<strong className="text-amber-400 font-mono font-black">{heading}°</strong>（{getHeadingDirectionName(heading)}）
                 </span>
                 <span className="text-slate-500">|</span>
-                <span className="text-sky-300 font-medium">仰角：{camElevation}°</span>
+                <span className="text-sky-300 font-medium">相機仰角：{camElevation}°</span>
+                {arViewMode === 'stars' && (
+                  <>
+                    <span className="text-slate-500">|</span>
+                    <span className="text-purple-300 font-semibold flex items-center gap-1">
+                      <span>{moonInfo.icon}</span>
+                      <span>{moonInfo.phaseName} ({moonInfo.illumination}% 光害)</span>
+                    </span>
+                  </>
+                )}
               </p>
             </div>
+            <button
+              onClick={onClose}
+              className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors shrink-0 ml-2"
+            >
+              ✕ 關閉
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors shrink-0 ml-2"
-          >
-            ✕ 關閉
-          </button>
-        </div>
 
         {/* GPS Error Notification Toast */}
         {geoError && (
@@ -416,7 +500,7 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* Main AR Viewport (Camera Video + AR Canvas HUD) */}
+        {/* Main AR Viewport (Camera Video + Sky Dome Markers) */}
         <div className="relative flex-1 w-full overflow-hidden flex items-center justify-center bg-slate-950">
           
           {/* 1. Live Rear Camera View */}
@@ -427,43 +511,65 @@ export default function CampsiteARModal({
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${hasCamera ? 'opacity-100' : 'opacity-0'}`}
           />
 
-          {/* 1.5 Desktop / No-Camera Fallback Cyber-Grid Background */}
+          {/* 1.5 Desktop / Fallback Stargazing Night Sky Backdrop */}
           {!hasCamera && (
-            <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950/60 flex flex-col items-center justify-center p-6 text-center">
-              <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-40"></div>
-              <div className="relative z-10 max-w-md bg-slate-900/90 border border-slate-700/80 p-5 rounded-2xl shadow-xl backdrop-blur-md mb-8">
-                <span className="text-3xl block mb-2">🔭</span>
+            <div className={`absolute inset-0 transition-colors duration-500 flex flex-col items-center justify-center p-6 text-center ${
+              arViewMode === 'stars' 
+                ? 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950 via-slate-950 to-black' 
+                : 'bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950/60'
+            }`}>
+              <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30"></div>
+              
+              {/* Star dust simulation particles */}
+              {arViewMode === 'stars' && (
+                <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(#818cf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
+              )}
+
+              <div className="relative z-10 max-w-md bg-slate-900/90 border border-slate-700/80 p-4 sm:p-5 rounded-2xl shadow-xl backdrop-blur-md mb-8">
+                <span className="text-3xl block mb-2">{arViewMode === 'stars' ? '🌌' : '🔭'}</span>
                 <p className="text-sm font-bold text-slate-200 mb-1">
-                  {cameraError || 'AR 實境全景模擬模式'}
+                  {cameraError || (arViewMode === 'stars' ? '夜間星空全景模擬器' : 'AR 實境全景模擬模式')}
                 </p>
                 <p className="text-xs text-slate-400 mb-3">
-                  用手機開啟本頁面可直接啟動相機與真實陀螺儀！目前可透過下方按鈕旋轉模擬手機朝向。
+                  用手機開啟即可直接啟動後置鏡頭與真實陀螺儀！目前可透過下方旋轉按鈕或仰角調整模擬天頂視野。
                 </p>
-                <div className="flex justify-center gap-2">
+                <div className="flex flex-wrap justify-center gap-2">
                   <button
                     onClick={() => setHeading(h => (h + 315) % 360)}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-600"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-600"
                   >
-                    ↺ 逆時針轉 45°
+                    ↺ 逆轉 45°
                   </button>
                   <button
                     onClick={() => setHeading(h => (h + 45) % 360)}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-600"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-600"
                   >
-                    ↻ 順時針轉 45°
+                    ↻ 順轉 45°
+                  </button>
+                  <button
+                    onClick={() => setCamElevation(e => Math.min(85, e + 15))}
+                    className="px-2.5 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded-lg border border-indigo-500/40 text-indigo-200"
+                  >
+                    ▲ 仰角 +15°
+                  </button>
+                  <button
+                    onClick={() => setCamElevation(e => Math.max(-10, e - 15))}
+                    className="px-2.5 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded-lg border border-indigo-500/40 text-indigo-200"
+                  >
+                    ▼ 仰角 -15°
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 2. AR HUD: Top Rolling Compass Ribbon & Pitching Guidance Badge */}
+          {/* 2. Top Rolling Compass Ribbon & Guidance Banner */}
           <div 
-            style={{ top: '12px' }}
+            style={{ top: '10px' }}
             className="absolute left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3"
           >
-            {/* Realtime Facing Direction Badge - Prominent and Crystal Clear */}
-            <div className="mb-2 px-3.5 py-1 rounded-full bg-slate-950/90 border border-amber-400/50 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs sm:text-sm animate-in fade-in duration-150">
+            {/* Realtime Facing Direction Badge */}
+            <div className="mb-1.5 px-3.5 py-1 rounded-full bg-slate-950/90 border border-amber-400/50 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs sm:text-sm animate-in fade-in duration-150">
               <span className="text-amber-400 font-black flex items-center gap-1">
                 <span>🧭 目前面向：</span>
               </span>
@@ -473,22 +579,21 @@ export default function CampsiteARModal({
               <span className="font-black text-slate-950 bg-amber-400 px-2 py-0.5 rounded-md text-xs sm:text-sm shadow-sm">
                 {getHeadingDirectionName(heading)}
               </span>
+              <span className="text-slate-500">|</span>
+              <span className="text-sky-300 font-bold text-xs">仰角 {camElevation}°</span>
             </div>
 
             {/* Compass Ribbon */}
-            <div className="relative w-72 sm:w-96 h-10 bg-slate-900/85 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center">
-              {/* Center Sight Line */}
+            <div className="relative w-72 sm:w-96 h-9 bg-slate-900/85 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center">
               <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 shadow-[0_0_8px_#f59e0b]"></div>
               <div className="absolute bottom-0.5 text-xs text-amber-300 font-mono font-black z-10 px-1.5 py-0.2 rounded bg-slate-950/80 border border-amber-400/30">
                 ▲ {heading}°
               </div>
 
-              {/* Ticks Ribbon */}
               <div
                 className="absolute flex items-center h-full transition-transform ease-out duration-75"
                 style={{ transform: `translateX(${-heading * 4}px)` }}
               >
-                {/* 360 * 3 loops for seamless wrap */}
                 {[-360, 0, 360].map(offset => (
                   <div key={offset} className="flex relative" style={{ width: '1440px' }}>
                     {cardinalTicks.map(t => (
@@ -508,56 +613,71 @@ export default function CampsiteARModal({
               </div>
             </div>
 
-            {/* Turn Arrows Guidance Banner - Positioned right below Compass, never overlapping cards */}
-            <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-white/25 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
-              {isAligned ? (
-                <div>
-                  <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-extrabold text-xs sm:text-sm">
-                    <span>🎯 完美搭帳朝向（{heading}°）</span>
+            {/* Dynamic Guidance Banner: Sun mode vs Stars mode */}
+            {arViewMode === 'sun' ? (
+              <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-white/25 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
+                {isAligned ? (
+                  <div>
+                    <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-extrabold text-xs sm:text-sm">
+                      <span>🎯 完美搭帳朝向（{heading}°）</span>
+                    </div>
+                    <p className="text-xs text-emerald-200/90 mt-0.5 leading-tight">
+                      ✨ 帳門對此方位！06:00~07:30 晨曬在背後不熱醒，避開主風向
+                    </p>
                   </div>
-                  <p className="text-xs text-emerald-200/90 mt-0.5 leading-tight">
-                    ✨ 帳門對此方位！06:00~07:30 晨曬在背後不熱醒，避開主風向
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-center gap-1.5 text-amber-400 font-black text-xs sm:text-sm">
-                    {azimuthDiff > 0 ? (
-                      <>
-                        <span className="animate-pulse">👉 請向右轉動</span>
-                        <span className="font-mono text-sm sm:text-base bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/30">
-                          {Math.abs(Math.round(azimuthDiff))}°
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="animate-pulse">👈 請向左轉動</span>
-                        <span className="font-mono text-sm sm:text-base bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/30">
-                          {Math.abs(Math.round(azimuthDiff))}°
-                        </span>
-                      </>
-                    )}
-                    <span className="text-slate-300 font-medium text-xs">
-                      | 目標: <strong className="text-amber-300 font-mono">{recommendedDoorAzimuth}°</strong> (西南西)
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-center gap-1.5 text-amber-400 font-black text-xs sm:text-sm">
+                      {azimuthDiff > 0 ? (
+                        <>
+                          <span className="animate-pulse">👉 請向右轉動</span>
+                          <span className="font-mono text-sm sm:text-base bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/30">
+                            {Math.abs(Math.round(azimuthDiff))}°
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="animate-pulse">👈 請向左轉動</span>
+                          <span className="font-mono text-sm sm:text-base bg-amber-400/20 px-1.5 py-0.2 rounded border border-amber-400/30">
+                            {Math.abs(Math.round(azimuthDiff))}°
+                          </span>
+                        </>
+                      )}
+                      <span className="text-slate-300 font-medium text-xs">
+                        | 目標: <strong className="text-amber-300 font-mono">{recommendedDoorAzimuth}°</strong> (西南西)
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-indigo-400/40 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
+                {lockedStar ? (
+                  <div className="text-xs">
+                    <span className="text-emerald-400 font-black inline-flex items-center gap-1">
+                      <span>🎯 已鎖定天體：</span>
+                      <strong className="text-white text-sm">{lockedStar.name}</strong>
+                    </span>
+                    <span className="text-indigo-200 ml-1.5">
+                      ({lockedStar.constellation} · 視星等 {lockedStar.mag})
                     </span>
                   </div>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="text-xs text-indigo-200 flex items-center justify-center gap-1.5 font-bold">
+                    <span>🌌 旋轉手機仰望天頂！中央十字準心可鎖定星體與銀河核心</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* 3. AR HUD: Floating Sun Markers in Sky Dome */}
+          {/* 3. AR HUD: Floating Markers in Sky Dome */}
           <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
-            {sunMilestones.map(sun => {
-              // Angular difference between device heading and sun azimuth
+            {/* 3A. SUN MODE: Sun Path Markers */}
+            {arViewMode === 'sun' && sunMilestones.map(sun => {
               const azDiff = (sun.azimuth - heading + 540) % 360 - 180;
-              // Angular difference between device camera elevation and sun elevation
               const elDiff = sun.elevation - camElevation;
-
-              // Camera field of view (FOV): approx +/- 38 deg horizontal, +/- 28 deg vertical
               const inFOV = Math.abs(azDiff) < 38 && Math.abs(elDiff) < 28;
-
-              // Map angles to screen percentage (0% to 100%)
               const screenX = 50 + (azDiff / 38) * 45;
               const screenY = 50 - (elDiff / 28) * 40;
 
@@ -583,34 +703,128 @@ export default function CampsiteARModal({
                 </div>
               );
             })}
-          </div>
 
-          {/* 4. AR Central Reticle (Uncluttered) */}
-          <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center">
-            {/* Target Reticle */}
-            <div className={`relative w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
-              isAligned 
-                ? 'border-emerald-400 shadow-[0_0_30px_#10b981] scale-105 bg-emerald-500/10' 
-                : 'border-white/30 border-dashed'
-            }`}>
-              {/* Crosshairs */}
-              <div className="absolute w-full h-0.5 bg-white/20"></div>
-              <div className="absolute h-full w-0.5 bg-white/20"></div>
-              <div className={`w-4 h-4 rounded-full border transition-colors ${
-                isAligned ? 'border-emerald-400 bg-emerald-400/40 scale-125' : 'border-white/60'
-              }`}></div>
-              
-              {isAligned && (
-                <div className="absolute -top-3.5 px-3.5 py-1 bg-emerald-500 text-slate-950 font-black text-xs rounded-full shadow-lg animate-bounce">
-                  🎯 完美朝向！
+            {/* 3B. STARS MODE: Celestial Objects & Milky Way Core */}
+            {arViewMode === 'stars' && computedStars.map(star => {
+              const azDiff = (star.azimuth - heading + 540) % 360 - 180;
+              const elDiff = star.elevation - camElevation;
+              const inFOV = Math.abs(azDiff) < 38 && Math.abs(elDiff) < 28;
+              const screenX = 50 + (azDiff / 38) * 45;
+              const screenY = 50 - (elDiff / 28) * 40;
+
+              if (!inFOV || star.elevation < -5) return null;
+
+              const isLocked = lockedStar?.id === star.id;
+              const isDeepSky = star.type === 'deepsky';
+
+              return (
+                <div
+                  key={star.id}
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-auto cursor-pointer transition-all duration-150 animate-in fade-in zoom-in-75"
+                  style={{ left: `${screenX}%`, top: `${screenY}%` }}
+                  onClick={() => setSelectedStarTarget(star)}
+                >
+                  {/* Special Rendering for Milky Way Core */}
+                  {isDeepSky ? (
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-32 h-16 rounded-full bg-gradient-to-r from-purple-600/30 via-pink-500/40 to-amber-400/30 blur-md animate-pulse absolute"></div>
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-purple-700 via-pink-600 to-amber-400 border-2 border-purple-200 shadow-[0_0_25px_#ec4899] flex items-center justify-center text-2xl z-10">
+                        🌌
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative flex items-center justify-center">
+                      {isLocked && (
+                        <div className="w-10 h-10 rounded-full bg-emerald-400/30 animate-ping absolute"></div>
+                      )}
+                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                        isLocked 
+                          ? 'w-9 h-9 bg-emerald-400 text-slate-950 font-black shadow-[0_0_20px_#10b981]' 
+                          : star.mag < 0.5 
+                            ? 'w-8 h-8 bg-gradient-to-tr from-amber-300 to-yellow-100 text-slate-950 shadow-[0_0_15px_#fde047]' 
+                            : star.mag < 1.8
+                              ? 'w-7 h-7 bg-gradient-to-tr from-sky-200 to-indigo-300 text-slate-950 shadow-[0_0_10px_#7dd3fc]'
+                              : 'w-6 h-6 bg-slate-200 text-slate-900 shadow-sm'
+                      }`}>
+                        <span className="text-sm">{star.icon}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Star Badge Card */}
+                  <div className={`px-2.5 py-1 rounded-xl text-xs font-bold shadow-xl backdrop-blur-md mt-1.5 text-center whitespace-nowrap border transition-all ${
+                    isLocked 
+                      ? 'bg-emerald-950/90 border-emerald-400 text-emerald-100 shadow-[0_0_15px_#10b981]' 
+                      : 'bg-slate-900/90 border-indigo-400/40 text-white'
+                  }`}>
+                    <div className="flex items-center gap-1 justify-center">
+                      <span className={isLocked ? 'text-emerald-300 font-extrabold' : 'text-amber-300 font-bold'}>
+                        {star.name.split(' (')[0]}
+                      </span>
+                      <span className="text-xs px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-normal">
+                        {star.badge}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-300 block">
+                      仰角 {star.elevation}° | 方位 {star.azimuth}°
+                    </span>
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
 
-          {/* 5. Bottom HUD Status Row (Leveler & Wind Side-by-Side, Never Colliding) */}
+          {/* 4. AR Central Reticle */}
+          <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center">
+            {arViewMode === 'sun' ? (
+              <div className={`relative w-40 h-40 sm:w-52 sm:h-52 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
+                isAligned 
+                  ? 'border-emerald-400 shadow-[0_0_30px_#10b981] scale-105 bg-emerald-500/10' 
+                  : 'border-white/30 border-dashed'
+              }`}>
+                <div className="absolute w-full h-0.5 bg-white/20"></div>
+                <div className="absolute h-full w-0.5 bg-white/20"></div>
+                <div className={`w-4 h-4 rounded-full border transition-colors ${
+                  isAligned ? 'border-emerald-400 bg-emerald-400/40 scale-125' : 'border-white/60'
+                }`}></div>
+                
+                {isAligned && (
+                  <div className="absolute -top-3.5 px-3.5 py-1 bg-emerald-500 text-slate-950 font-black text-xs rounded-full shadow-lg animate-bounce">
+                    🎯 完美朝向！
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className={`relative w-44 h-44 sm:w-56 sm:h-56 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
+                lockedStar 
+                  ? 'border-emerald-400 shadow-[0_0_35px_#10b981] scale-105 bg-emerald-500/15' 
+                  : 'border-indigo-400/40 border-dashed'
+              }`}>
+                {/* Crosshairs */}
+                <div className="absolute w-full h-0.5 bg-indigo-400/30"></div>
+                <div className="absolute h-full w-0.5 bg-indigo-400/30"></div>
+                <div className={`w-5 h-5 rounded-full border-2 transition-all ${
+                  lockedStar 
+                    ? 'border-emerald-400 bg-emerald-400/50 scale-125 shadow-[0_0_15px_#10b981]' 
+                    : 'border-indigo-300/60'
+                }`}></div>
+
+                {/* Target Locked Floating Card */}
+                {lockedStar && (
+                  <div className="absolute -top-12 px-3 py-1 bg-emerald-500 text-slate-950 font-black text-xs rounded-full shadow-xl animate-bounce flex items-center gap-1.5">
+                    <span>✨ 已鎖定：{lockedStar.name}</span>
+                    <span className="bg-slate-950 text-emerald-300 px-1.5 py-0.2 rounded-full text-xs">
+                      {lockedStar.elevation}° 仰角
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 5. Bottom HUD Status Row (Leveler + Wind / Moon side-by-side) */}
           <div className="absolute bottom-3 left-3 right-3 z-20 flex justify-between items-end gap-2 pointer-events-none">
-            {/* Left Floating Gyro Pitch/Roll Leveler (水準儀) */}
+            {/* Left Gyro Pitch/Roll Leveler */}
             <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%]">
               <span className="text-slate-400 font-bold block truncate">📐 地勢傾角</span>
               <div className="flex items-center gap-1.5 font-mono font-bold">
@@ -632,71 +846,164 @@ export default function CampsiteARModal({
                 )}
               </div>
               <p className="text-xs text-sky-300 font-medium truncate pt-0.5 border-t border-white/10">
-                {Math.abs(pitch) <= 2 && Math.abs(roll) <= 2 ? '✅ 地面平整 適合搭帳' : '💡 睡墊頭朝上坡'}
+                {arViewMode === 'stars' 
+                  ? (Math.abs(pitch) <= 2 ? '✅ 地面平整 適合架三腳架' : '💡 架相機注意腳架配重')
+                  : (Math.abs(pitch) <= 2 ? '✅ 地面平整 適合搭帳' : '💡 睡墊頭朝上坡')
+                }
               </p>
             </div>
 
-            {/* Right Floating Wind Stream HUD */}
-            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] text-right">
-              <span className="text-slate-400 font-bold flex items-center justify-end gap-1.5 truncate">
-                <span className={`w-1.5 h-1.5 rounded-full ${loadingWind ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`}></span>
-                <span>💨 即時氣流風向</span>
-              </span>
-              <div className="text-sky-300 font-extrabold font-mono text-xs sm:text-sm truncate">
-                來風 {windDir}° {getHeadingDirectionName(windDir)}
+            {/* Right HUD: Live Wind in Sun mode VS Moon Phase Light Pollution in Star mode */}
+            {arViewMode === 'sun' ? (
+              <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] text-right">
+                <span className="text-slate-400 font-bold flex items-center justify-end gap-1.5 truncate">
+                  <span className={`w-1.5 h-1.5 rounded-full ${loadingWind ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`}></span>
+                  <span>💨 即時氣流風向</span>
+                </span>
+                <div className="text-sky-300 font-extrabold font-mono text-xs sm:text-sm truncate">
+                  來風 {windDir}° {getHeadingDirectionName(windDir)}
+                </div>
+                <p className="text-xs text-slate-300 truncate pt-0.5 border-t border-white/10">
+                  {windSpeed} km/h · {locationMode === 'current' ? '當前位置即時風場' : '長軸順風破風'}
+                </p>
               </div>
-              <p className="text-xs text-slate-300 truncate pt-0.5 border-t border-white/10">
-                {windSpeed} km/h · {locationMode === 'current' ? '當前位置即時風場' : '長軸順風破風'}
-              </p>
-            </div>
+            ) : (
+              <div className="bg-slate-950/85 backdrop-blur-md border border-purple-500/30 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[50%] text-right">
+                <span className="text-purple-300 font-bold flex items-center justify-end gap-1.5 truncate">
+                  <span>{moonInfo.icon}</span>
+                  <span>{moonInfo.phaseName} · 月光害指數</span>
+                </span>
+                <div className="text-amber-300 font-black text-xs truncate">
+                  {moonInfo.rating.split(' ')[0]} ({moonInfo.illumination}% 照度)
+                </div>
+                <p className="text-xs text-slate-300 truncate pt-0.5 border-t border-white/10">
+                  {moonInfo.phaseDays < 7 || moonInfo.phaseDays > 22 ? '🌌 最佳深空拍攝良夜' : '🌙 建議觀測明亮行星'}
+                </p>
+              </div>
+            )}
           </div>
 
         </div>
 
+        {/* Selected Star Details Bottom Drawer Overlay */}
+        {(lockedStar || selectedStarTarget) && arViewMode === 'stars' && (
+          <div className="z-30 px-4 py-2.5 bg-slate-900/95 backdrop-blur-md border-t border-indigo-500/30 flex items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150">
+            {(() => {
+              const currentTarget = selectedStarTarget || lockedStar;
+              return (
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-md">
+                    {currentTarget.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <strong className="text-sm font-black text-white">{currentTarget.name}</strong>
+                      <span className="px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-300 font-bold border border-purple-400/30">
+                        {currentTarget.constellation}
+                      </span>
+                      <span className="text-slate-400 font-mono">
+                        視星等：{currentTarget.mag}
+                      </span>
+                      <span className="text-emerald-400 font-mono font-bold">
+                        仰角 {currentTarget.elevation}° / 方位 {currentTarget.azimuth}°
+                      </span>
+                    </div>
+                    <p className="text-slate-300 text-xs mt-0.5 truncate">
+                      {currentTarget.story}
+                    </p>
+                  </div>
+                  {selectedStarTarget && (
+                    <button
+                      onClick={() => setSelectedStarTarget(null)}
+                      className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Bottom Floating Control Deck */}
         <div className="z-30 px-4 py-3 bg-slate-900/90 backdrop-blur-md border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-3">
           
-          {/* Season Simulation Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400">☀️ 太陽軌跡季節：</span>
-            <div className="bg-slate-800 p-1 rounded-xl flex gap-1 border border-slate-700">
-              <button
-                onClick={() => setSeasonMode('current')}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                  seasonMode === 'current' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                今日現況
-              </button>
-              <button
-                onClick={() => setSeasonMode('summer')}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                  seasonMode === 'summer' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                夏至 (防晨曬)
-              </button>
-              <button
-                onClick={() => setSeasonMode('winter')}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                  seasonMode === 'winter' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                冬至 (迎暖陽)
-              </button>
+          {/* Left Controls: Season selector (Sun mode) VS Time simulator (Star mode) */}
+          {arViewMode === 'sun' ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-400">☀️ 太陽軌跡季節：</span>
+              <div className="bg-slate-800 p-1 rounded-xl flex gap-1 border border-slate-700">
+                <button
+                  onClick={() => setSeasonMode('current')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    seasonMode === 'current' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  今日現況
+                </button>
+                <button
+                  onClick={() => setSeasonMode('summer')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    seasonMode === 'summer' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  夏至 (防晨曬)
+                </button>
+                <button
+                  onClick={() => setSeasonMode('winter')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    seasonMode === 'winter' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  冬至 (迎暖陽)
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-indigo-300">🌌 觀星推演時段：</span>
+              <div className="bg-slate-800 p-1 rounded-xl flex gap-1 border border-indigo-400/30 overflow-x-auto max-w-full">
+                {[
+                  { key: 'now', label: '即時' },
+                  { key: '20:00', label: '20:00 入夜' },
+                  { key: '23:00', label: '23:00 午夜' },
+                  { key: '02:00', label: '02:00 凌晨' },
+                  { key: '04:30', label: '04:30 拂曉' }
+                ].map(item => (
+                  <button
+                    key={item.key}
+                    onClick={() => setSimStarHour(item.key)}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                      simStarHour === item.key 
+                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md' 
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-          {/* Actions & Permission Trigger */}
+          {/* Right Action Buttons */}
           <div className="flex items-center gap-2">
             {!permissionGranted && typeof DeviceOrientationEvent !== 'undefined' && (
               <button
                 onClick={handleRequestMotionPermission}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center gap-1"
               >
-                🧭 啟動真實陀螺儀權限
+                🧭 啟動陀螺儀權限
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowStargazingGuide(true)}
+              className="px-3.5 py-1.5 bg-indigo-900/80 hover:bg-indigo-800 border border-indigo-400/40 text-indigo-100 hover:text-white font-black text-xs rounded-xl shadow transition-all flex items-center gap-1"
+            >
+              <span>📖 觀星指南</span>
+            </button>
             <button
               onClick={onClose}
               className="px-5 py-1.5 bg-white text-slate-950 hover:bg-slate-200 font-black text-xs rounded-xl shadow transition-colors"
@@ -706,6 +1013,127 @@ export default function CampsiteARModal({
           </div>
 
         </div>
+
+        {/* 📖 Stargazing Highlights Field Guide Modal Drawer */}
+        {showStargazingGuide && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-lg animate-in fade-in duration-150">
+            <div className="relative w-full max-w-3xl max-h-[90vh] bg-slate-900 border border-indigo-500/40 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-white">
+              
+              {/* Drawer Header */}
+              <div className="px-5 py-4 border-b border-white/10 bg-slate-900/95 flex justify-between items-center">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">🌌</span>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                      {STARGAZING_GUIDE.title}
+                    </h3>
+                    <p className="text-xs text-indigo-300">
+                      {STARGAZING_GUIDE.sub}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowStargazingGuide(false)}
+                  className="text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl font-bold text-xs transition-colors"
+                >
+                  ✕ 關閉
+                </button>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="flex border-b border-white/10 bg-slate-950/60 overflow-x-auto p-1.5 gap-1.5">
+                {STARGAZING_GUIDE.sections.map((sec, idx) => (
+                  <button
+                    key={sec.title}
+                    onClick={() => setGuideActiveSection(idx)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                      guideActiveSection === idx
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>{sec.icon}</span>
+                    <span>{sec.title.split(' ')[0]}</span>
+                    <span className="text-xs px-1.5 py-0.2 rounded-full bg-white/10 text-white/80">
+                      {sec.tag}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Active Tab Content */}
+              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
+                {(() => {
+                  const activeSec = STARGAZING_GUIDE.sections[guideActiveSection];
+                  return (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-2xl">{activeSec.icon}</span>
+                        <div>
+                          <h4 className="text-base font-black text-amber-300">
+                            {activeSec.title}
+                          </h4>
+                          <span className="text-xs text-indigo-300">
+                            露營現場實用觀測守則 · 標籤：{activeSec.tag}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 mt-4">
+                        {activeSec.points.map((pt, i) => (
+                          <div
+                            key={i}
+                            className="p-3.5 rounded-2xl bg-slate-800/80 border border-white/10 flex items-start gap-3 shadow-sm hover:border-indigo-400/40 transition-colors"
+                          >
+                            <span className="w-6 h-6 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 text-white font-black text-xs flex items-center justify-center shrink-0 mt-0.5 shadow">
+                              {i + 1}
+                            </span>
+                            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                              {pt}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Special Callout based on section */}
+                      {guideActiveSection === 0 && (
+                        <div className="mt-5 p-4 rounded-2xl bg-purple-950/40 border border-purple-500/30 flex items-center gap-3">
+                          <span className="text-2xl">💡</span>
+                          <p className="text-xs text-purple-200">
+                            <strong>營地即時月相：</strong>當前農曆月面照度約 {moonInfo.illumination}%，{moonInfo.advice}
+                          </p>
+                        </div>
+                      )}
+
+                      {guideActiveSection === 1 && (
+                        <div className="mt-5 p-4 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-center gap-3">
+                          <span className="text-2xl">📸</span>
+                          <p className="text-xs text-amber-200">
+                            <strong>夜拍小秘訣：</strong>若無三腳架，可將手機靠在營柱、保溫杯或露營椅背上，利用倒數計時 3 秒自拍，確保零晃動拍出絕美銀河！
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="px-5 py-3 border-t border-white/10 bg-slate-900/90 flex justify-between items-center text-xs">
+                <span className="text-slate-400">
+                  切換上方標籤查閱更多觀測要點
+                </span>
+                <button
+                  onClick={() => setShowStargazingGuide(false)}
+                  className="px-4 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black rounded-xl shadow transition-colors"
+                >
+                  返回 AR 星空
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
