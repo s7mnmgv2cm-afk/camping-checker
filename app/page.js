@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   ScatterChart,
@@ -50,12 +50,24 @@ const TAG_SYNONYMS = {
 };
 
 // 📜 系統版本更新歷程紀錄 (Version History Changelog)
-const APP_VERSION = 'v2.5.0';
+const APP_VERSION = 'v2.6.0';
 const VERSION_HISTORY = [
+  {
+    version: 'v2.6.0',
+    date: '2026-11-09',
+    isLatest: true,
+    tag: '手機版對照表折疊優化 & GPS 實境全進化',
+    changes: [
+      { badge: '📱 對照表折疊', text: '營地快速預約對照表在手機版預設智慧折疊收合，徹底告別 3,000px 無止盡滑動，支援一鍵秒展開。' },
+      { badge: '📊 高密度表格', text: '特色按鈕優化為高密度橫向膠囊徽章，高度大減 70%，並加入 max-h 獨立滑動容器與置頂過濾。' },
+      { badge: '📍 雙定位模式', text: 'AR 實境搭帳支援「營地模式」與「目前所在地 (手機 GPS)」一鍵切換，現場搭帳與行前模擬皆宜。' },
+      { badge: '💨 真實即時風向', text: '全台營地全面連線即時氣候測站，自動抓取 10 公尺實測風向與風速，告別靜態 45° 預設值。' },
+      { badge: '🧭 陀螺儀校正', text: '徹底解耦地勢水平儀 (平放 0°) 與天球鏡頭仰角，導航方位顯示全面解除圖層遮擋。' }
+    ]
+  },
   {
     version: 'v2.5.0',
     date: '2026-11-08',
-    isLatest: true,
     tag: '獨家黑科技 & 易讀性全進化',
     changes: [
       { badge: '✨ 獨家黑科技', text: 'AR 實境搭帳導引儀升級為點擊展開全螢幕獨立圖文解說彈窗，兼顧主頁面呼吸感與行動瀏覽。' },
@@ -167,12 +179,18 @@ export default function Home() {
   // 📱 AR 實境陀螺儀搭帳方位指引 Modal 狀態
   const [arModalCamp, setArModalCamp] = useState(null);
   const [arModalWind, setArModalWind] = useState(null);
+  const [arModalInitialMode, setArModalInitialMode] = useState('campsite');
   const [showArGuideModal, setShowArGuideModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-  const handleOpenAR = (camp, windData) => {
+  // 📋 快速對照表展開／收合與過濾狀態 (手機版預設收合，避免過長)
+  const [isTableExpanded, setIsTableExpanded] = useState(false);
+  const [tableFilter, setTableFilter] = useState('all'); // 'all' | 'favorites' | 'bookmarked'
+
+  const handleOpenAR = (camp, windData, mode = 'campsite') => {
     setArModalCamp(camp);
     setArModalWind(windData || null);
+    setArModalInitialMode(mode);
   };
 
   // 🎯 被選擇的營地物件
@@ -432,6 +450,17 @@ export default function Home() {
     currentPage * itemsPerPage
   );
 
+  // 📋 表格模式專屬篩選資料
+  const tableDisplayCamps = useMemo(() => {
+    if (tableFilter === 'favorites') {
+      return currentCampsites.filter(c => favoriteCamps.has(c.id));
+    }
+    if (tableFilter === 'bookmarked') {
+      return currentCampsites.filter(c => bookmarkedCamps.has(c.id));
+    }
+    return currentCampsites;
+  }, [currentCampsites, tableFilter, favoriteCamps, bookmarkedCamps]);
+
   const handleSelectCamp = (camp) => {
     if (!camp) return;
     const targetCamp = camp.payload ? camp.payload : camp;
@@ -583,12 +612,12 @@ export default function Home() {
     }
 
     return (
-      <div className="flex flex-col gap-1.5 min-w-[120px]">
+      <div className="flex flex-col gap-1 min-w-[90px]">
         <a
           href={bookUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors shadow-sm"
+          className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-2 rounded-lg text-xs transition-colors shadow-sm truncate"
         >
           {bookLabel}
         </a>
@@ -596,9 +625,9 @@ export default function Home() {
           href={gpsNavUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
+          className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2 rounded-lg text-xs transition-colors shadow-sm flex items-center justify-center gap-1"
         >
-          🧭 導航地圖
+          🧭 導航
         </a>
       </div>
     );
@@ -718,7 +747,7 @@ export default function Home() {
             type="button"
             onClick={() => {
               const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
-              if (targetCamp) handleOpenAR(targetCamp);
+              if (targetCamp) handleOpenAR(targetCamp, null, 'current');
             }}
             className="flex-1 sm:flex-none px-5 py-3 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-sm sm:text-base rounded-xl shadow-lg transition-all transform hover:scale-105 flex items-center justify-center gap-2"
           >
@@ -1324,89 +1353,189 @@ export default function Home() {
         </>
       )}
 
-      {/* 📋 下方營地快速對照表 */}
+      {/* 📋 下方營地快速對照表 - 支援手機版摺疊收合與緊湊高密度檢視 */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mb-12">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-sm">
-          📋 營地快速預約對照表 (我的最愛與待確認清單會自動置頂)
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead>
-              <tr className="bg-slate-100 text-slate-600 border-b border-slate-200">
-                <th className="p-3.5 font-bold">營地名稱</th>
-                <th className="p-3.5 font-bold">真實海拔</th>
-                <th className="p-3.5 font-bold">車程 / 距離 ({FIXED_ORIGINS[originKey]})</th>
-                <th className="p-3.5 font-bold">特色功能與分析</th>
-                <th className="p-3.5 font-bold">預約與導航</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {currentCampsites.map((site) => {
-                const { mins, dist } = getCampDriveInfo(site);
-                const isBookmarked = bookmarkedCamps.has(site.id);
-                const isFav = favoriteCamps.has(site.id);
-                const campNotes = userNotes[site.id] || [];
+        <div 
+          onClick={() => setIsTableExpanded(!isTableExpanded)}
+          className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3 cursor-pointer select-none hover:bg-slate-100/80 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">📋</span>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-slate-800 text-sm sm:text-base">
+                  營地快速預約對照表
+                </h3>
+                <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold border border-indigo-200">
+                  共 {currentCampsites.length} 筆
+                </span>
+                {favoriteCamps.size > 0 && (
+                  <span className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full font-bold border border-rose-200">
+                    ❤️ 最愛 {currentCampsites.filter(c => favoriteCamps.has(c.id)).length} 筆
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isTableExpanded ? '點擊此處可收合表格' : '📱 手機版已預設摺疊收合防長滑，點擊即可展開對照'}
+              </p>
+            </div>
+          </div>
 
-                return (
-                  <tr
-                    key={site.id}
-                    className={`transition-colors ${
-                      selectedCamp?.id === site.id ? 'bg-amber-50 font-medium' : isFav ? 'bg-rose-50/40' : isBookmarked ? 'bg-amber-50/40' : 'hover:bg-slate-50/80'
-                    }`}
-                  >
-                    <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
-                      <button onClick={(e) => toggleFavorite(e, site.id)} className="text-lg hover:scale-110 transition-transform" title={isFav ? "從我的最愛移除" : "加入我的最愛"}>
-                        {isFav ? '❤️' : '🤍'}
-                      </button>
-                      <button onClick={(e) => toggleBookmark(e, site.id)} className={`text-lg transition-transform hover:scale-110 ${isBookmarked ? 'text-amber-500' : 'text-slate-300 grayscale opacity-50'}`}>
-                        {isBookmarked ? '📌' : '➕'}
-                      </button>
-                      <span>{site.name}</span>
-                    </td>
-                    <td className="p-3.5 text-slate-600">{site.altitude || '標示中'}</td>
-                    <td className="p-3.5 text-slate-600">{mins ? `${mins} 分鐘` : '確認中'} ({dist})</td>
-                    <td className="p-3.5">
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAR(site)}
-                          className="text-xs px-2 py-1 rounded-lg border font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-colors flex items-center justify-center gap-1"
-                        >
-                          📱 AR 搭帳
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSafeRouteModalCamp(site)}
-                          className="text-xs px-2 py-1 rounded-lg border font-semibold bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"
-                        >
-                          🛡️ 安全路徑分析
-                        </button>
-                        <button
-                          onClick={() => setActiveNoteCamp(site)}
-                          className={`text-xs px-2 py-1 rounded-lg border font-semibold transition-colors flex items-center justify-center gap-1 ${
-                            campNotes.length > 0 
-                              ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
-                              : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="px-3.5 py-1.5 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+            >
+              <span>{isTableExpanded ? '收合對照表 ▴' : `展開對照表 (${currentCampsites.length}筆) ▾`}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 展開時的內容 */}
+        {isTableExpanded && (
+          <div className="animate-in fade-in duration-200">
+            {/* 快速篩選工具列 */}
+            <div className="px-4 py-2 bg-slate-50/80 border-b border-slate-200 flex items-center gap-2 flex-wrap text-xs">
+              <span className="font-bold text-slate-500">快速過濾：</span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setTableFilter('all'); }}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                  tableFilter === 'all' 
+                    ? 'bg-indigo-600 text-white shadow-sm' 
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                全部 ({currentCampsites.length})
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setTableFilter('favorites'); }}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                  tableFilter === 'favorites' 
+                    ? 'bg-rose-600 text-white shadow-sm' 
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                ❤️ 我的最愛 ({currentCampsites.filter(c => favoriteCamps.has(c.id)).length})
+              </button>
+              {bookmarkedCamps.size > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setTableFilter('bookmarked'); }}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                    tableFilter === 'bookmarked' 
+                      ? 'bg-amber-600 text-white shadow-sm' 
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  📌 待確認 ({currentCampsites.filter(c => bookmarkedCamps.has(c.id)).length})
+                </button>
+              )}
+            </div>
+
+            {/* 限制最大高度與內部獨立滾動 (max-h-[60vh]) */}
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm">
+                  <tr className="text-slate-600 border-b border-slate-200 text-xs sm:text-sm">
+                    <th className="p-3 font-bold">營地名稱</th>
+                    <th className="p-3 font-bold">海拔</th>
+                    <th className="p-3 font-bold whitespace-nowrap">車程 / 距離 ({FIXED_ORIGINS[originKey]})</th>
+                    <th className="p-3 font-bold">特色功能</th>
+                    <th className="p-3 font-bold">預約 / 導航</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tableDisplayCamps.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-6 text-center text-slate-400 text-xs">
+                        目前篩選條件下無符合項目
+                      </td>
+                    </tr>
+                  ) : (
+                    tableDisplayCamps.map((site) => {
+                      const { mins, dist } = getCampDriveInfo(site);
+                      const isBookmarked = bookmarkedCamps.has(site.id);
+                      const isFav = favoriteCamps.has(site.id);
+                      const campNotes = userNotes[site.id] || [];
+
+                      return (
+                        <tr
+                          key={site.id}
+                          className={`transition-colors ${
+                            selectedCamp?.id === site.id ? 'bg-amber-50 font-medium' : isFav ? 'bg-rose-50/40' : isBookmarked ? 'bg-amber-50/40' : 'hover:bg-slate-50/80'
                           }`}
                         >
-                          📝 {campNotes.length > 0 ? `${campNotes.length} 筆紀錄` : '+ 新增筆記'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setWeatherModalCamp(site)}
-                          className="text-xs px-2 py-1 rounded-lg border font-semibold bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 transition-colors flex items-center justify-center gap-1"
-                        >
-                          ⛅ 天氣預報 & 羅盤
-                        </button>
-                      </div>
-                    </td>
-                    <td className="p-3.5">{renderTableActions(site)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          <td className="p-2.5 sm:p-3 font-bold text-slate-900 flex items-center gap-1.5 whitespace-nowrap">
+                            <button onClick={(e) => toggleFavorite(e, site.id)} className="text-base hover:scale-110 transition-transform" title={isFav ? "從我的最愛移除" : "加入我的最愛"}>
+                              {isFav ? '❤️' : '🤍'}
+                            </button>
+                            <button onClick={(e) => toggleBookmark(e, site.id)} className={`text-base transition-transform hover:scale-110 ${isBookmarked ? 'text-amber-500' : 'text-slate-300 grayscale opacity-50'}`}>
+                              {isBookmarked ? '📌' : '➕'}
+                            </button>
+                            <span className="text-xs sm:text-sm">{site.name}</span>
+                          </td>
+                          <td className="p-2.5 sm:p-3 text-slate-600 text-xs sm:text-sm whitespace-nowrap">{site.altitude || '標示中'}</td>
+                          <td className="p-2.5 sm:p-3 text-slate-600 text-xs sm:text-sm whitespace-nowrap">{mins ? `${mins} 分` : '確認中'} ({dist})</td>
+                          <td className="p-2.5 sm:p-3">
+                            {/* 緊湊橫向排版 (Compact Pills) */}
+                            <div className="flex flex-wrap gap-1 max-w-[210px]">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAR(site)}
+                                className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
+                              >
+                                📱 AR
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSafeRouteModalCamp(site)}
+                                className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
+                              >
+                                🛡️ 路徑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setWeatherModalCamp(site)}
+                                className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
+                              >
+                                ⛅ 天氣
+                              </button>
+                              <button
+                                onClick={() => setActiveNoteCamp(site)}
+                                className={`text-xs px-2 py-0.5 rounded-lg border font-semibold transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap ${
+                                  campNotes.length > 0 
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
+                                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                📝 {campNotes.length > 0 ? `${campNotes.length}筆` : '筆記'}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="p-2.5 sm:p-3">{renderTableActions(site)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 表格底部快速收合列 */}
+            <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+              <span>💡 提示：在表格中點擊愛心 ❤️ 或釘選 📌 可快速將營地收藏置頂</span>
+              <button
+                type="button"
+                onClick={() => setIsTableExpanded(false)}
+                className="text-xs font-bold text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded hover:bg-slate-200 transition-colors"
+              >
+                收合對照表 ▴
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 分頁控制列 (移至最下方) */}
@@ -1594,6 +1723,7 @@ export default function Home() {
         }}
         windDir={arModalWind?.windDir}
         windSpeed={arModalWind?.windSpeed}
+        initialLocationMode={arModalInitialMode}
       />
 
       {/* ✨ 獨家黑科技：AR 實境搭帳圖文解說 Modal (點擊按鈕彈出) */}
@@ -1616,7 +1746,7 @@ export default function Home() {
                   onClick={() => {
                     setShowArGuideModal(false);
                     const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
-                    if (targetCamp) handleOpenAR(targetCamp);
+                    if (targetCamp) handleOpenAR(targetCamp, null, 'current');
                   }}
                   className="px-4 py-2 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg transition-all flex items-center gap-1.5 transform hover:scale-105"
                 >
