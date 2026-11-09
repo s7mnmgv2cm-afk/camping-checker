@@ -66,14 +66,21 @@ export default function CampsiteARModal({
   isOpen,
   onClose,
   windDir: propWindDir,
-  windSpeed: propWindSpeed
+  windSpeed: propWindSpeed,
+  initialLocationMode = 'campsite'
 }) {
   const videoRef = useRef(null);
   const [hasCamera, setHasCamera] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
   
-  // Realtime Live Wind State (auto-fetched for campsite GPS coordinates)
+  // Location Mode: 'campsite' (營地座標) | 'current' (目前所在地 GPS)
+  const [locationMode, setLocationMode] = useState(initialLocationMode);
+  const [userCoords, setUserCoords] = useState(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [geoError, setGeoError] = useState(null);
+
+  // Realtime Live Wind State (auto-fetched for campsite or GPS coordinates)
   const [liveWind, setLiveWind] = useState(null);
   const [loadingWind, setLoadingWind] = useState(false);
 
@@ -86,14 +93,69 @@ export default function CampsiteARModal({
   // Selected simulation mode (Summer / Winter / Current)
   const [seasonMode, setSeasonMode] = useState('current');
 
-  const lat = campsite?.latitude ? Number(campsite.latitude) : 24.1;
-  const lng = campsite?.longitude ? Number(campsite.longitude) : 121.0;
+  const campLat = campsite?.latitude ? Number(campsite.latitude) : 24.1;
+  const campLng = campsite?.longitude ? Number(campsite.longitude) : 121.0;
 
-  // Auto-fetch real-time live wind from Open-Meteo for the campsite's exact coordinates
+  // Active coordinates based on selected locationMode
+  const lat = (locationMode === 'current' && userCoords) ? userCoords.lat : campLat;
+  const lng = (locationMode === 'current' && userCoords) ? userCoords.lng : campLng;
+
+  // Handle GPS location request
+  const handleSwitchToGPS = () => {
+    if (userCoords) {
+      setLocationMode('current');
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeoError('此裝置瀏覽器不支援 GPS 定位，已維持營地模式');
+      setTimeout(() => setGeoError(null), 3500);
+      return;
+    }
+
+    setIsLocating(true);
+    setGeoError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        };
+        setUserCoords(coords);
+        setLocationMode('current');
+        setIsLocating(false);
+      },
+      (err) => {
+        console.warn('Geolocation error:', err);
+        setIsLocating(false);
+        let msg = '無法取得 GPS 定位，已維持營地模式';
+        if (err.code === 1) msg = '未允許 GPS 定位權限，請於瀏覽器設定中開啟';
+        else if (err.code === 2) msg = 'GPS 訊號不可用，請至戶外空曠處再試';
+        else if (err.code === 3) msg = 'GPS 定位逾時，請稍後重試';
+        setGeoError(msg);
+        setTimeout(() => setGeoError(null), 4000);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+    );
+  };
+
+  // Sync initialLocationMode on modal open
   useEffect(() => {
-    if (!isOpen || !campsite) return;
+    if (!isOpen) return;
+    if (initialLocationMode === 'current') {
+      handleSwitchToGPS();
+    } else {
+      setLocationMode('campsite');
+    }
+  }, [isOpen, initialLocationMode]);
 
-    if (propWindDir !== undefined && propWindSpeed !== undefined && propWindDir !== null) {
+  // Auto-fetch real-time live wind from Open-Meteo for active coordinates (campsite or GPS)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (locationMode === 'campsite' && propWindDir !== undefined && propWindSpeed !== undefined && propWindDir !== null) {
       setLiveWind({ windDir: propWindDir, windSpeed: propWindSpeed });
       return;
     }
@@ -124,7 +186,7 @@ export default function CampsiteARModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, campsite, lat, lng, propWindDir, propWindSpeed]);
+  }, [isOpen, lat, lng, locationMode, propWindDir, propWindSpeed]);
 
   const windDir = liveWind?.windDir ?? (propWindDir !== undefined && propWindDir !== null ? propWindDir : 45);
   const windSpeed = liveWind?.windSpeed ?? (propWindSpeed !== undefined && propWindSpeed !== null ? propWindSpeed : 10);
@@ -280,15 +342,52 @@ export default function CampsiteARModal({
       <div className="relative w-full h-full sm:max-w-4xl sm:max-h-[92vh] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden bg-slate-900 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150">
         
         {/* Top Header Floating Glass Bar - Relative in flex-col flow so it NEVER overlaps AR viewport elements */}
-        <div className="relative shrink-0 z-30 px-3.5 sm:px-4 py-2.5 sm:py-3 bg-slate-900/90 backdrop-blur-md border-b border-white/10 flex justify-between items-center shadow-lg">
+        <div className="relative shrink-0 z-30 px-3.5 sm:px-4 py-2 sm:py-2.5 bg-slate-900/95 backdrop-blur-md border-b border-white/10 flex justify-between items-center shadow-lg gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-xl shrink-0">📱</span>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-base font-black flex items-center gap-1.5 text-white truncate">
-                AR 實境相機陀螺儀：營地搭帳方位建議
-              </h2>
-              <p className="text-xs text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate">
-                <span className="text-slate-300 font-bold">{campsite?.name || '露營區'}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-black flex items-center gap-1.5 text-white">
+                  AR 實境搭帳導引儀
+                </h2>
+
+                {/* 📍 測量定位切換器 (營地 vs 目前所在地) */}
+                <div className="inline-flex items-center bg-slate-950/85 p-0.5 rounded-lg border border-white/20 text-xs shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setLocationMode('campsite')}
+                    className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
+                      locationMode === 'campsite'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <span>🏕️ 營地模式</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSwitchToGPS}
+                    className={`px-2 py-0.5 rounded-md font-bold transition-all flex items-center gap-1 ${
+                      locationMode === 'current'
+                        ? 'bg-sky-500 text-slate-950 shadow-sm'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <span>📍 目前所在地</span>
+                    {isLocating && <span className="animate-spin text-xs">⏳</span>}
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate mt-0.5">
+                <span className="text-slate-300 font-bold flex items-center gap-1">
+                  <span>{locationMode === 'current' ? '📍 定位' : '🏕️ 營地'}：</span>
+                  <span className={locationMode === 'current' ? 'text-sky-300 font-mono font-bold' : 'text-amber-300 font-bold'}>
+                    {locationMode === 'current'
+                      ? (userCoords ? `${userCoords.lat.toFixed(2)}°N, ${userCoords.lng.toFixed(2)}°E` : (isLocating ? '衛星定位中...' : '目前所在地'))
+                      : (campsite?.name || '指定營地')}
+                  </span>
+                </span>
                 <span className="text-slate-500">|</span>
                 <span className="text-amber-300 font-semibold">
                   即時面向：<strong className="text-amber-400 font-mono font-black">{heading}°</strong>（{getHeadingDirectionName(heading)}）
@@ -300,11 +399,22 @@ export default function CampsiteARModal({
           </div>
           <button
             onClick={onClose}
-            className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors ml-2 shrink-0"
+            className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors shrink-0 ml-2"
           >
             ✕ 關閉
           </button>
         </div>
+
+        {/* GPS Error Notification Toast */}
+        {geoError && (
+          <div className="bg-amber-500/95 text-slate-950 text-xs font-bold px-4 py-1.5 flex items-center justify-between shadow-md transition-all z-40 border-b border-amber-600">
+            <span className="flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>{geoError}</span>
+            </span>
+            <button onClick={() => setGeoError(null)} className="text-slate-900 hover:text-black font-black text-sm px-1.5">✕</button>
+          </div>
+        )}
 
         {/* Main AR Viewport (Camera Video + AR Canvas HUD) */}
         <div className="relative flex-1 w-full overflow-hidden flex items-center justify-center bg-slate-950">
@@ -536,7 +646,7 @@ export default function CampsiteARModal({
                 來風 {windDir}° {getHeadingDirectionName(windDir)}
               </div>
               <p className="text-xs text-slate-300 truncate pt-0.5 border-t border-white/10">
-                {windSpeed} km/h · 長軸平行風向破風
+                {windSpeed} km/h · {locationMode === 'current' ? '當前位置即時風場' : '長軸順風破風'}
               </p>
             </div>
           </div>
