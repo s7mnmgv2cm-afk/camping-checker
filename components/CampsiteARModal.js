@@ -650,6 +650,49 @@ export default function CampsiteARModal({
     ) || null;
   }, [selectedConstellation, lockedStar, computedConstellations]);
 
+  // 🧭 智慧天體仰角引導指針 (Off-Screen Sky Radar Guidance)：
+  // 當使用者水平轉向天體方位 (例如土星 171°)，但垂直仰角不足或過高 (例如土星在 66° 高空但鏡頭平視 15°) 時，
+  // 自動偵測並浮現直覺的向上/向下抬手引導指示，秒速化解「方位對了卻看不到」的疑惑！
+  const skyAimGuidance = useMemo(() => {
+    if (arViewMode !== 'stars' || lockedStar) return null;
+
+    const starFovH = effectiveLandscape ? 52.5 : 38;
+    const starFovV = effectiveLandscape ? 20 : 28;
+
+    // 優先順序：1. 使用者手動選中的天體，2. 當前夜空主要行星 (土星、木星、火星、金星) 或一等亮星
+    const priorityTargets = selectedStarTarget 
+      ? [selectedStarTarget] 
+      : computedStars.filter(s => s.type === 'planet' || s.mag <= 1.2);
+
+    for (const target of priorityTargets) {
+      if (target.elevation < -5) continue;
+      const azDiff = (target.azimuth - heading + 540) % 360 - 180;
+      const elDiff = target.elevation - camElevation;
+
+      // 使用者水平方位已大致對準 (夾角 <= 45°)
+      if (Math.abs(azDiff) <= 45) {
+        if (elDiff > starFovV) {
+          return {
+            target,
+            direction: 'up',
+            degreeDiff: Math.round(elDiff),
+            azDiff: Math.round(azDiff),
+            message: `👆 請將手機向上抬起 ${Math.round(elDiff)}°（目標仰角 ${target.elevation}°）`
+          };
+        } else if (elDiff < -starFovV) {
+          return {
+            target,
+            direction: 'down',
+            degreeDiff: Math.round(Math.abs(elDiff)),
+            azDiff: Math.round(azDiff),
+            message: `👇 請將手機向下壓低 ${Math.round(Math.abs(elDiff))}°（目標仰角 ${target.elevation}°）`
+          };
+        }
+      }
+    }
+    return null;
+  }, [arViewMode, lockedStar, selectedStarTarget, computedStars, heading, camElevation, effectiveLandscape]);
+
   // Reset dismissed star when reticle locks onto another star
   useEffect(() => {
     if (lockedStar && lockedStar.id !== dismissedStarId) {
@@ -690,25 +733,43 @@ export default function CampsiteARModal({
       };
     });
 
-    // 🎯 智慧抗重疊 (LOD Anti-Collision): 當視野內山峰密集時，自動將重疊次峰切換為極簡微標籤
-    const occupiedSlots = [];
-    return projected.map(p => {
-      if (!p.isVisible) return p;
-      const isPriority = (p.altitudeM || p.elevation) >= 3000 || (p.distanceKm || p.distKm) < 15;
-      let hasOverlap = false;
-      for (const slot of occupiedSlots) {
-        if (Math.abs(slot.screenX - p.screenX) < 5.0 && Math.abs(slot.screenY - p.screenY) < 7.0) {
-          hasOverlap = true;
+    // 🎯 智慧多層錯位避讓 (Multi-Tier Collision Avoidance Layout, 仿 PeakFinder / PeakVisor):
+    // 1. 先將可見山峰依距離排序（近景優先佔據第 0 層基準高度）
+    // 2. 當鄰近山峰水平距離 < 8.5% 時，自動指派至高一層 (Tier 1: +14px, Tier 2: +28px) 錯開高度
+    // 3. 超過 3 層且水平重疊者轉為極簡微標籤 (isCompact)，達成 100% 零遮蔽、全名清晰可見
+    const visibleList = projected.filter(p => p.isVisible);
+    const sorted = [...visibleList].sort((a, b) => (a.distKm || 999) - (b.distKm || 999));
+
+    const occupiedTiers = [];
+    const tierMap = new Map();
+
+    sorted.forEach(p => {
+      let chosenTier = 0;
+      let isCompact = false;
+      const threshold = 8.5; // 水平避讓門檻 (%)
+
+      for (let t = 0; t <= 2; t++) {
+        const conflict = occupiedTiers.some(occ => occ.tier === t && Math.abs(occ.screenX - p.screenX) < threshold);
+        if (!conflict) {
+          chosenTier = t;
           break;
         }
+        if (t === 2) {
+          chosenTier = 0;
+          isCompact = true;
+        }
       }
-      const isCompact = hasOverlap && !isPriority;
-      if (!isCompact) {
-        occupiedSlots.push({ screenX: p.screenX, screenY: p.screenY });
-      }
+
+      occupiedTiers.push({ screenX: p.screenX, tier: chosenTier });
+      tierMap.set(p.id, { tier: chosenTier, isCompact });
+    });
+
+    return projected.map(p => {
+      const info = tierMap.get(p.id) || { tier: 0, isCompact: false };
       return {
         ...p,
-        isCompact
+        tier: info.tier,
+        isCompact: info.isCompact
       };
     });
   }, [arViewMode, lat, lng, campElevation, peakMaxDistance, heading, camElevation, effectiveLandscape]);
@@ -983,7 +1044,7 @@ export default function CampsiteARModal({
         localStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [isOpen, isDeviceLandscape]);
+  }, [isOpen, isDeviceLandscape, permissionGranted]);
 
   const handleRequestMotionPermission = () => {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -1241,28 +1302,29 @@ export default function CampsiteARModal({
             </button>
 
             {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
-            <div className="pointer-events-auto flex items-center gap-1.5">
+            <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5">
               <button
                 type="button"
                 onClick={() => setShowFullscreenGuide(true)}
-                className="px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all shadow-md flex items-center gap-1"
+                className="px-2 sm:px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all shadow-md flex items-center gap-1"
                 title="查看 iPhone / Android 滿版教學"
               >
-                <span>📱 滿版</span>
+                <span>📱</span>
+                <span className="hidden sm:inline">滿版</span>
               </button>
               <button
                 type="button"
                 onClick={() => setIsHeaderCollapsed(false)}
-                className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-1 transition-all shadow-xl active:scale-95 border border-amber-300"
+                className="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-1 transition-all shadow-xl active:scale-95 border border-amber-300"
                 title="展開完整控制選單"
               >
                 <span>▼</span>
-                <span>展開選單</span>
+                <span className="hidden sm:inline">選單</span>
               </button>
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                className={`px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all shadow-md ${
+                className={`px-2 sm:px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all shadow-md ${
                   isFullscreen
                     ? 'bg-amber-400 text-slate-950 font-black border-amber-300'
                     : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border-white/20'
@@ -1367,22 +1429,30 @@ export default function CampsiteARModal({
 
           {/* 2. Top Rolling Compass Ribbon & Guidance Banner (Unified Glassmorphic HUD) */}
           <div 
-            style={{ top: isHeaderCollapsed ? (effectiveLandscape ? '44px' : '52px') : '136px' }}
-            className="absolute left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3 transition-all duration-200"
+            style={{ 
+              top: effectiveLandscape 
+                ? (isHeaderCollapsed ? '8px' : '124px') 
+                : (isHeaderCollapsed ? '52px' : '136px'),
+              zIndex: 35
+            }}
+            className="absolute left-0 right-0 flex flex-col items-center pointer-events-none px-3 transition-all duration-200"
           >
             {/* Unified Glassmorphic Compass Ribbon with Integrated Heading & Pitch (純透明玻璃羅盤) */}
             <div 
-              style={{ width: 'min(360px, 88vw)', minWidth: '280px' }}
-              className="relative h-9 bg-black/25 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center shrink-0"
+              style={{ 
+                width: effectiveLandscape ? 'min(280px, 44vw)' : 'min(360px, 88vw)', 
+                minWidth: effectiveLandscape ? '220px' : '280px' 
+              }}
+              className="relative h-8 sm:h-9 bg-black/25 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center shrink-0"
             >
               <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 shadow-[0_0_8px_#f59e0b]"></div>
               
               {/* Integrated Center HUD Marker: 純透明微光琥珀指示標籤 (徹底消除純黑方塊，100% 透明透光) */}
-              <div className="absolute z-10 px-2.5 py-0.5 rounded-full bg-black/15 backdrop-blur-none border border-amber-400/40 text-xs font-mono font-black text-amber-300 flex items-center gap-1.5 shadow-[0_0_12px_rgba(245,158,11,0.2)] pointer-events-none">
+              <div className="absolute z-10 px-2 sm:px-2.5 py-0.5 rounded-full bg-black/15 backdrop-blur-none border border-amber-400/40 text-[11px] sm:text-xs font-mono font-black text-amber-300 flex items-center gap-1 sm:gap-1.5 shadow-[0_0_12px_rgba(245,158,11,0.2)] pointer-events-none">
                 <span className="text-amber-400 font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">▲ {heading}°</span>
-                <span className="text-[11px] font-sans font-bold text-amber-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{getHeadingDirectionName(heading)}</span>
+                <span className="text-[10px] sm:text-[11px] font-sans font-bold text-amber-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{getHeadingDirectionName(heading)}</span>
                 <span className="text-amber-400/40">|</span>
-                <span className="text-[11px] font-sans font-semibold text-sky-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">仰角 {camElevation}°</span>
+                <span className="text-[10px] sm:text-[11px] font-sans font-semibold text-sky-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">仰角 {camElevation}°</span>
               </div>
 
               <div
@@ -1500,38 +1570,7 @@ export default function CampsiteARModal({
                   <span>{loadingSpots ? 'Google 探勘中...' : cooldownRemainingMin > 0 ? `即時查詢 (${cooldownRemainingMin}m)` : '即時查詢'}</span>
                 </button>
               </div>
-            ) : arViewMode === 'mountain' ? (
-              <div className="mt-2 px-3 py-0.5 rounded-full bg-black/25 border border-white/15 backdrop-blur-sm text-center max-w-[92vw] sm:max-w-md shadow-md transition-all">
-                <div className="flex items-center justify-center gap-1.5 flex-wrap text-xs">
-                  <span className="text-emerald-400 font-bold flex items-center gap-1">
-                    <span>⛰️ PeakVisor</span>
-                    {effectiveLandscape && (
-                      <span className="px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/40 font-mono text-[10px]">
-                        FOV 105°
-                      </span>
-                    )}
-                  </span>
-                  {lockedPeak && (dismissedPeakId === lockedPeak.id || isPeakDrawerCollapsed) ? (
-                    <>
-                      <span className="text-slate-400">|</span>
-                      <span className="text-xs">
-                        <strong className="text-white font-black">{lockedPeak.name}</strong>
-                        <span className="text-emerald-300 text-xs ml-1 font-mono">
-                          {lockedPeak.altitudeM}m · {lockedPeak.distanceKm}km
-                        </span>
-                      </span>
-                    </>
-                  ) : !lockedPeak ? (
-                    <>
-                      <span className="text-slate-400">|</span>
-                      <span className="text-xs text-slate-300">
-                        {effectiveLandscape ? '105° 超廣角遠眺稜線群峰' : '準心對準遠方群山自動識別'}
-                      </span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
+            ) : arViewMode === 'mountain' ? null : (
               <div className="mt-2.5 px-3.5 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-lg transition-all">
                 {activeConstellation ? (
                   <div className="text-xs flex items-center justify-center gap-1.5 flex-wrap">
@@ -1551,6 +1590,20 @@ export default function CampsiteARModal({
                     </span>
                     <span className="text-indigo-200 text-[11px]">
                       ({lockedStar.constellation} · 視星等 {lockedStar.mag})
+                    </span>
+                  </div>
+                ) : skyAimGuidance ? (
+                  <div 
+                    onClick={() => setCamElevation(skyAimGuidance.target.elevation)}
+                    className="text-xs flex items-center justify-center gap-1.5 flex-wrap cursor-pointer group"
+                    title="點擊自動抬升鏡頭對齊天體仰角"
+                  >
+                    <span className="text-amber-300 font-bold inline-flex items-center gap-1 animate-pulse">
+                      <span>{skyAimGuidance.target.icon} 方位對齊：</span>
+                      <strong className="text-white">{skyAimGuidance.target.name.split(' (')[0]}</strong>
+                    </span>
+                    <span className="text-amber-200 font-bold bg-amber-500/25 border border-amber-400/40 px-2 py-0.5 rounded-full text-[11px] font-mono group-hover:bg-amber-500/40 transition-colors">
+                      {skyAimGuidance.message}
                     </span>
                   </div>
                 ) : (
@@ -1764,6 +1817,25 @@ export default function CampsiteARModal({
               );
             })}
 
+            {/* 3D-B. SKY TARGET VERTICAL GUIDANCE INDICATOR (OFF-SCREEN RADAR) */}
+            {arViewMode === 'stars' && skyAimGuidance && (
+              <div 
+                onClick={() => setCamElevation(skyAimGuidance.target.elevation)}
+                className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-auto cursor-pointer animate-bounce ${
+                  skyAimGuidance.direction === 'up' ? 'top-2' : 'bottom-16'
+                }`}
+                title={`點擊視角自動對齊${skyAimGuidance.target.name}仰角`}
+              >
+                <div className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black text-xs shadow-[0_0_25px_rgba(245,158,11,0.9)] flex items-center gap-1.5 border border-white/80 active:scale-95 transition-transform">
+                  <span className="text-sm">{skyAimGuidance.target.icon}</span>
+                  <span>{skyAimGuidance.target.name.split(' (')[0]} 在{skyAimGuidance.direction === 'up' ? '上方高空' : '下方低空'}（仰角 {skyAimGuidance.target.elevation}°）</span>
+                  <span className="bg-slate-950/80 text-amber-300 px-1.5 py-0.2 rounded-full text-[10px] font-mono">
+                    {skyAimGuidance.direction === 'up' ? `👆 抬頭 +${skyAimGuidance.degreeDiff}°` : `👇 壓低 -${skyAimGuidance.degreeDiff}°`}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* 3E. CONSTELLATION VERTEX STAR NODES (SkyView) */}
             {arViewMode === 'stars' && showConstellationLines && computedConstellations.map(c => (
               <React.Fragment key={`c-stars-${c.id}`}>
@@ -1907,12 +1979,8 @@ export default function CampsiteARModal({
 
             {/* 3F.5 LANDSCAPE PANORAMA HORIZON REFERENCE */}
             {effectiveLandscape && arViewMode === 'mountain' && (
-              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none z-10 flex items-center justify-between px-6 opacity-45">
-                <div className="h-px bg-gradient-to-r from-transparent via-emerald-400 to-transparent flex-1"></div>
-                <span className="text-[10px] font-mono font-bold text-emerald-300 px-2.5 py-0.5 bg-slate-950/80 rounded-full border border-emerald-400/30 shadow-md">
-                  ⛰️ FOV 105° 全景天際線 (PANORAMA SKYLINE)
-                </span>
-                <div className="h-px bg-gradient-to-r from-transparent via-emerald-400 to-transparent flex-1"></div>
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none z-10 flex items-center justify-between px-6 opacity-25">
+                <div className="h-px bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent flex-1"></div>
               </div>
             )}
 
@@ -1922,6 +1990,9 @@ export default function CampsiteARModal({
               const isLocked = lockedPeak?.id === peak.id;
               const isSelected = selectedPeak?.id === peak.id;
               const isFocus = isLocked || isSelected;
+              // 當山頂靠近螢幕上方時 (screenY < 28%)，標籤自動改為垂掛在山頂下方，避免頂部遮蔽
+              const isFlipped = peak.screenY < 28;
+              const needleHeight = peak.tier === 2 ? 'h-7' : peak.tier === 1 ? 'h-5' : 'h-2.5';
 
               return (
                 <div
@@ -1931,26 +2002,34 @@ export default function CampsiteARModal({
                   style={{
                     left: `${peak.screenX}%`,
                     top: `${peak.screenY}%`,
-                    transform: 'translate(-50%, -100%)'
+                    transform: isFlipped ? 'translate(-50%, 0%)' : 'translate(-50%, -100%)'
                   }}
                   onClick={() => setSelectedPeak(prev => (prev?.id === peak.id ? null : peak))}
                   className={`absolute flex flex-col items-center pointer-events-auto cursor-pointer transition-all duration-200 z-20 ${
-                    isFocus ? 'scale-115 z-30' : 'opacity-90 hover:opacity-100 hover:scale-105'
+                    isFocus ? 'scale-110 z-30' : 'opacity-90 hover:opacity-100 hover:scale-105'
                   }`}
                 >
-                  {/* Peak Pin Badge (Glassmorphism Transparent with Smart Compact Anti-Collision) */}
+                  {/* 若山峰靠近頂部 (isFlipped)，先顯示山頂定錨點與針線，標籤垂掛下方 */}
+                  {isFlipped && (
+                    <>
+                      <div className={`w-1.5 h-1.5 rounded-full ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-white'}`}></div>
+                      <div className={`w-0.5 ${needleHeight} ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-400/60'}`}></div>
+                    </>
+                  )}
+
+                  {/* Peak Pin Badge (高對比度半透明防遮蔽膠囊) */}
                   {peak.isCompact && !isFocus ? (
-                    <div className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-black/65 text-slate-200 border border-white/20 backdrop-blur-sm shadow-md flex items-center gap-1 hover:scale-110 hover:bg-emerald-950/80 hover:border-emerald-400 transition-all">
+                    <div className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-black/75 text-slate-200 border border-white/20 backdrop-blur-sm shadow-md flex items-center gap-1 hover:scale-110 hover:bg-emerald-950/80 hover:border-emerald-400 transition-all">
                       <span className="text-[9px]">{peak.icon || '⛰️'}</span>
                       <span className="max-w-[72px] truncate">{peak.name}</span>
                       <span className="font-mono text-emerald-300 text-[9px]">{peak.altitudeM}m</span>
                     </div>
                   ) : (
                     <>
-                      <div className={`px-2.5 py-1 rounded-full text-xs font-black shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
+                      <div className={`px-2.5 py-1 rounded-full text-xs font-black shadow-xl backdrop-blur-md flex items-center gap-1.5 border transition-all ${
                         isFocus
-                          ? 'bg-emerald-950/75 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
-                          : 'bg-black/40 text-slate-100 border-white/20 hover:border-emerald-400/70 shadow-md'
+                          ? 'bg-emerald-950/85 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
+                          : 'bg-black/60 text-slate-100 border-white/25 hover:border-emerald-400/70 shadow-md'
                       }`}>
                         <span>{peak.icon || '⛰️'}</span>
                         <span>{peak.name}</span>
@@ -1958,15 +2037,19 @@ export default function CampsiteARModal({
                       </div>
 
                       {/* Distance Sub-label */}
-                      <div className="mt-0.5 px-1.5 py-0.2 rounded bg-black/35 backdrop-blur-sm border border-white/10 text-[10px] font-mono text-emerald-300">
+                      <div className="mt-0.5 px-1.5 py-0.2 rounded bg-black/50 backdrop-blur-sm border border-white/15 text-[10px] font-mono text-emerald-300 font-bold">
                         {peak.distanceKm} km · {peak.azimuth}°
                       </div>
                     </>
                   )}
 
-                  {/* Pin Needle Line to Peak Tip */}
-                  <div className={`w-0.5 h-3 ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-400/60'}`}></div>
-                  <div className={`w-1.5 h-1.5 rounded-full ${isFocus ? 'bg-emerald-400' : 'bg-white'}`}></div>
+                  {/* 若為標準山峰 (!isFlipped)，標籤在上方，針線向下延伸至山頂定錨點 */}
+                  {!isFlipped && (
+                    <>
+                      <div className={`w-0.5 ${needleHeight} mt-0.5 ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-400/60'}`}></div>
+                      <div className={`w-1.5 h-1.5 rounded-full ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-white'}`}></div>
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -2065,26 +2148,35 @@ export default function CampsiteARModal({
                 )}
               </div>
             ) : arViewMode === 'mountain' ? (
-              <div className={`relative w-44 h-44 sm:w-56 sm:h-56 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
-                lockedPeak
-                  ? 'border-emerald-400 shadow-[0_0_35px_#10b981] scale-105 bg-emerald-500/15'
-                  : 'border-emerald-400/40 border-dashed'
+              <div className={`relative transition-all duration-200 flex items-center justify-center pointer-events-none ${
+                effectiveLandscape ? 'w-20 h-20' : 'w-28 h-28'
               }`}>
-                {/* Crosshairs */}
-                <div className="absolute w-full h-0.5 bg-emerald-400/30"></div>
-                <div className="absolute h-full w-0.5 bg-emerald-400/30"></div>
-                <div className={`w-5 h-5 rounded-full border-2 transition-all ${
+                {/* 專業相機觀景窗微準心外環 (高透明度，絕不阻擋山容) */}
+                <div className={`absolute inset-0 rounded-full border transition-all ${
                   lockedPeak
-                    ? 'border-emerald-400 bg-emerald-400/60 scale-125 shadow-[0_0_15px_#10b981]'
-                    : 'border-emerald-300/60'
-                }`}></div>
+                    ? 'border-emerald-400 border-2 shadow-[0_0_15px_rgba(16,185,129,0.5)] scale-105'
+                    : 'border-emerald-400/35 border-dashed'
+                }`} />
 
-                {/* Target Locked Floating Card */}
-                {lockedPeak && (
-                  <div className="absolute -top-12 px-3 py-1 bg-emerald-500 text-slate-950 font-black text-xs rounded-full shadow-xl animate-bounce flex items-center gap-1.5 whitespace-nowrap">
-                    <span>⛰️ 已鎖定：{lockedPeak.name}</span>
-                    <span className="bg-slate-950 text-emerald-300 px-1.5 py-0.2 rounded-full text-xs font-mono">
-                      {lockedPeak.altitudeM}m · {lockedPeak.distanceKm} km
+                {/* 邊緣微刻度 (取代表面大十字實線，中央視野 100% 留空) */}
+                <div className="absolute top-0 w-0.5 h-1.5 bg-emerald-400/70" />
+                <div className="absolute bottom-0 w-0.5 h-1.5 bg-emerald-400/70" />
+                <div className="absolute left-0 h-0.5 w-1.5 bg-emerald-400/70" />
+                <div className="absolute right-0 h-0.5 w-1.5 bg-emerald-400/70" />
+
+                {/* 中央精準微點 */}
+                <div className={`w-1.5 h-1.5 rounded-full transition-all ${
+                  lockedPeak
+                    ? 'bg-emerald-400 shadow-[0_0_8px_#10b981] scale-125'
+                    : 'bg-emerald-400/40 border border-emerald-300/50'
+                }`} />
+
+                {/* 僅在底部山峰字卡被使用者手動「隱藏」時，才在準心上方顯示微型浮動膠囊，徹底避免雙重疊字遮蔽 */}
+                {lockedPeak && dismissedPeakId === lockedPeak.id && (
+                  <div className="absolute -top-8 px-2.5 py-0.5 bg-emerald-500/90 backdrop-blur-md text-slate-950 font-black text-xs rounded-full shadow-lg flex items-center gap-1.5 whitespace-nowrap animate-in fade-in duration-150">
+                    <span>⛰️ {lockedPeak.name}</span>
+                    <span className="bg-slate-950 text-emerald-300 px-1 py-0.2 rounded font-mono text-[10px]">
+                      {lockedPeak.altitudeM}m · {lockedPeak.distanceKm}km
                     </span>
                   </div>
                 )}
