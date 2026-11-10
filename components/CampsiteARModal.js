@@ -123,7 +123,6 @@ export default function CampsiteARModal({
   const [dismissedPeakId, setDismissedPeakId] = useState(null); // 📱 隱藏鎖定山峰字卡
   const [isPeakDrawerCollapsed, setIsPeakDrawerCollapsed] = useState(false); // 📱 縮小為單行透明膠囊
   const [showPeakControls, setShowPeakControls] = useState(false); // 📱 辨識半徑與設定面板可收合/隱藏
-  const [isLandscapeMode, setIsLandscapeMode] = useState(false); // ⛰️ 遠山橫向全景模式 (Landscape Panorama)
   const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
 
   // Star Mode State (Dismissible & Collapsible Star & Moon Drawers)
@@ -131,20 +130,33 @@ export default function CampsiteARModal({
   const [isStarDrawerCollapsed, setIsStarDrawerCollapsed] = useState(false); // 📱 縮小為單行透明膠囊
   const [isMoonCardDismissed, setIsMoonCardDismissed] = useState(false); // 📱 隱藏右下角月相光害卡
 
-  // Auto-detect native device orientation changes
+  // 📐 Auto-detect native device orientation changes (Portrait 65° vs Landscape 105°)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const checkOrientation = () => {
-      // Check if current viewport is wide/landscape (width > height)
-      const isLand = window.innerWidth > window.innerHeight;
+      // 1. Check window aspect ratio
+      const isAspectLandscape = window.innerWidth > window.innerHeight;
+      // 2. Check screen orientation API if available
+      const screenAngle = window.screen?.orientation?.angle;
+      const isAngleLandscape = screenAngle === 90 || screenAngle === 270;
+      // 3. Check legacy window.orientation
+      const winOrient = typeof window.orientation !== 'undefined' ? Math.abs(window.orientation) === 90 : false;
+
+      const isLand = isAspectLandscape || isAngleLandscape || winOrient;
       setIsDeviceLandscape(!!isLand);
     };
     checkOrientation();
     window.addEventListener('resize', checkOrientation);
     window.addEventListener('orientationchange', checkOrientation);
+    if (window.screen?.orientation) {
+      window.screen.orientation.addEventListener('change', checkOrientation);
+    }
     return () => {
       window.removeEventListener('resize', checkOrientation);
       window.removeEventListener('orientationchange', checkOrientation);
+      if (window.screen?.orientation) {
+        window.screen.orientation.removeEventListener('change', checkOrientation);
+      }
     };
   }, []);
 
@@ -184,7 +196,8 @@ export default function CampsiteARModal({
     };
   }, []);
 
-  const effectiveLandscape = isLandscapeMode || isDeviceLandscape;
+  // 📐 FOV 自動連動：手機橫放自動切換為 105° 超廣角全景，拿直自動切換為 65° 標準視角
+  const effectiveLandscape = isDeviceLandscape;
 
   // 當手機轉為橫向且高度緊湊 (< 520px) 時，自動收合頂部選單，確保相機實景不被擠壓
   useEffect(() => {
@@ -192,27 +205,6 @@ export default function CampsiteARModal({
       setIsHeaderCollapsed(true);
     }
   }, [effectiveLandscape]);
-
-  const toggleLandscapeMode = () => {
-    setIsLandscapeMode(prev => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        if (next && window.innerHeight < 520) {
-          setIsHeaderCollapsed(true);
-        }
-        if (window.screen?.orientation) {
-          try {
-            if (next && typeof window.screen.orientation.lock === 'function') {
-              window.screen.orientation.lock('landscape').catch(() => {});
-            } else if (!next && typeof window.screen.orientation.unlock === 'function') {
-              window.screen.orientation.unlock();
-            }
-          } catch (err) {}
-        }
-      }
-      return next;
-    });
-  };
 
   // 🧭 Google AI Overview Nearby POIs (Trails, Waterfalls, Viewpoints)
   const [poiSpots, setPoiSpots] = useState([]);
@@ -864,15 +856,13 @@ export default function CampsiteARModal({
         currentHeading = (currentHeading + 90) % 360;
       } else if (winOrientation === -90) {
         currentHeading = (currentHeading + 270) % 360;
-      } else if (isLandscapeMode && !isDeviceLandscape) {
-        currentHeading = (currentHeading + 90) % 360;
       }
 
       const rawBeta = e.beta !== null ? e.beta : 0;
       const rawGamma = e.gamma !== null ? e.gamma : 0;
 
       let groundPitch, groundRoll, cameraElevation;
-      if (winOrientation === 90 || (isLandscapeMode && !isDeviceLandscape)) {
+      if (winOrientation === 90) {
         groundPitch = Math.max(-90, Math.min(90, Math.round(rawGamma)));
         groundRoll = Math.max(-90, Math.min(90, Math.round(rawBeta)));
         cameraElevation = Math.max(-90, Math.min(90, Math.round(Math.abs(rawGamma))));
@@ -913,7 +903,7 @@ export default function CampsiteARModal({
         localStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [isOpen, isLandscapeMode, isDeviceLandscape]);
+  }, [isOpen, isDeviceLandscape]);
 
   const handleRequestMotionPermission = () => {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -981,16 +971,6 @@ export default function CampsiteARModal({
 
               {/* 右側操作群 */}
               <div className="flex items-center gap-1.5">
-                {arViewMode === 'mountain' && (
-                  <button
-                    type="button"
-                    onClick={toggleLandscapeMode}
-                    className="px-2.5 py-1 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-400/30 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1"
-                    title={effectiveLandscape ? '切換回直向模式' : '切換至 105° 橫向全景模式'}
-                  >
-                    <span>{effectiveLandscape ? '📱 直向' : '🔄 橫向'}</span>
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => setIsHeaderCollapsed(true)}
@@ -1173,16 +1153,6 @@ export default function CampsiteARModal({
 
             {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
             <div className="pointer-events-auto flex items-center gap-1.5">
-              {arViewMode === 'mountain' && (
-                <button
-                  type="button"
-                  onClick={toggleLandscapeMode}
-                  className="px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all shadow-md"
-                  title={effectiveLandscape ? "切換回直向模式" : "切換至橫向全景模式"}
-                >
-                  {effectiveLandscape ? '📱 直向' : '🔄 橫向'}
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setIsHeaderCollapsed(false)}
@@ -1300,19 +1270,22 @@ export default function CampsiteARModal({
 
           {/* 2. Top Rolling Compass Ribbon & Guidance Banner (Unified Glassmorphic HUD) */}
           <div 
-            style={{ top: isHeaderCollapsed ? (effectiveLandscape ? '42px' : '48px') : '10px' }}
-            className="absolute left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3"
+            style={{ top: isHeaderCollapsed ? (effectiveLandscape ? '44px' : '52px') : '136px' }}
+            className="absolute left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3 transition-all duration-200"
           >
-            {/* Unified Glassmorphic Compass Ribbon with Integrated Heading & Pitch (Removes duplicate direction badge) */}
-            <div className="relative w-80 sm:w-96 h-9 bg-black/40 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center">
+            {/* Unified Glassmorphic Compass Ribbon with Integrated Heading & Pitch (純透明玻璃羅盤) */}
+            <div 
+              style={{ width: 'min(360px, 88vw)', minWidth: '280px' }}
+              className="relative h-9 bg-black/25 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center shrink-0"
+            >
               <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 shadow-[0_0_8px_#f59e0b]"></div>
               
-              {/* Integrated Center HUD Marker: Degree + Direction Name + Elevation */}
-              <div className="absolute z-10 px-2.5 py-0.5 rounded-full bg-black/75 backdrop-blur-md border border-amber-400/50 text-xs font-mono font-black text-amber-300 flex items-center gap-1.5 shadow-md pointer-events-none">
-                <span className="text-amber-400 font-black">▲ {heading}°</span>
-                <span className="text-[11px] font-sans font-bold text-amber-200">{getHeadingDirectionName(heading)}</span>
-                <span className="text-slate-500">|</span>
-                <span className="text-[11px] font-sans font-semibold text-sky-300">仰角 {camElevation}°</span>
+              {/* Integrated Center HUD Marker: 純透明微光琥珀指示標籤 (徹底消除純黑方塊，100% 透明透光) */}
+              <div className="absolute z-10 px-2.5 py-0.5 rounded-full bg-black/15 backdrop-blur-none border border-amber-400/40 text-xs font-mono font-black text-amber-300 flex items-center gap-1.5 shadow-[0_0_12px_rgba(245,158,11,0.2)] pointer-events-none">
+                <span className="text-amber-400 font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">▲ {heading}°</span>
+                <span className="text-[11px] font-sans font-bold text-amber-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{getHeadingDirectionName(heading)}</span>
+                <span className="text-amber-400/40">|</span>
+                <span className="text-[11px] font-sans font-semibold text-sky-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">仰角 {camElevation}°</span>
               </div>
 
               <div
@@ -1340,7 +1313,7 @@ export default function CampsiteARModal({
 
             {/* Dynamic Guidance Banner: Sun mode vs Stars mode */}
             {arViewMode === 'sun' ? (
-              <div className="mt-1.5 px-3 py-1.5 rounded-2xl bg-black/45 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
+              <div className="mt-2.5 px-3 py-1.5 rounded-2xl bg-black/45 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
                 {/* 🚨 迎風面警告：當帳門直接對著來風時 */}
                 {isFacingDirectWind && windSpeed >= 20 && (
                   <div className="mb-1.5 px-2.5 py-1 rounded-xl bg-rose-950/95 border border-rose-500/80 text-rose-200 text-xs font-bold shadow-xl animate-pulse">
@@ -1404,7 +1377,7 @@ export default function CampsiteARModal({
                 )}
               </div>
             ) : arViewMode === 'spots' ? (
-              <div className="mt-1 px-3 py-1 rounded-full bg-slate-950/85 border border-cyan-400/40 backdrop-blur-md text-center max-w-[92vw] shadow-xl flex items-center justify-center gap-2 flex-wrap">
+              <div className="mt-2.5 px-3 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] shadow-xl flex items-center justify-center gap-2 flex-wrap">
                 <span className="text-cyan-300 font-bold text-xs flex items-center gap-1">
                   <span>🧭</span>
                   <span>周邊景點・步道瀑布</span>
@@ -1431,44 +1404,38 @@ export default function CampsiteARModal({
                 </button>
               </div>
             ) : arViewMode === 'mountain' ? (
-              <div className="mt-1.5 px-3 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-lg transition-all">
+              <div className="mt-2 px-3 py-0.5 rounded-full bg-black/25 border border-white/15 backdrop-blur-sm text-center max-w-[92vw] sm:max-w-md shadow-md transition-all">
                 <div className="flex items-center justify-center gap-1.5 flex-wrap text-xs">
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
                     <span>⛰️ PeakVisor</span>
                     {effectiveLandscape && (
                       <span className="px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/40 font-mono text-[10px]">
-                        105° 橫向
+                        FOV 105°
                       </span>
                     )}
                   </span>
-                  {lockedPeak ? (
+                  {lockedPeak && (dismissedPeakId === lockedPeak.id || isPeakDrawerCollapsed) ? (
                     <>
                       <span className="text-slate-400">|</span>
                       <span className="text-xs">
-                        <span className="text-emerald-300 font-bold">鎖定：</span>
                         <strong className="text-white font-black">{lockedPeak.name}</strong>
-                        <span className="text-emerald-200 text-xs ml-1 font-mono">
-                          ({lockedPeak.altitudeM}m · {lockedPeak.distanceKm}km)
+                        <span className="text-emerald-300 text-xs ml-1 font-mono">
+                          {lockedPeak.altitudeM}m · {lockedPeak.distanceKm}km
                         </span>
                       </span>
                     </>
-                  ) : (
+                  ) : !lockedPeak ? (
                     <>
                       <span className="text-slate-400">|</span>
-                      <span className="text-xs text-slate-200">
-                        {effectiveLandscape ? '超廣角遠眺稜線群峰全景' : '準心對準遠方群山自動識別'}
+                      <span className="text-xs text-slate-300">
+                        {effectiveLandscape ? '105° 超廣角遠眺稜線群峰' : '準心對準遠方群山自動識別'}
                       </span>
                     </>
-                  )}
-                  {showRidgeLines && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 text-[10px] font-bold">
-                      ✨ 稜線開
-                    </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ) : (
-              <div className="mt-1.5 px-3.5 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-lg transition-all">
+              <div className="mt-2.5 px-3.5 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-lg transition-all">
                 {activeConstellation ? (
                   <div className="text-xs flex items-center justify-center gap-1.5 flex-wrap">
                     <span className="text-amber-300 font-bold inline-flex items-center gap-1">
@@ -1816,7 +1783,7 @@ export default function CampsiteARModal({
               <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none z-10 flex items-center justify-between px-6 opacity-45">
                 <div className="h-px bg-gradient-to-r from-transparent via-emerald-400 to-transparent flex-1"></div>
                 <span className="text-[10px] font-mono font-bold text-emerald-300 px-2.5 py-0.5 bg-slate-950/80 rounded-full border border-emerald-400/30 shadow-md">
-                  ⛰️ 105° 橫向全景天際線 (PANORAMA SKYLINE)
+                  ⛰️ FOV 105° 全景天際線 (PANORAMA SKYLINE)
                 </span>
                 <div className="h-px bg-gradient-to-r from-transparent via-emerald-400 to-transparent flex-1"></div>
               </div>
@@ -2583,25 +2550,9 @@ export default function CampsiteARModal({
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {arViewMode === 'mountain' && (
-              <>
-                <button
-                  type="button"
-                  onClick={toggleLandscapeMode}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow transition-all flex items-center gap-1.5 border ${
-                    effectiveLandscape
-                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 border-teal-300 shadow-[0_0_12px_rgba(20,184,166,0.6)] font-black'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                  }`}
-                  title={effectiveLandscape ? "切換回直向模式" : "切換至 105° 橫向全景模式"}
-                >
-                  <span>{effectiveLandscape ? '📱 直向模式' : '🔄 橫向全景'}</span>
-                  <span className={`font-mono text-xs px-1.5 py-0.2 rounded-full ${effectiveLandscape ? 'bg-slate-950 text-cyan-300' : 'bg-slate-950/60 text-amber-300'}`}>
-                    {effectiveLandscape ? '105°' : '65°'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowRidgeLines(v => !v)}
+              <button
+                type="button"
+                onClick={() => setShowRidgeLines(v => !v)}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow transition-all flex items-center gap-1.5 border ${
                     showRidgeLines
                       ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400/50 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
@@ -2613,7 +2564,6 @@ export default function CampsiteARModal({
                     {showRidgeLines ? 'ON' : 'OFF'}
                   </span>
                 </button>
-              </>
             )}
             {arViewMode === 'spots' && (
               <button
