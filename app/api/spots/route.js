@@ -380,45 +380,8 @@ export async function POST(request) {
     }
 
     if (freshSpots && freshSpots.length > 0) {
-      // 補充營區專屬即刻散步點位 (5~8分鐘制高點/野溪小徑)
-      const minDistance = Math.min(...freshSpots.map(s => s.distance_km || 99));
-      let finalSpots = [...freshSpots];
-
-      if (minDistance > 0.8 && name) {
-        const immediateSurroundings = [
-          {
-            id: `local_view_${id || 'campsite'}`,
-            name: `${name} · 雲海夕陽觀景台`,
-            type: 'viewpoint',
-            icon: '🌅',
-            latitude: lat + 0.0035,
-            longitude: lng + 0.0028,
-            elevation: elev + 40,
-            distance_km: 0.4,
-            travel_time: '營區步道步行約 5~8 分鐘',
-            travel_mode: 'walk',
-            difficulty: '平緩好走 (適合全員散步)',
-            highlights: `${name} 制高點全景展望，欣賞山谷雲瀑與金色晚霞絕佳點位`,
-            safety_warning: '清晨與傍晚草露濕滑，穿著防滑休閒鞋尤佳'
-          },
-          {
-            id: `local_trail_${id || 'campsite'}`,
-            name: `${name} · 森林野溪秘境小徑`,
-            type: 'trail',
-            icon: '🥾',
-            latitude: lat - 0.0042,
-            longitude: lng + 0.0031,
-            elevation: Math.max(100, elev - 35),
-            distance_km: 0.8,
-            travel_time: '營區旁步行約 12 分鐘',
-            travel_mode: 'walk',
-            difficulty: '輕鬆健行 (林蔭土石路)',
-            highlights: '穿梭高聳杉木竹林與清涼小溪，芬多精與負離子充沛',
-            safety_warning: '山林潮濕路面偶有青苔，注意下坡步伐'
-          }
-        ];
-        finalSpots = [...immediateSurroundings, ...freshSpots];
-      }
+      // 100% 真實景點：僅保留官方實境探勘到的真實地標與步道，絕不灌入虛構假小徑或假觀景台
+      const finalSpots = freshSpots;
 
       // 方案 C 關鍵：自動快取回存至 Supabase campsites.spots 表
       if (supabase && id && !isCurrentGps) {
@@ -476,49 +439,15 @@ export async function POST(request) {
       });
     }
 
-    // 4. Fallback 層級 2：台灣精選名山步道與天然地標資料庫
+    // 4. Fallback 層級 2：台灣精選名山步道與天然地標資料庫 (100% 真實地理座標，不捏造虛構假景點)
     const nearbyCurated = computeNearbyPOIs(lat, lng, elev, 35, 'all', []);
-    const localSurroundings = [
-      {
-        id: `local_view_${id || name}`,
-        name: `${name} · 雲海夕陽觀景台`,
-        type: 'viewpoint',
-        icon: '🌅',
-        latitude: lat + 0.0035,
-        longitude: lng + 0.0028,
-        elevation: elev + 40,
-        distance_km: 0.4,
-        travel_time: '營區步道步行約 5~8 分鐘',
-        travel_mode: 'walk',
-        difficulty: '平緩好走 (適合全員散步)',
-        highlights: '營地制高點全景展望，欣賞山谷雲瀑與金色晚霞絕佳點位',
-        safety_warning: '清晨與傍晚草露濕滑，穿著防滑休閒鞋尤佳'
-      },
-      {
-        id: `local_trail_${id || name}`,
-        name: `${name} · 森林野溪秘境小徑`,
-        type: 'trail',
-        icon: '🥾',
-        latitude: lat - 0.0042,
-        longitude: lng + 0.0031,
-        elevation: Math.max(100, elev - 35),
-        distance_km: 0.8,
-        travel_time: '營區旁步行約 12 分鐘',
-        travel_mode: 'walk',
-        difficulty: '輕鬆健行 (林蔭土石路)',
-        highlights: '穿梭高聳杉木竹林與清涼小溪，芬多精與負離子充沛',
-        safety_warning: '山林潮濕路面偶有青苔，注意下坡步伐'
-      }
-    ];
-
-    const combinedSpots = [...localSurroundings, ...nearbyCurated.slice(0, 5)];
 
     return NextResponse.json({
       success: true,
       source: 'google_overview_knowledge',
       campsite: name,
-      summary: `${name} 位於 ${region}${location}，周邊遍布天然山林步道、溪谷瀑布與開闊觀景台。`,
-      spots: combinedSpots
+      summary: `${name} 位於 ${region}${location}，周邊鄰近真實天然山林步道與觀景地標。`,
+      spots: nearbyCurated.slice(0, 6)
     });
   } catch (err) {
     console.error('Error in /api/spots:', err);
