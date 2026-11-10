@@ -122,15 +122,15 @@ export default function CampsiteARModal({
   const [showRidgeLines, setShowRidgeLines] = useState(true);
   const [selectedPeak, setSelectedPeak] = useState(null);
   const [dismissedPeakId, setDismissedPeakId] = useState(null); // 📱 隱藏鎖定山峰字卡
-  const [isPeakDrawerCollapsed, setIsPeakDrawerCollapsed] = useState(false); // 📱 縮小為單行透明膠囊
+  const [isPeakDrawerCollapsed, setIsPeakDrawerCollapsed] = useState(true); // 📱 預設縮小為單行透明膠囊
   const [showPeakControls, setShowPeakControls] = useState(false); // 📱 辨識半徑與設定面板可收合/隱藏
-  const [isBottomDeckCollapsed, setIsBottomDeckCollapsed] = useState(false); // 📱 橫向遠山模式底部控制工具列可收合/隱藏
+  const [isBottomDeckCollapsed, setIsBottomDeckCollapsed] = useState(true); // 📱 預設收合底部工具列，保持視野開闊
   const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
 
   // Star Mode State (Dismissible & Collapsible Star & Moon Drawers)
   const [dismissedStarId, setDismissedStarId] = useState(null); // 📱 隱藏鎖定天體字卡 (如天樞星)
-  const [isStarDrawerCollapsed, setIsStarDrawerCollapsed] = useState(false); // 📱 縮小為單行透明膠囊
-  const [isMoonCardDismissed, setIsMoonCardDismissed] = useState(false); // 📱 隱藏右下角月相光害卡
+  const [isStarDrawerCollapsed, setIsStarDrawerCollapsed] = useState(true); // 📱 預設縮小/隱藏天體字卡
+  const [isMoonCardDismissed, setIsMoonCardDismissed] = useState(true); // 📱 預設收合為極簡透明月相微膠囊，最大化星空視野
 
   // 📐 Auto-detect native device orientation changes (Portrait 65° vs Landscape 105°)
   useEffect(() => {
@@ -213,20 +213,29 @@ export default function CampsiteARModal({
   // 📐 FOV 自動連動：手機橫放自動切換為 105° 超廣角全景，拿直自動切換為 65° 標準視角
   const effectiveLandscape = isDeviceLandscape;
 
-  // 📱 橫向遠山極致沉浸模式：只要一偵測到是 landscape mode，便把所有可以隱藏的都隱藏起來！
+  // 📱 極致沉浸模式：星空模式（直向與橫向）或 橫向遠山模式，自動把所有可以隱藏的都隱藏起來！
   useEffect(() => {
-    if (effectiveLandscape) {
+    if (!isOpen) return;
+    if (arViewMode === 'stars') {
       setIsHeaderCollapsed(true);
-      if (arViewMode === 'mountain') {
-        setIsPeakDrawerCollapsed(true);
-        setShowPeakControls(false);
-        setIsBottomDeckCollapsed(true);
-        if (!selectedPeak) {
-          setDismissedPeakId(lockedPeak?.id || null);
-        }
+      setIsBottomDeckCollapsed(true);
+      setIsMoonCardDismissed(true);
+      setIsStarDrawerCollapsed(true);
+      setSelectedStarTarget(null);
+      if (!selectedStarTarget) {
+        setDismissedStarId(lockedStar?.id || null);
+      }
+    } else if (effectiveLandscape && arViewMode === 'mountain') {
+      setIsHeaderCollapsed(true);
+      setIsPeakDrawerCollapsed(true);
+      setShowPeakControls(false);
+      setIsBottomDeckCollapsed(true);
+      setSelectedPeak(null);
+      if (!selectedPeak) {
+        setDismissedPeakId(lockedPeak?.id || null);
       }
     }
-  }, [effectiveLandscape, arViewMode]);
+  }, [isOpen, arViewMode, effectiveLandscape]);
 
   // 🧭 Google AI Overview Nearby POIs (Trails, Waterfalls, Viewpoints)
   const [poiSpots, setPoiSpots] = useState([]);
@@ -705,10 +714,13 @@ export default function CampsiteARModal({
   // Reset dismissed star when reticle locks onto another star
   useEffect(() => {
     if (lockedStar && lockedStar.id !== dismissedStarId) {
-      setDismissedStarId(null);
-      setIsStarDrawerCollapsed(false);
+      // 📱 星空模式下，準心掠過星體不自動彈出大字卡遮蔽夜空，維持收合，除非使用者主動選取特定天體
+      setIsStarDrawerCollapsed(true);
+      if (!selectedStarTarget) {
+        setDismissedStarId(lockedStar.id);
+      }
     }
-  }, [lockedStar?.id]);
+  }, [lockedStar?.id, selectedStarTarget]);
 
   // 7. Compute PeakVisor Mountain Peaks & Ridge Lines from observer location
   const campElevation = campsite?.altitude 
@@ -1588,33 +1600,13 @@ export default function CampsiteARModal({
                 </button>
               </div>
             ) : arViewMode === 'mountain' ? null : (
-              <div className="mt-2.5 px-3.5 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-lg transition-all">
-                {activeConstellation ? (
+              skyAimGuidance ? (
+                <div 
+                  onClick={() => setCamElevation(skyAimGuidance.target.elevation)}
+                  className="mt-2.5 px-3.5 py-1 rounded-full bg-black/45 border border-amber-400/40 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-xl transition-all cursor-pointer group pointer-events-auto"
+                  title="點擊自動抬升鏡頭對齊天體仰角"
+                >
                   <div className="text-xs flex items-center justify-center gap-1.5 flex-wrap">
-                    <span className="text-amber-300 font-bold inline-flex items-center gap-1">
-                      <span>{activeConstellation.icon} 視野鎖定：</span>
-                      <strong className="text-white">{activeConstellation.name}</strong>
-                    </span>
-                    <span className="text-indigo-200 text-[11px]">
-                      （{activeConstellation.season} · {activeConstellation.visibleStars} 顆星在視野）
-                    </span>
-                  </div>
-                ) : lockedStar ? (
-                  <div className="text-xs flex items-center justify-center gap-1.5 flex-wrap">
-                    <span className="text-emerald-400 font-bold inline-flex items-center gap-1">
-                      <span>🎯 鎖定天體：</span>
-                      <strong className="text-white">{lockedStar.name}</strong>
-                    </span>
-                    <span className="text-indigo-200 text-[11px]">
-                      ({lockedStar.constellation} · 視星等 {lockedStar.mag})
-                    </span>
-                  </div>
-                ) : skyAimGuidance ? (
-                  <div 
-                    onClick={() => setCamElevation(skyAimGuidance.target.elevation)}
-                    className="text-xs flex items-center justify-center gap-1.5 flex-wrap cursor-pointer group"
-                    title="點擊自動抬升鏡頭對齊天體仰角"
-                  >
                     <span className="text-amber-300 font-bold inline-flex items-center gap-1 animate-pulse">
                       <span>{skyAimGuidance.target.icon} 方位對齊：</span>
                       <strong className="text-white">{skyAimGuidance.target.name.split(' (')[0]}</strong>
@@ -1623,12 +1615,20 @@ export default function CampsiteARModal({
                       {skyAimGuidance.message}
                     </span>
                   </div>
-                ) : (
-                  <div className="text-xs text-indigo-200 flex items-center justify-center gap-1.5 font-bold">
-                    <span>🌌 仰望夜空！SkyView 星座連線與天體鎖定中</span>
+                </div>
+              ) : activeConstellation ? (
+                <div className="mt-2 px-3 py-0.5 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] shadow-md transition-all">
+                  <div className="text-xs flex items-center justify-center gap-1.5 flex-wrap">
+                    <span className="text-amber-300 font-bold inline-flex items-center gap-1">
+                      <span>{activeConstellation.icon}</span>
+                      <strong className="text-white">{activeConstellation.name}</strong>
+                    </span>
+                    <span className="text-indigo-200 text-[11px]">
+                      （{activeConstellation.season} · {activeConstellation.visibleStars} 顆星在視野）
+                    </span>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : null
             )}
           </div>
 
@@ -2397,16 +2397,27 @@ export default function CampsiteARModal({
         </div>
 
         {/* Selected Star or Constellation Details Bottom Drawer Overlay (Collapsible & Dismissible) */}
-        {(selectedConstellation || lockedStar || selectedStarTarget) && arViewMode === 'stars' && (() => {
-          const currentTarget = selectedStarTarget || lockedStar;
+        {(selectedConstellation || selectedStarTarget) && arViewMode === 'stars' && (() => {
+          const currentTarget = selectedStarTarget;
           if (!selectedConstellation && !currentTarget) return null;
           if (currentTarget && currentTarget.id === dismissedStarId) return null;
 
           return (
-            <div data-testid="star-drawer" className="z-30 px-3.5 py-2 bg-black/45 backdrop-blur-xl border-t border-white/20 text-xs shadow-2xl transition-all animate-in slide-in-from-bottom duration-150">
+            <div 
+              data-testid="star-drawer" 
+              className={`z-30 transition-all animate-in slide-in-from-bottom duration-150 ${
+                isBottomDeckCollapsed
+                  ? 'absolute bottom-2.5 left-1/2 -translate-x-1/2 max-w-[92vw] pointer-events-auto'
+                  : 'px-3.5 py-2 bg-black/45 backdrop-blur-xl border-t border-white/20 text-xs shadow-2xl'
+              }`}
+            >
               {isStarDrawerCollapsed ? (
-                // Collapsed 1-line pill
-                <div className="flex items-center justify-between gap-2">
+                // Collapsed 1-line pill (當底列收合時，呈現為極簡透明懸浮膠囊)
+                <div className={`flex items-center justify-between gap-2 ${
+                  isBottomDeckCollapsed
+                    ? 'px-3.5 py-1.5 rounded-full bg-slate-950/90 backdrop-blur-md border border-white/25 shadow-2xl text-xs'
+                    : ''
+                }`}>
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm">{selectedConstellation ? selectedConstellation.icon : currentTarget.icon}</span>
                     <strong className="text-white font-bold truncate">
@@ -2442,7 +2453,11 @@ export default function CampsiteARModal({
                 </div>
               ) : (
                 // Full Expanded Glass Card
-                <div className="flex items-start justify-between gap-2.5 max-h-52 overflow-y-auto">
+                <div className={`flex items-start justify-between gap-2.5 max-h-52 overflow-y-auto ${
+                  isBottomDeckCollapsed
+                    ? 'p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-white/25 shadow-2xl max-w-xl'
+                    : ''
+                }`}>
                   {selectedConstellation ? (
                     <div className="flex items-start gap-2.5 min-w-0 flex-1">
                       <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-lg shrink-0 shadow-md border border-white/20 mt-0.5">
@@ -2521,7 +2536,9 @@ export default function CampsiteARModal({
 
         {/* Selected Mountain Peak Drawer Overlay (Collapsible & Dismissible) */}
         {arViewMode === 'mountain' && (() => {
-          const currentPeak = selectedPeak || lockedPeak;
+          // 📱 在橫向遠山極致沉浸模式下，準心掠過山峰不自動彈出大字卡，維持 100% 開闊視野；
+          // 只有當使用者在畫面上主動點選特定山峰 (selectedPeak) 時才顯示
+          const currentPeak = effectiveLandscape ? selectedPeak : (selectedPeak || lockedPeak);
           if (!currentPeak) return null;
           if (currentPeak.id === dismissedPeakId) return null;
 
@@ -2692,16 +2709,27 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* 📱 橫向遠山極致沉浸模式：若工具列收合，僅在左下角保留微型展開膠囊 */}
-        {effectiveLandscape && arViewMode === 'mountain' && isBottomDeckCollapsed ? (
-          <div className="absolute bottom-2.5 left-3 z-30 pointer-events-auto animate-in fade-in duration-150">
+        {/* 📱 橫向遠山極致沉浸模式 或 星空沉浸模式：若工具列收合，僅在左下角保留微型展開膠囊 */}
+        {(((effectiveLandscape && arViewMode === 'mountain') || arViewMode === 'stars') && isBottomDeckCollapsed) ? (
+          <div 
+            style={{ 
+              bottom: 'max(12px, env(safe-area-inset-bottom))', 
+              left: 'max(12px, env(safe-area-inset-left))', 
+              zIndex: 40 
+            }}
+            className="absolute pointer-events-auto animate-in fade-in duration-150"
+          >
             <button
               type="button"
               onClick={() => setIsBottomDeckCollapsed(false)}
-              className="px-3 py-1.5 bg-slate-950/85 hover:bg-slate-900 backdrop-blur-md text-emerald-300 border border-emerald-400/40 rounded-full text-xs font-bold shadow-xl flex items-center gap-1.5 transition-all active:scale-95 hover:border-emerald-400"
-              title="展開遠山控制工具列 (半徑、山稜天際線開關)"
+              className={`px-3 py-1.5 bg-slate-950/85 hover:bg-slate-900 backdrop-blur-md rounded-full text-xs font-bold shadow-xl flex items-center gap-1.5 transition-all active:scale-95 border ${
+                arViewMode === 'stars' 
+                  ? 'text-indigo-300 border-indigo-400/40 hover:border-indigo-400' 
+                  : 'text-emerald-300 border-emerald-400/40 hover:border-emerald-400'
+              }`}
+              title={arViewMode === 'stars' ? "展開觀星控制工具列 (時段推演、星座連線、觀星指南)" : "展開遠山控制工具列 (半徑、山稜天際線開關)"}
             >
-              <span>⛰️ 工具列 ▲</span>
+              <span>{arViewMode === 'stars' ? '🌌 觀星工具列 ▲' : '⛰️ 工具列 ▲'}</span>
             </button>
           </div>
         ) : (
@@ -2902,7 +2930,7 @@ export default function CampsiteARModal({
                 <span>📖 觀星指南</span>
               </button>
             )}
-            {effectiveLandscape && arViewMode === 'mountain' && (
+            {((effectiveLandscape && arViewMode === 'mountain') || arViewMode === 'stars') && (
               <button
                 type="button"
                 onClick={() => setIsBottomDeckCollapsed(true)}
