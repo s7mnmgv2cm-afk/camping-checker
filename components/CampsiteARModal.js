@@ -666,7 +666,7 @@ export default function CampsiteARModal({
     const fovH = effectiveLandscape ? 105 : 65; // Horizontal Field of View: 105° ultra-wide in landscape panorama
     const fovV = effectiveLandscape ? 40 : 55; // Vertical Field of View
 
-    return peaks.map(p => {
+    const projected = peaks.map(p => {
       let azDiff = (p.azimuth - heading + 540) % 360 - 180;
       let elDiff = p.apparentElevation - camElevation;
 
@@ -684,6 +684,28 @@ export default function CampsiteARModal({
         distKm: p.distKm || p.distanceKm,
         desc: p.desc || p.story,
         azimuthDir: getHeadingDirectionName(p.azimuth)
+      };
+    });
+
+    // 🎯 智慧抗重疊 (LOD Anti-Collision): 當視野內山峰密集時，自動將重疊次峰切換為極簡微標籤
+    const occupiedSlots = [];
+    return projected.map(p => {
+      if (!p.isVisible) return p;
+      const isPriority = (p.altitudeM || p.elevation) >= 3000 || (p.distanceKm || p.distKm) < 15;
+      let hasOverlap = false;
+      for (const slot of occupiedSlots) {
+        if (Math.abs(slot.screenX - p.screenX) < 5.0 && Math.abs(slot.screenY - p.screenY) < 7.0) {
+          hasOverlap = true;
+          break;
+        }
+      }
+      const isCompact = hasOverlap && !isPriority;
+      if (!isCompact) {
+        occupiedSlots.push({ screenX: p.screenX, screenY: p.screenY });
+      }
+      return {
+        ...p,
+        isCompact
       };
     });
   }, [arViewMode, lat, lng, campElevation, peakMaxDistance, heading, camElevation, effectiveLandscape]);
@@ -1901,21 +1923,31 @@ export default function CampsiteARModal({
                     isFocus ? 'scale-115 z-30' : 'opacity-90 hover:opacity-100 hover:scale-105'
                   }`}
                 >
-                  {/* Peak Pin Badge (Glassmorphism Transparent) */}
-                  <div className={`px-2.5 py-1 rounded-full text-xs font-black shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
-                    isFocus
-                      ? 'bg-emerald-950/75 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
-                      : 'bg-black/40 text-slate-100 border-white/20 hover:border-emerald-400/70 shadow-md'
-                  }`}>
-                    <span>{peak.icon || '⛰️'}</span>
-                    <span>{peak.name}</span>
-                    <span className="text-[10px] font-mono text-emerald-300 font-bold">{peak.altitudeM}m</span>
-                  </div>
+                  {/* Peak Pin Badge (Glassmorphism Transparent with Smart Compact Anti-Collision) */}
+                  {peak.isCompact && !isFocus ? (
+                    <div className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-black/65 text-slate-200 border border-white/20 backdrop-blur-sm shadow-md flex items-center gap-1 hover:scale-110 hover:bg-emerald-950/80 hover:border-emerald-400 transition-all">
+                      <span className="text-[9px]">{peak.icon || '⛰️'}</span>
+                      <span className="max-w-[72px] truncate">{peak.name}</span>
+                      <span className="font-mono text-emerald-300 text-[9px]">{peak.altitudeM}m</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className={`px-2.5 py-1 rounded-full text-xs font-black shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
+                        isFocus
+                          ? 'bg-emerald-950/75 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
+                          : 'bg-black/40 text-slate-100 border-white/20 hover:border-emerald-400/70 shadow-md'
+                      }`}>
+                        <span>{peak.icon || '⛰️'}</span>
+                        <span>{peak.name}</span>
+                        <span className="text-[10px] font-mono text-emerald-300 font-bold">{peak.altitudeM}m</span>
+                      </div>
 
-                  {/* Distance Sub-label */}
-                  <div className="mt-0.5 px-1.5 py-0.2 rounded bg-black/35 backdrop-blur-sm border border-white/10 text-[10px] font-mono text-emerald-300">
-                    {peak.distanceKm} km · {peak.azimuth}°
-                  </div>
+                      {/* Distance Sub-label */}
+                      <div className="mt-0.5 px-1.5 py-0.2 rounded bg-black/35 backdrop-blur-sm border border-white/10 text-[10px] font-mono text-emerald-300">
+                        {peak.distanceKm} km · {peak.azimuth}°
+                      </div>
+                    </>
+                  )}
 
                   {/* Pin Needle Line to Peak Tip */}
                   <div className={`w-0.5 h-3 ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-400/60'}`}></div>
