@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { getBeaufortWindSafety } from '../lib/astronomy';
 
 // WMO Weather interpretation code map
 const WMO_WEATHER_MAP = {
@@ -144,7 +145,7 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpen
   const currentWeatherInfo = current ? (WMO_WEATHER_MAP[current.weather_code] || { label: '多雲', icon: '⛅', color: 'text-slate-400' }) : null;
   const windDir = current?.wind_direction_10m ?? daily?.wind_direction_10m_dominant?.[0] ?? 0;
   const windSpeed = current?.wind_speed_10m ?? 10;
-  const beaufort = getBeaufortScale(windSpeed);
+  const windSafety = getBeaufortWindSafety(windSpeed);
 
   // Compass SVG parameters
   const CX = 160;
@@ -187,29 +188,29 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpen
       <div className="bg-white w-full max-w-4xl max-h-[94vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 flex justify-between items-center">
+        <div className="px-6 py-5 border-b border-slate-200/80 bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 flex justify-between items-center flex-wrap gap-3">
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-2xl">⛅</span>
-              <h2 className="text-xl font-black text-slate-900">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-3xl">⛅</span>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
                 {campsite.name} - 天氣預報 & 日照風向羅盤
               </h2>
             </div>
-            <p className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+            <p className="text-xs sm:text-sm text-slate-600 mt-1.5 flex items-center gap-2 flex-wrap font-medium">
               <span>📍 {campsite.region || campsite.location || '台灣'}</span>
               <span>•</span>
               <span>🌐 緯度 {lat.toFixed(4)}°N, 經度 {lng.toFixed(4)}°E</span>
               {campsite.altitude && (
                 <>
                   <span>•</span>
-                  <span className="text-sky-700 font-semibold">⛰️ {campsite.altitude}</span>
+                  <span className="text-sky-700 font-bold">⛰️ {campsite.altitude}</span>
                 </>
               )}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-sm shadow-sm transition-colors"
+            className="text-slate-400 hover:text-slate-700 bg-white border border-slate-200 px-3.5 py-1.5 rounded-xl font-bold text-sm shadow-sm transition-colors"
           >
             ✕ 關閉
           </button>
@@ -258,7 +259,7 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpen
                   <span className="text-xl font-black text-amber-900">
                     {daily?.sunrise?.[0] ? daily.sunrise[0].split('T')[1] : '06:05'}
                   </span>
-                  <span className="text-[11px] text-amber-700 block mt-1">
+                  <span className="text-xs text-amber-700 block mt-1 font-medium">
                     晨曦黃金時刻，適合賞日出雲海
                   </span>
                 </div>
@@ -268,7 +269,7 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpen
                   <span className="text-xl font-black text-orange-900">
                     {daily?.sunset?.[0] ? daily.sunset[0].split('T')[1] : '17:15'}
                   </span>
-                  <span className="text-[11px] text-orange-700 block mt-1">
+                  <span className="text-xs text-orange-700 block mt-1 font-medium">
                     入夜降溫快，請提早準備照明
                   </span>
                 </div>
@@ -433,7 +434,7 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpen
                         onChange={(e) => setSelectedHour(Number(e.target.value))}
                         className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400 mb-2"
                       />
-                      <div className="flex justify-between text-[11px] font-semibold text-slate-400">
+                      <div className="flex justify-between text-xs font-semibold text-slate-400">
                         <span>🌅 06:00 (日出)</span>
                         <span>☀️ 12:00 (正午)</span>
                         <span>🌇 18:00 (日落)</span>
@@ -462,15 +463,42 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpen
                       </div>
                     </div>
 
-                    {/* Wind Forecast Details */}
-                    <div className="bg-slate-800/50 p-3.5 rounded-xl border border-slate-700 space-y-1">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-sky-300">💨 風向與風速預測：</span>
-                        <span className="font-mono text-emerald-400">{windSpeed} km/h (蒲福 {beaufort.level} 級 {beaufort.desc})</span>
+                    {/* 💨 蒲福風級實測與搭帳防風斷柱安全評估 */}
+                    <div className={`p-4 rounded-2xl border ${windSafety.bannerBg} space-y-2.5 shadow-lg`}>
+                      <div className="flex justify-between items-center text-xs flex-wrap gap-2">
+                        <span className="font-bold flex items-center gap-1.5 text-white">
+                          <span>💨 氣候測站實測風向與風速：</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-white font-bold">{windSpeed} km/h (蒲福 {windSafety.beaufort} 級 {windSafety.beaufortName})</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-black ${windSafety.badgeColor}`}>
+                            {windSafety.statusTag}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-300 leading-relaxed">
-                        主要吹 <strong className="text-sky-300">{getCardinalDirection(windDir)} ({windDir}°)</strong>。{beaufort.advice}。
+                      
+                      <p className="text-xs text-slate-200 leading-relaxed">
+                        主要吹 <strong className="text-sky-300">{getCardinalDirection(windDir)} ({windDir}°)</strong>。{windSafety.gearAdvice}
                       </p>
+
+                      {/* 💥 Consequences Alert if medium or above */}
+                      {windSafety.consequences && windSafety.consequences.length > 0 && (
+                        <div className="bg-slate-950/70 p-3 rounded-xl border border-white/10 space-y-1.5">
+                          <strong className="text-amber-300 text-xs flex items-center gap-1">
+                            <span>⚠️ 強風搭帳物理危機與後果評估：</span>
+                          </strong>
+                          <ul className="list-disc pl-4 text-slate-300 text-xs space-y-1 leading-relaxed">
+                            {windSafety.consequences.map((c, i) => (
+                              <li key={i}>{c}</li>
+                            ))}
+                          </ul>
+                          {windSafety.planB && (
+                            <p className="text-xs text-amber-200 pt-1.5 border-t border-white/10 font-bold">
+                              💡 應變建議：{windSafety.planB}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Camping Tent Pitching Advice */}
@@ -531,18 +559,18 @@ export default function CampsiteWeatherModal({ campsite, isOpen, onClose, onOpen
                           }`}
                         >
                           <div>
-                            <span className="text-[11px] font-bold text-slate-500 block">
+                            <span className="text-xs font-bold text-slate-500 block">
                               {idx === 0 ? '今日' : dayOfWeek}
                             </span>
                             <span className="text-xs font-black text-slate-800">{monthDay}</span>
                             <div className="text-2xl my-1.5">{info.icon}</div>
-                            <span className="text-[11px] font-bold text-slate-700 block truncate">{info.label}</span>
+                            <span className="text-xs font-bold text-slate-700 block truncate">{info.label}</span>
                           </div>
                           <div className="mt-2 pt-2 border-t border-slate-200/60 text-xs">
                             <div className="font-extrabold text-slate-800">
                               {maxT}° <span className="text-slate-400 font-normal">/ {minT}°</span>
                             </div>
-                            <div className="text-[11px] text-blue-600 font-bold mt-0.5">
+                            <div className="text-xs text-blue-600 font-bold mt-0.5">
                               💧 {rainProb}%
                             </div>
                           </div>
