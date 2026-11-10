@@ -551,6 +551,9 @@ export default function CampsiteARModal({
 
   // 5. Compute real-time Constellations with Star coordinates, Lines, and Center Points
   const computedConstellations = useMemo(() => {
+    const starFovH = effectiveLandscape ? 52.5 : 38;
+    const starFovV = effectiveLandscape ? 20 : 28;
+
     return CONSTELLATIONS.map(c => {
       const starMap = {};
       let visSumX = 0;
@@ -561,9 +564,9 @@ export default function CampsiteARModal({
         const pos = radecToAltAz(s.ra, s.dec, activeStarDate, lat, lng);
         const azDiff = (pos.azimuth - heading + 540) % 360 - 180;
         const elDiff = pos.elevation - camElevation;
-        const screenX = 50 + (azDiff / 38) * 45;
-        const screenY = 50 - (elDiff / 28) * 40;
-        const inFOV = Math.abs(azDiff) < 40 && Math.abs(elDiff) < 30 && pos.elevation > -5;
+        const screenX = 50 + (azDiff / starFovH) * 45;
+        const screenY = 50 - (elDiff / starFovV) * 40;
+        const inFOV = Math.abs(azDiff) <= starFovH && Math.abs(elDiff) <= starFovV && pos.elevation > -5;
 
         const starObj = {
           ...s,
@@ -595,7 +598,7 @@ export default function CampsiteARModal({
         centerY
       };
     });
-  }, [activeStarDate, lat, lng, heading, camElevation]);
+  }, [activeStarDate, lat, lng, heading, camElevation, effectiveLandscape]);
 
   // 6. Detect Star or Constellation locked by Central Reticle
   const lockedStar = useMemo(() => {
@@ -880,14 +883,7 @@ export default function CampsiteARModal({
     }
 
     const handleOrientation = (e) => {
-      let currentHeading = 0;
-      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-        currentHeading = e.webkitCompassHeading;
-      } else if (e.alpha !== null) {
-        currentHeading = (360 - e.alpha) % 360;
-      }
-
-      // 🧭 智慧辨識螢幕旋轉角度 (支援最新 screen.orientation.angle 與舊版 window.orientation 及視窗比例)
+      // 1. 🧭 智慧辨識螢幕旋轉角度 (支援最新 screen.orientation.angle 與舊版 window.orientation 及視窗比例)
       let screenAngle = 0;
       if (typeof window !== 'undefined') {
         if (window.screen?.orientation?.angle !== undefined) {
@@ -900,67 +896,70 @@ export default function CampsiteARModal({
         }
       }
 
-      // 橫向手持時，方位角自動依旋轉角度補償 (避免相機鏡頭與手機頂部夾角 90° 的偏移)
-      if (screenAngle === 90) {
-        currentHeading = (currentHeading + 90) % 360;
-      } else if (screenAngle === 270) {
-        currentHeading = (currentHeading + 270) % 360;
-      } else if (screenAngle === 180) {
-        currentHeading = (currentHeading + 180) % 360;
-      }
-
       const rawBeta = e.beta !== null ? e.beta : 0;
       const rawGamma = e.gamma !== null ? e.gamma : 0;
+      const rawAlpha = e.alpha !== null ? e.alpha : 0;
 
+      // 2. 📐 鏡頭仰角 (camElevation) 嚴謹 3D 空間旋轉矩陣解算：
+      // 手機後置鏡頭光軸在裝置本體座標系 (Device Body Frame) 固定為 -Z 軸 = [0, 0, -1]^T。
+      // 依 W3C 規範之 Tait-Bryan Z-X-Y 旋轉矩陣 R = Rz(alpha) * Rx(beta) * Ry(gamma)，
+      // 鏡頭光軸在地球坐標系 (Earth Frame) 之鉛直分量 vz 恆等於：-cos(beta) * cos(gamma)。
+      // 鏡頭相對地平線之精確仰角為：camElevation = arcsin(clamp(vz, -1, 1)) * (180 / PI)。
+      // 此解析封閉解在直立 0°、橫向 90°、橫向 270°、倒立 180° 及任意手持側傾角下皆具備 100% 幾何對稱與連續性，
+      // 徹底根除分段啟發式估算在仰望星空時產生的正負反轉、數值跳變或萬向節鎖死 (Gimbal lock) 缺陷。
+      const betaRad = (rawBeta * Math.PI) / 180;
+      const gammaRad = (rawGamma * Math.PI) / 180;
+      const vz = -Math.cos(betaRad) * Math.cos(gammaRad);
+      const cameraElevation = (Math.asin(Math.max(-1, Math.min(1, vz))) * 180) / Math.PI;
+
+      // 3. 🧭 方位角 (heading)：
+      let currentHeading = 0;
+      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+        // iOS Safari: webkitCompassHeading 傳回手機本體頂部之磁北方位角 (0°~360° 順時針)。
+        // 橫屏手持時，疊加螢幕旋轉角 (screenAngle) 補償，使鏡頭與螢幕正上方精準對齊真實北方：
+        currentHeading = (e.webkitCompassHeading + screenAngle) % 360;
+      } else if (e.alpha !== null) {
+        // Android / W3C 標準：
+        // 透過三維鏡頭向量在水平面之投影 (vx, vy) 計算光軸真北方位角：
+        const alphaRad = (rawAlpha * Math.PI) / 180;
+        const cA = Math.cos(alphaRad), sA = Math.sin(alphaRad);
+        const cB = Math.cos(betaRad), sB = Math.sin(betaRad);
+        const cG = Math.cos(gammaRad), sG = Math.sin(gammaRad);
+
+        const vx = -(cA * sG + sA * sB * cG);
+        const vy = -(sA * sG - cA * sB * cG);
+
+        if (vx * vx + vy * vy > 1e-4) {
+          const h = (Math.atan2(vx, vy) * 180) / Math.PI;
+          currentHeading = (h + 360) % 360;
+        } else {
+          // 天頂或天底極點奇異點備援
+          currentHeading = (360 - rawAlpha + screenAngle + 360) % 360;
+        }
+      }
+
+      // 4. 🏕️ 營位地勢傾角 (Ground Pitch & Roll，平放地面水平儀)：
       let groundPitch = 0;
       let groundRoll = 0;
-      let cameraElevation = 0;
-
-      const isLandscapeMode = screenAngle === 90 || screenAngle === 270 || (isDeviceLandscape && Math.abs(rawBeta) < 55);
-
-      if (isLandscapeMode) {
-        // 📱 手機橫放 (Landscape)：
-        // 物理長軸 (Y) 與水平面平行，物理短軸 (X) 與鉛垂面平行
-        // 在直立握持對準地平線時：
-        // iOS Safari: rawGamma 落在 ±90° (直立手持對準地平線時 |rawGamma| ≈ 90°)，rawBeta 落在 0° 附近
-        // 鏡頭仰角 (面對地平線為 0°，仰望星空為正，俯瞰地面為負)：
-        if (Math.abs(rawGamma) >= 45) {
-          // iOS 橫向直立手持：仰望星空時 |rawGamma| 從 90° 縮小往 0° 走，仰角 = 90 - |rawGamma|
-          // 若俯視低於地平線，rawBeta 偏向負值
-          const baseElev = 90 - Math.abs(rawGamma);
-          cameraElevation = rawBeta < -10 ? -Math.abs(baseElev || rawBeta) : baseElev;
-        } else {
-          // Android 或平放桌面時，rawBeta 承載前後仰角
-          cameraElevation = screenAngle === 90 ? -rawBeta : rawBeta;
-        }
-
-        groundPitch = Math.round(rawGamma);
+      if (screenAngle === 90) {
+        groundPitch = Math.round(-rawGamma);
         groundRoll = Math.round(rawBeta);
+      } else if (screenAngle === 270) {
+        groundPitch = Math.round(rawGamma);
+        groundRoll = Math.round(-rawBeta);
+      } else if (screenAngle === 180) {
+        groundPitch = Math.round(-rawBeta);
+        groundRoll = Math.round(-rawGamma);
       } else {
-        // 📱 手機直立 (Portrait)：
-        // rawBeta:
-        // - 平放桌面朝上為 0° (鏡頭垂直朝地，仰角 -90°)
-        // - 直立手持對準地平線為 90° (仰角 0°)
-        // - 仰望星空時，手機頂部向後倒，rawBeta 從 90° 增加往 180° (天頂 Zenith，仰角 +90°)
-        // - 俯視草地時，手機頂部向前傾，rawBeta 從 90° 減少往 0° (地面 Nadir，仰角 -90°)
-        let elev = 0;
-        if (rawBeta >= 0) {
-          elev = rawBeta - 90;
-        } else if (rawBeta < -90) {
-          // 越過天頂 (Zenith) 倒扣至後方時，陀螺儀符號跳變 (-180° ~ -90°)
-          elev = 180 + rawBeta;
-        } else {
-          elev = rawBeta - 90;
-        }
-        cameraElevation = elev;
         groundPitch = Math.round(rawBeta);
         groundRoll = Math.round(rawGamma);
       }
 
-      setHeading(Math.round(currentHeading));
-      setPitch(groundPitch);
-      setRoll(groundRoll);
-      setCamElevation(Math.max(-90, Math.min(90, Math.round(cameraElevation))));
+      const roundedElev = Math.round(cameraElevation) || 0;
+      setHeading((Math.round(currentHeading) % 360 + 360) % 360);
+      setPitch(groundPitch || 0);
+      setRoll(groundRoll || 0);
+      setCamElevation(Math.max(-90, Math.min(90, roundedElev)));
       setPermissionGranted(true);
     };
 
@@ -1567,11 +1566,13 @@ export default function CampsiteARModal({
           <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
             {/* 3A. SUN MODE: Sun Path Markers */}
             {arViewMode === 'sun' && sunMilestones.map(sun => {
+              const sunFovH = effectiveLandscape ? 52.5 : 38;
+              const sunFovV = effectiveLandscape ? 20 : 28;
               const azDiff = (sun.azimuth - heading + 540) % 360 - 180;
               const elDiff = sun.elevation - camElevation;
-              const inFOV = Math.abs(azDiff) < 38 && Math.abs(elDiff) < 28;
-              const screenX = 50 + (azDiff / 38) * 45;
-              const screenY = 50 - (elDiff / 28) * 40;
+              const inFOV = Math.abs(azDiff) <= sunFovH && Math.abs(elDiff) <= sunFovV;
+              const screenX = 50 + (azDiff / sunFovH) * 45;
+              const screenY = 50 - (elDiff / sunFovV) * 40;
 
               if (!inFOV || sun.elevation < -5) return null;
 
@@ -1669,11 +1670,13 @@ export default function CampsiteARModal({
 
             {/* 3D. STARS MODE: Celestial Objects & Milky Way Core */}
             {arViewMode === 'stars' && computedStars.map(star => {
+              const starFovH = effectiveLandscape ? 52.5 : 38;
+              const starFovV = effectiveLandscape ? 20 : 28;
               const azDiff = (star.azimuth - heading + 540) % 360 - 180;
               const elDiff = star.elevation - camElevation;
-              const inFOV = Math.abs(azDiff) < 38 && Math.abs(elDiff) < 28;
-              const screenX = 50 + (azDiff / 38) * 45;
-              const screenY = 50 - (elDiff / 28) * 40;
+              const inFOV = Math.abs(azDiff) <= starFovH && Math.abs(elDiff) <= starFovV;
+              const screenX = 50 + (azDiff / starFovH) * 45;
+              const screenY = 50 - (elDiff / starFovV) * 40;
 
               if (!inFOV || star.elevation < -5) return null;
 
