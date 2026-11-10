@@ -139,19 +139,67 @@ export default function CampsiteARModal({
     };
   }, []);
 
+  const modalRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (typeof document === 'undefined') return;
+    const modalElem = modalRef.current || document.documentElement;
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      if (modalElem.requestFullscreen) {
+        modalElem.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      } else if (modalElem.webkitRequestFullscreen) {
+        modalElem.webkitRequestFullscreen();
+        setIsFullscreen(true);
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   const effectiveLandscape = isLandscapeMode || isDeviceLandscape;
+
+  // 當手機轉為橫向且高度緊湊 (< 520px) 時，自動收合頂部選單，確保相機實景不被擠壓
+  useEffect(() => {
+    if (effectiveLandscape && typeof window !== 'undefined' && window.innerHeight < 520) {
+      setIsHeaderCollapsed(true);
+    }
+  }, [effectiveLandscape]);
 
   const toggleLandscapeMode = () => {
     setIsLandscapeMode(prev => {
       const next = !prev;
-      if (typeof window !== 'undefined' && window.screen?.orientation) {
-        try {
-          if (next && typeof window.screen.orientation.lock === 'function') {
-            window.screen.orientation.lock('landscape').catch(() => {});
-          } else if (!next && typeof window.screen.orientation.unlock === 'function') {
-            window.screen.orientation.unlock();
-          }
-        } catch (err) {}
+      if (typeof window !== 'undefined') {
+        if (next && window.innerHeight < 520) {
+          setIsHeaderCollapsed(true);
+        }
+        if (window.screen?.orientation) {
+          try {
+            if (next && typeof window.screen.orientation.lock === 'function') {
+              window.screen.orientation.lock('landscape').catch(() => {});
+            } else if (!next && typeof window.screen.orientation.unlock === 'function') {
+              window.screen.orientation.unlock();
+            }
+          } catch (err) {}
+        }
       }
       return next;
     });
@@ -709,8 +757,11 @@ export default function CampsiteARModal({
   ];
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center p-0 ${effectiveLandscape ? 'sm:p-0' : 'sm:p-4'} bg-slate-950/80 backdrop-blur-md overflow-hidden select-none`}>
-      <div className={`relative w-full h-full ${effectiveLandscape ? 'sm:max-w-none sm:max-h-none sm:rounded-none' : 'sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl'} shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150`}>
+    <div 
+      ref={modalRef}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-0 ${effectiveLandscape ? 'sm:p-0' : 'sm:p-4'} bg-slate-950/80 backdrop-blur-md overflow-hidden select-none w-screen h-screen h-[100dvh] max-h-[100dvh]`}
+    >
+      <div className={`relative w-full h-full h-[100dvh] max-h-[100dvh] ${effectiveLandscape ? 'sm:max-w-none sm:max-h-none sm:rounded-none' : 'sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl'} shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150`}>
         
         {/* Top Header Floating Glass Bar */}
         {!isHeaderCollapsed && (
@@ -957,11 +1008,23 @@ export default function CampsiteARModal({
               <button
                 type="button"
                 onClick={() => setIsHeaderCollapsed(true)}
-                className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors flex items-center gap-1 shadow-sm"
+                className="text-slate-200 hover:text-white bg-slate-800/90 hover:bg-slate-700/90 border border-white/20 px-2.5 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-all flex items-center gap-1 shadow-sm active:scale-95"
                 title="隱藏頂部選單，實景相機視野最大化"
               >
                 <span>▲</span>
-                <span className="hidden sm:inline">全屏實景</span>
+                <span>隱藏選單</span>
+              </button>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className={`text-xs px-2.5 py-1.5 rounded-xl font-bold border transition-all flex items-center gap-1 shadow-sm ${
+                  isFullscreen 
+                    ? 'bg-amber-500 text-slate-950 border-amber-300 font-black' 
+                    : 'text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border-white/20'
+                }`}
+                title={isFullscreen ? "退出全螢幕" : "進入全螢幕沉浸模式（收起手機網址列）"}
+              >
+                <span>{isFullscreen ? '⛶ 退出' : '⛶ 沉浸全螢幕'}</span>
               </button>
               <button
                 onClick={onClose}
@@ -973,47 +1036,65 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* 📱 實景最大化浮動迷你控制器 (當頂部選單收合時顯示) */}
+        {/* 📱 實景最大化浮動迷你控制器 (當頂部選單收合時顯示，清晰浮動於畫面兩側，絕不被羅盤遮擋) */}
         {isHeaderCollapsed && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-2xl animate-in fade-in slide-in-from-top-3 duration-200">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+          <div className="absolute top-2.5 inset-x-2 sm:inset-x-4 z-40 flex items-center justify-between pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
+            {/* 左側：當前模式與定位膠囊 */}
+            <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-2xl text-xs font-bold text-white">
               <span>{arViewMode === 'sun' ? '☀️' : arViewMode === 'mountain' ? '⛰️' : arViewMode === 'spots' ? '🧭' : '🌌'}</span>
               <span className="text-amber-300 font-extrabold">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
               <span className="text-slate-600">|</span>
               <span className="text-sky-300">{locationMode === 'current' ? '📍 GPS' : '🏕️ 營地'}</span>
               {effectiveLandscape && (
                 <span className="px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 text-[10px] font-mono">
-                  105° 橫向
+                  105°
                 </span>
               )}
             </div>
-            {arViewMode === 'mountain' && (
+
+            {/* 右側：展開選單、橫向切換、全螢幕與關閉按鈕 */}
+            <div className="pointer-events-auto flex items-center gap-1.5">
+              {arViewMode === 'mountain' && (
+                <button
+                  type="button"
+                  onClick={toggleLandscapeMode}
+                  className="px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all shadow-md"
+                  title={effectiveLandscape ? "切換回直向模式" : "切換至橫向全景模式"}
+                >
+                  {effectiveLandscape ? '📱 直向' : '🔄 橫向'}
+                </button>
+              )}
+              {/* ✨ 顯眼金黃色展開按鈕，字樣清晰不遮蔽 */}
               <button
                 type="button"
-                onClick={toggleLandscapeMode}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all"
-                title={effectiveLandscape ? "切換回直向模式" : "切換至橫向全景模式"}
+                onClick={() => setIsHeaderCollapsed(false)}
+                className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-1 transition-all shadow-xl active:scale-95 border border-amber-300 ring-2 ring-amber-400/30"
+                title="展開模式、營地與相機選單"
               >
-                {effectiveLandscape ? '📱 直向' : '🔄 橫向'}
+                <span>▼</span>
+                <span>展開選單</span>
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setIsHeaderCollapsed(false)}
-              className="px-2.5 py-0.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 rounded-full text-xs font-black flex items-center gap-1 transition-all shadow-md active:scale-95"
-              title="展開模式與定位選單"
-            >
-              <span>▼</span>
-              <span>展開選單</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-slate-400 hover:text-white px-2 py-0.5 rounded-full text-xs font-bold transition-colors ml-0.5"
-              title="完成關閉 AR"
-            >
-              ✕
-            </button>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className={`px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all shadow-md ${
+                  isFullscreen
+                    ? 'bg-amber-400 text-slate-950 font-black border-amber-300'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border-white/20'
+                }`}
+                title="切換全螢幕沉浸模式"
+              >
+                <span>{isFullscreen ? '⛶ 退出' : '⛶ 沉浸'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-full text-xs font-bold transition-colors border border-white/20 shadow-md"
+                title="完成關閉 AR"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 
@@ -1090,7 +1171,7 @@ export default function CampsiteARModal({
 
           {/* 2. Top Rolling Compass Ribbon & Guidance Banner */}
           <div 
-            style={{ top: '10px' }}
+            style={{ top: isHeaderCollapsed ? (effectiveLandscape ? '42px' : '48px') : '10px' }}
             className="absolute left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3"
           >
             {/* Realtime Facing Direction Badge */}
