@@ -938,9 +938,21 @@ export default function CampsiteARModal({
         groundRoll = Math.round(rawBeta);
       } else {
         // 📱 手機直立 (Portrait)：
-        // rawBeta: 平放桌面為 0°，直立手持對準地平線為 90°
-        // 鏡頭仰角 = 90 - rawBeta (面對地平線為 0°，仰望為正，俯視為負)
-        cameraElevation = 90 - rawBeta;
+        // rawBeta:
+        // - 平放桌面朝上為 0° (鏡頭垂直朝地，仰角 -90°)
+        // - 直立手持對準地平線為 90° (仰角 0°)
+        // - 仰望星空時，手機頂部向後倒，rawBeta 從 90° 增加往 180° (天頂 Zenith，仰角 +90°)
+        // - 俯視草地時，手機頂部向前傾，rawBeta 從 90° 減少往 0° (地面 Nadir，仰角 -90°)
+        let elev = 0;
+        if (rawBeta >= 0) {
+          elev = rawBeta - 90;
+        } else if (rawBeta < -90) {
+          // 越過天頂 (Zenith) 倒扣至後方時，陀螺儀符號跳變 (-180° ~ -90°)
+          elev = 180 + rawBeta;
+        } else {
+          elev = rawBeta - 90;
+        }
+        cameraElevation = elev;
         groundPitch = Math.round(rawBeta);
         groundRoll = Math.round(rawGamma);
       }
