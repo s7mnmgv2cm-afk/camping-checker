@@ -1,4 +1,5 @@
 import './tailwind.css';
+import './globals.css';
 
 export const metadata = {
   title: '全台露營區即時空位搜尋',
