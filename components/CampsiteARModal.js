@@ -126,6 +126,11 @@ export default function CampsiteARModal({
   const [isLandscapeMode, setIsLandscapeMode] = useState(false); // ⛰️ 遠山橫向全景模式 (Landscape Panorama)
   const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
 
+  // Star Mode State (Dismissible & Collapsible Star & Moon Drawers)
+  const [dismissedStarId, setDismissedStarId] = useState(null); // 📱 隱藏鎖定天體字卡 (如天樞星)
+  const [isStarDrawerCollapsed, setIsStarDrawerCollapsed] = useState(false); // 📱 縮小為單行透明膠囊
+  const [isMoonCardDismissed, setIsMoonCardDismissed] = useState(false); // 📱 隱藏右下角月相光害卡
+
   // Auto-detect native device orientation changes
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -635,6 +640,14 @@ export default function CampsiteARModal({
       (starConstellName && c.name.includes(starConstellName))
     ) || null;
   }, [selectedConstellation, lockedStar, computedConstellations]);
+
+  // Reset dismissed star when reticle locks onto another star
+  useEffect(() => {
+    if (lockedStar && lockedStar.id !== dismissedStarId) {
+      setDismissedStarId(null);
+      setIsStarDrawerCollapsed(false);
+    }
+  }, [lockedStar?.id]);
 
   // 7. Compute PeakVisor Mountain Peaks & Ridge Lines from observer location
   const campElevation = campsite?.altitude 
@@ -1455,30 +1468,30 @@ export default function CampsiteARModal({
                 </div>
               </div>
             ) : (
-              <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-indigo-400/40 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
+              <div className="mt-1.5 px-3.5 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-lg transition-all">
                 {activeConstellation ? (
-                  <div className="text-xs">
-                    <span className="text-amber-400 font-black inline-flex items-center gap-1">
+                  <div className="text-xs flex items-center justify-center gap-1.5 flex-wrap">
+                    <span className="text-amber-300 font-bold inline-flex items-center gap-1">
                       <span>{activeConstellation.icon} 視野鎖定：</span>
-                      <strong className="text-white text-sm">{activeConstellation.name}</strong>
+                      <strong className="text-white">{activeConstellation.name}</strong>
                     </span>
-                    <span className="text-indigo-200 ml-1.5">
+                    <span className="text-indigo-200 text-[11px]">
                       （{activeConstellation.season} · {activeConstellation.visibleStars} 顆星在視野）
                     </span>
                   </div>
                 ) : lockedStar ? (
-                  <div className="text-xs">
-                    <span className="text-emerald-400 font-black inline-flex items-center gap-1">
-                      <span>🎯 已鎖定天體：</span>
-                      <strong className="text-white text-sm">{lockedStar.name}</strong>
+                  <div className="text-xs flex items-center justify-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-400 font-bold inline-flex items-center gap-1">
+                      <span>🎯 鎖定天體：</span>
+                      <strong className="text-white">{lockedStar.name}</strong>
                     </span>
-                    <span className="text-indigo-200 ml-1.5">
+                    <span className="text-indigo-200 text-[11px]">
                       ({lockedStar.constellation} · 視星等 {lockedStar.mag})
                     </span>
                   </div>
                 ) : (
                   <div className="text-xs text-indigo-200 flex items-center justify-center gap-1.5 font-bold">
-                    <span>🌌 旋轉手機仰望天頂！已啟用 SkyView 星座連線與天體鎖定</span>
+                    <span>🌌 仰望夜空！SkyView 星座連線與天體鎖定中</span>
                   </div>
                 )}
               </div>
@@ -1636,23 +1649,22 @@ export default function CampsiteARModal({
                     </div>
                   )}
 
-                  {/* Star Badge Card */}
-                  <div className={`px-2.5 py-1 rounded-xl text-xs font-bold shadow-xl backdrop-blur-md mt-1.5 text-center whitespace-nowrap border transition-all ${
+                  {/* Star Badge Card: 精簡單行透明玻璃膠囊 (移除多餘的仰角/方位，避免星體重疊遮擋) */}
+                  <div className={`px-2 py-0.5 rounded-full text-xs font-bold shadow-md backdrop-blur-md mt-1 text-center whitespace-nowrap border transition-all ${
                     isLocked 
-                      ? 'bg-emerald-950/90 border-emerald-400 text-emerald-100 shadow-[0_0_15px_#10b981]' 
-                      : 'bg-slate-900/90 border-indigo-400/40 text-white'
+                      ? 'bg-emerald-950/70 border-emerald-400 text-emerald-100 shadow-[0_0_12px_#10b981]' 
+                      : 'bg-black/35 border-white/20 text-white hover:bg-black/55'
                   }`}>
                     <div className="flex items-center gap-1 justify-center">
-                      <span className={isLocked ? 'text-emerald-300 font-extrabold' : 'text-amber-300 font-bold'}>
+                      <span className={isLocked ? 'text-emerald-300 font-black' : 'text-amber-200 font-bold'}>
                         {star.name.split(' (')[0]}
                       </span>
-                      <span className="text-xs px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-normal">
-                        {star.badge}
-                      </span>
+                      {star.badge && (
+                        <span className="text-[10px] px-1 py-0.1 rounded bg-indigo-500/25 text-indigo-200 font-normal">
+                          {star.badge}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-xs text-slate-300 block">
-                      仰角 {star.elevation}° | 方位 {star.azimuth}°
-                    </span>
                   </div>
                 </div>
               );
@@ -1696,7 +1708,7 @@ export default function CampsiteARModal({
                           <div className="w-1 h-1 rounded-full bg-white"></div>
                         </div>
                       </div>
-                      <span className="text-xs text-sky-200 font-mono mt-0.5 bg-slate-950/80 px-1 py-0.2 rounded border border-white/10 whitespace-nowrap">
+                      <span className="text-[11px] text-sky-200 font-mono mt-0.5 bg-black/35 backdrop-blur-md px-1.5 py-0.2 rounded-full border border-white/20 whitespace-nowrap">
                         {star.name.split(' (')[0]}
                       </span>
                     </div>
@@ -2116,16 +2128,39 @@ export default function CampsiteARModal({
                   <span className="text-slate-300">稜線:{showRidgeLines ? '開' : '關'}</span>
                 </div>
               </div>
+            ) : isMoonCardDismissed ? (
+              // 📱 收合為極簡透明月相膠囊
+              <button
+                type="button"
+                onClick={() => setIsMoonCardDismissed(false)}
+                className="bg-black/35 backdrop-blur-md border border-white/20 px-2.5 py-1 rounded-full text-[11px] font-bold text-purple-200 flex items-center gap-1 shadow-lg hover:bg-black/50 pointer-events-auto transition-all active:scale-95"
+                title="點擊展開月相與光害資訊"
+              >
+                <span>{moonInfo.icon}</span>
+                <span>{moonInfo.phaseName} ({moonInfo.illumination}%)</span>
+                <span className="text-slate-400 text-[10px]">▲</span>
+              </button>
             ) : (
-              <div className="bg-slate-950/85 backdrop-blur-md border border-purple-500/30 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[55%] text-right">
-                <span className="text-purple-300 font-bold flex items-center justify-end gap-1.5">
-                  <span>{moonInfo.icon}</span>
-                  <span>{moonInfo.phaseName} · 月光害指數</span>
-                </span>
+              // 📱 完整月相光害卡 (支援一鍵關閉隱藏)
+              <div className="bg-black/35 backdrop-blur-md border border-white/20 p-2 sm:p-2.5 rounded-2xl text-xs space-y-1 shadow-lg max-w-[55%] text-right pointer-events-auto transition-all">
+                <div className="flex items-center justify-between gap-1.5 border-b border-white/10 pb-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsMoonCardDismissed(true)}
+                    className="text-slate-400 hover:text-white text-[11px] px-1 rounded hover:bg-white/10 font-bold transition-all"
+                    title="隱藏月相資訊"
+                  >
+                    ✕ 隱藏
+                  </button>
+                  <span className="text-purple-300 font-bold flex items-center gap-1">
+                    <span>{moonInfo.icon}</span>
+                    <span>{moonInfo.phaseName} · 月相</span>
+                  </span>
+                </div>
                 <div className="text-amber-300 font-black text-xs">
                   {moonInfo.rating.split(' ')[0]} ({moonInfo.illumination}% 照度)
                 </div>
-                <p className="text-xs text-slate-300 pt-0.5 border-t border-white/10 leading-tight">
+                <p className="text-[11px] text-slate-300 pt-0.5 leading-tight">
                   {moonInfo.phaseDays < 7 || moonInfo.phaseDays > 22 ? '🌌 最佳深空拍攝良夜' : '🌙 建議觀測明亮行星'}
                 </p>
               </div>
@@ -2134,75 +2169,128 @@ export default function CampsiteARModal({
 
         </div>
 
-        {/* Selected Star or Constellation Details Bottom Drawer Overlay */}
-        {(selectedConstellation || lockedStar || selectedStarTarget) && arViewMode === 'stars' && (
-          <div className="z-30 px-4 py-2.5 bg-slate-900/95 backdrop-blur-md border-t border-indigo-500/30 flex items-start justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150 max-h-52 overflow-y-auto">
-            {selectedConstellation ? (
-              <div className="flex items-start gap-3 min-w-0 flex-1">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-md mt-0.5">
-                  {selectedConstellation.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <strong className="text-sm font-black text-white">{selectedConstellation.name}</strong>
-                    <span className="text-slate-400 font-mono italic">
-                      {selectedConstellation.latin}
-                    </span>
-                    <span className="px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-400/30">
-                      {selectedConstellation.season}
-                    </span>
-                    <span className="text-emerald-400 font-mono font-bold">
-                      {selectedConstellation.visibleStars} / {selectedConstellation.stars.length} 顆星在視野內
-                    </span>
+        {/* Selected Star or Constellation Details Bottom Drawer Overlay (Collapsible & Dismissible) */}
+        {(selectedConstellation || lockedStar || selectedStarTarget) && arViewMode === 'stars' && (() => {
+          const currentTarget = selectedStarTarget || lockedStar;
+          if (!selectedConstellation && !currentTarget) return null;
+          if (currentTarget && currentTarget.id === dismissedStarId) return null;
+
+          return (
+            <div data-testid="star-drawer" className="z-30 px-3.5 py-2 bg-black/45 backdrop-blur-xl border-t border-white/20 text-xs shadow-2xl transition-all animate-in slide-in-from-bottom duration-150">
+              {isStarDrawerCollapsed ? (
+                // Collapsed 1-line pill
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm">{selectedConstellation ? selectedConstellation.icon : currentTarget.icon}</span>
+                    <strong className="text-white font-bold truncate">
+                      {selectedConstellation ? selectedConstellation.name : currentTarget.name}
+                    </strong>
+                    {selectedConstellation ? (
+                      <span className="text-sky-300 font-mono text-[11px]">{selectedConstellation.season} · {selectedConstellation.visibleStars} 顆星在視野</span>
+                    ) : (
+                      <span className="text-emerald-300 font-mono text-[11px]">仰角 {currentTarget.elevation}° / 方位 {currentTarget.azimuth}°</span>
+                    )}
                   </div>
-                  <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
-                    {selectedConstellation.story}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelectedConstellation(null)}
-                  className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold mt-0.5"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (() => {
-              const currentTarget = selectedStarTarget || lockedStar;
-              return (
-                <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-md mt-0.5">
-                    {currentTarget.icon}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <strong className="text-sm font-black text-white">{currentTarget.name}</strong>
-                      <span className="px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-300 font-bold border border-purple-400/30">
-                        {currentTarget.constellation}
-                      </span>
-                      <span className="text-slate-400 font-mono">
-                        視星等：{currentTarget.mag}
-                      </span>
-                      <span className="text-emerald-400 font-mono font-bold">
-                        仰角 {currentTarget.elevation}° / 方位 {currentTarget.azimuth}°
-                      </span>
-                    </div>
-                    <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
-                      {currentTarget.story}
-                    </p>
-                  </div>
-                  {selectedStarTarget && (
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => setSelectedStarTarget(null)}
-                      className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold mt-0.5"
+                      type="button"
+                      onClick={() => setIsStarDrawerCollapsed(false)}
+                      className="px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 text-[11px] font-bold transition-all hover:bg-indigo-500/30 active:scale-95"
                     >
-                      ✕
+                      ▲ 展開詳情
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentTarget) setDismissedStarId(currentTarget.id);
+                        setSelectedConstellation(null);
+                        setSelectedStarTarget(null);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                      title="隱藏目前天體字卡"
+                    >
+                      ✕ 隱藏
+                    </button>
+                  </div>
                 </div>
-              );
-            })()}
-          </div>
-        )}
+              ) : (
+                // Full Expanded Glass Card
+                <div className="flex items-start justify-between gap-2.5 max-h-52 overflow-y-auto">
+                  {selectedConstellation ? (
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-lg shrink-0 shadow-md border border-white/20 mt-0.5">
+                        {selectedConstellation.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <strong className="text-sm font-black text-white">{selectedConstellation.name}</strong>
+                          <span className="text-slate-400 font-mono italic text-[11px]">
+                            {selectedConstellation.latin}
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-400/30 text-[11px]">
+                            {selectedConstellation.season}
+                          </span>
+                          <span className="text-emerald-400 font-mono font-bold text-[11px]">
+                            {selectedConstellation.visibleStars} / {selectedConstellation.stars.length} 顆星在視野內
+                          </span>
+                        </div>
+                        <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
+                          {selectedConstellation.story}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-600 flex items-center justify-center text-lg shrink-0 shadow-md border border-white/20 mt-0.5">
+                        {currentTarget.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <strong className="text-sm font-black text-white">{currentTarget.name}</strong>
+                          <span className="px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 font-bold border border-purple-400/30 text-[11px]">
+                            {currentTarget.constellation}
+                          </span>
+                          <span className="text-slate-300 font-mono text-[11px]">
+                            視星等：{currentTarget.mag}
+                          </span>
+                          <span className="text-emerald-400 font-mono font-bold text-[11px]">
+                            仰角 {currentTarget.elevation}° / 方位 {currentTarget.azimuth}°
+                          </span>
+                        </div>
+                        <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
+                          {currentTarget.story}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsStarDrawerCollapsed(true)}
+                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                      title="縮小為單行"
+                    >
+                      ▼ 縮小
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentTarget) setDismissedStarId(currentTarget.id);
+                        setSelectedConstellation(null);
+                        setSelectedStarTarget(null);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                      title="隱藏天體說明字卡"
+                    >
+                      ✕ 隱藏
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Selected Mountain Peak Drawer Overlay (Collapsible & Dismissible) */}
         {arViewMode === 'mountain' && (() => {
