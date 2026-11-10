@@ -124,6 +124,7 @@ export default function CampsiteARModal({
   const [dismissedPeakId, setDismissedPeakId] = useState(null); // 📱 隱藏鎖定山峰字卡
   const [isPeakDrawerCollapsed, setIsPeakDrawerCollapsed] = useState(false); // 📱 縮小為單行透明膠囊
   const [showPeakControls, setShowPeakControls] = useState(false); // 📱 辨識半徑與設定面板可收合/隱藏
+  const [isBottomDeckCollapsed, setIsBottomDeckCollapsed] = useState(false); // 📱 橫向遠山模式底部控制工具列可收合/隱藏
   const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
 
   // Star Mode State (Dismissible & Collapsible Star & Moon Drawers)
@@ -212,12 +213,20 @@ export default function CampsiteARModal({
   // 📐 FOV 自動連動：手機橫放自動切換為 105° 超廣角全景，拿直自動切換為 65° 標準視角
   const effectiveLandscape = isDeviceLandscape;
 
-  // 當手機轉為橫向且高度緊湊 (< 520px) 時，自動收合頂部選單，確保相機實景不被擠壓
+  // 📱 橫向遠山極致沉浸模式：只要一偵測到是 landscape mode，便把所有可以隱藏的都隱藏起來！
   useEffect(() => {
-    if (effectiveLandscape && typeof window !== 'undefined' && window.innerHeight < 520) {
+    if (effectiveLandscape) {
       setIsHeaderCollapsed(true);
+      if (arViewMode === 'mountain') {
+        setIsPeakDrawerCollapsed(true);
+        setShowPeakControls(false);
+        setIsBottomDeckCollapsed(true);
+        if (!selectedPeak) {
+          setDismissedPeakId(lockedPeak?.id || null);
+        }
+      }
     }
-  }, [effectiveLandscape]);
+  }, [effectiveLandscape, arViewMode]);
 
   // 🧭 Google AI Overview Nearby POIs (Trails, Waterfalls, Viewpoints)
   const [poiSpots, setPoiSpots] = useState([]);
@@ -659,10 +668,10 @@ export default function CampsiteARModal({
     const starFovH = effectiveLandscape ? 52.5 : 38;
     const starFovV = effectiveLandscape ? 20 : 28;
 
-    // 優先順序：1. 使用者手動選中的天體，2. 當前夜空主要行星 (土星、木星、火星、金星) 或一等亮星
+    // 優先順序：1. 使用者手動選中的天體，2. 當前夜空主要行星 (土星、木星、火星、金星) 或月球、一等亮星
     const priorityTargets = selectedStarTarget 
       ? [selectedStarTarget] 
-      : computedStars.filter(s => s.type === 'planet' || s.mag <= 1.2);
+      : computedStars.filter(s => s.type === 'moon' || s.type === 'planet' || s.mag <= 1.2);
 
     for (const target of priorityTargets) {
       if (target.elevation < -5) continue;
@@ -882,10 +891,18 @@ export default function CampsiteARModal({
   // Reset dismissed peak when reticle locks onto another peak
   useEffect(() => {
     if (lockedPeak && lockedPeak.id !== dismissedPeakId) {
-      setDismissedPeakId(null);
-      setIsPeakDrawerCollapsed(false);
+      if (effectiveLandscape) {
+        // 在橫向模式下保持極簡收合與隱藏，不主動干擾視野，除非使用者主動選取特定山峰
+        setIsPeakDrawerCollapsed(true);
+        if (!selectedPeak) {
+          setDismissedPeakId(lockedPeak.id);
+        }
+      } else {
+        setDismissedPeakId(null);
+        setIsPeakDrawerCollapsed(false);
+      }
     }
-  }, [lockedPeak?.id]);
+  }, [lockedPeak?.id, effectiveLandscape, selectedPeak]);
 
   // 8. Compute Google AI Overview POIs (Trails, Waterfalls, Viewpoints)
   const computedPOIs = useMemo(() => {
@@ -1743,8 +1760,22 @@ export default function CampsiteARModal({
                   style={{ left: `${screenX}%`, top: `${screenY}%` }}
                   onClick={() => setSelectedStarTarget(star)}
                 >
-                  {/* Special Rendering for Planets, Deep-Sky, and Stars */}
-                  {star.type === 'planet' ? (
+                  {/* Special Rendering for Moon, Planets, Deep-Sky, and Stars */}
+                  {star.type === 'moon' ? (
+                    <div className="relative flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-full bg-amber-200/25 blur-md animate-pulse absolute"></div>
+                      {isLocked && (
+                        <div className="w-14 h-14 rounded-full bg-amber-300/40 animate-ping absolute"></div>
+                      )}
+                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                        isLocked
+                          ? 'w-12 h-12 bg-amber-200 text-slate-950 font-black shadow-[0_0_30px_#fef08a] border-2 border-white scale-110'
+                          : 'w-11 h-11 bg-gradient-to-tr from-slate-200 via-amber-100 to-yellow-50 text-slate-950 shadow-[0_0_20px_rgba(254,240,138,0.9)] border-2 border-amber-200/80'
+                      }`}>
+                        <span className="text-xl drop-shadow-md">{star.icon}</span>
+                      </div>
+                    </div>
+                  ) : star.type === 'planet' ? (
                     <div className="relative flex items-center justify-center">
                       {isLocked && (
                         <div className="w-12 h-12 rounded-full bg-amber-400/30 animate-ping absolute"></div>
@@ -2495,10 +2526,21 @@ export default function CampsiteARModal({
           if (currentPeak.id === dismissedPeakId) return null;
 
           return (
-            <div data-testid="mountain-drawer" className="z-30 px-3.5 py-2.5 bg-black/45 backdrop-blur-xl border-t border-white/20 text-xs shadow-2xl transition-all animate-in slide-in-from-bottom duration-150">
+            <div 
+              data-testid="mountain-drawer" 
+              className={`z-30 transition-all animate-in slide-in-from-bottom duration-150 ${
+                effectiveLandscape && isBottomDeckCollapsed
+                  ? 'absolute bottom-2.5 left-1/2 -translate-x-1/2 max-w-[92vw] pointer-events-auto'
+                  : 'px-3.5 py-2.5 bg-black/45 backdrop-blur-xl border-t border-white/20 text-xs shadow-2xl'
+              }`}
+            >
               {isPeakDrawerCollapsed ? (
-                // Collapsed 1-line pill
-                <div className="flex items-center justify-between gap-2">
+                // Collapsed 1-line pill (在橫向底列隱藏時，呈現為極簡透明懸浮膠囊)
+                <div className={`flex items-center justify-between gap-2 ${
+                  effectiveLandscape && isBottomDeckCollapsed
+                    ? 'px-3.5 py-1.5 rounded-full bg-slate-950/90 backdrop-blur-md border border-white/25 shadow-2xl text-xs'
+                    : ''
+                }`}>
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm">⛰️</span>
                     <strong className="text-white font-bold truncate">{currentPeak.name}</strong>
@@ -2528,7 +2570,11 @@ export default function CampsiteARModal({
                 </div>
               ) : (
                 // Expanded full details with transparent glass
-                <div className="flex items-start justify-between gap-2.5">
+                <div className={`flex items-start justify-between gap-2.5 ${
+                  effectiveLandscape && isBottomDeckCollapsed
+                    ? 'p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-white/25 shadow-2xl max-w-xl'
+                    : ''
+                }`}>
                   <div className="flex items-start gap-2.5 min-w-0 flex-1">
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600/80 to-teal-500/80 flex items-center justify-center text-lg shrink-0 shadow-md border border-white/20 mt-0.5">
                       {currentPeak.icon || '⛰️'}
@@ -2646,8 +2692,21 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* Bottom Floating Control Deck (Glassmorphism & Collapsible) */}
-        <div className="z-30 px-3.5 pt-2.5 pb-[max(10px,env(safe-area-inset-bottom))] bg-slate-950/70 backdrop-blur-xl border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-2.5">
+        {/* 📱 橫向遠山極致沉浸模式：若工具列收合，僅在左下角保留微型展開膠囊 */}
+        {effectiveLandscape && arViewMode === 'mountain' && isBottomDeckCollapsed ? (
+          <div className="absolute bottom-2.5 left-3 z-30 pointer-events-auto animate-in fade-in duration-150">
+            <button
+              type="button"
+              onClick={() => setIsBottomDeckCollapsed(false)}
+              className="px-3 py-1.5 bg-slate-950/85 hover:bg-slate-900 backdrop-blur-md text-emerald-300 border border-emerald-400/40 rounded-full text-xs font-bold shadow-xl flex items-center gap-1.5 transition-all active:scale-95 hover:border-emerald-400"
+              title="展開遠山控制工具列 (半徑、山稜天際線開關)"
+            >
+              <span>⛰️ 工具列 ▲</span>
+            </button>
+          </div>
+        ) : (
+          /* Bottom Floating Control Deck (Glassmorphism & Collapsible) */
+          <div className="z-30 px-3.5 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] bg-slate-950/75 backdrop-blur-xl border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-2 animate-in slide-in-from-bottom duration-150">
           
           {/* Left Controls: Season selector (Sun mode) VS Distance selector (Mountain mode) VS Spots selector VS Time simulator (Star mode) */}
           {arViewMode === 'sun' ? (
@@ -2843,11 +2902,21 @@ export default function CampsiteARModal({
                 <span>📖 觀星指南</span>
               </button>
             )}
+            {effectiveLandscape && arViewMode === 'mountain' && (
+              <button
+                type="button"
+                onClick={() => setIsBottomDeckCollapsed(true)}
+                className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-slate-200 hover:text-white text-xs font-bold transition-all border border-white/20 active:scale-95"
+                title="隱藏底部控制工具列以最大化視野"
+              >
+                ▼ 隱藏工具列
+              </button>
+            )}
             {isHeaderCollapsed && (
               <button
                 type="button"
                 onClick={() => setIsHeaderCollapsed(false)}
-                className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all flex items-center gap-1 active:scale-95 border border-amber-300 cursor-pointer"
+                className="px-3.5 sm:px-4 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all flex items-center gap-1 active:scale-95 border border-amber-300 cursor-pointer"
                 title="展開頂部控制列"
               >
                 <span>▲ 展開頂部選單</span>
@@ -2855,13 +2924,14 @@ export default function CampsiteARModal({
             )}
             <button
               onClick={onClose}
-              className="px-5 py-1.5 bg-white text-slate-950 hover:bg-slate-200 font-black text-xs rounded-xl shadow transition-colors"
+              className="px-4 sm:px-5 py-1.5 bg-white text-slate-950 hover:bg-slate-200 font-black text-xs rounded-xl shadow transition-colors"
             >
               完成關閉
             </button>
           </div>
 
         </div>
+        )}
 
         {/* 📖 Stargazing Highlights Field Guide Modal Drawer */}
         {showStargazingGuide && (
