@@ -108,7 +108,8 @@ export default function CampsiteARModal({
   // SkyView Constellation Line Art Toggle & Selection
   const [showConstellationLines, setShowConstellationLines] = useState(true);
   const [selectedConstellation, setSelectedConstellation] = useState(null);
-  const [simControlsMinimized, setSimControlsMinimized] = useState(false);
+  const [simControlsMinimized, setSimControlsMinimized] = useState(true); // 預設收合模擬器，視野 100% 留空給實景
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false); // 📱 實景最大化：可隱藏頂部模式與定位選單
 
   // Beaufort Wind & Structural Safety Alert Modal
   const [showWindSafetyModal, setShowWindSafetyModal] = useState(false);
@@ -118,6 +119,43 @@ export default function CampsiteARModal({
   const [peakMaxDistance, setPeakMaxDistance] = useState(60); // 25km, 50km, 80km
   const [showRidgeLines, setShowRidgeLines] = useState(true);
   const [selectedPeak, setSelectedPeak] = useState(null);
+  const [isLandscapeMode, setIsLandscapeMode] = useState(false); // ⛰️ 遠山橫向全景模式 (Landscape Panorama)
+  const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
+
+  // Auto-detect native device orientation changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const checkOrientation = () => {
+      // Check if current viewport is wide/landscape (width > height)
+      const isLand = window.innerWidth > window.innerHeight;
+      setIsDeviceLandscape(!!isLand);
+    };
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, []);
+
+  const effectiveLandscape = isLandscapeMode || isDeviceLandscape;
+
+  const toggleLandscapeMode = () => {
+    setIsLandscapeMode(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined' && window.screen?.orientation) {
+        try {
+          if (next && typeof window.screen.orientation.lock === 'function') {
+            window.screen.orientation.lock('landscape').catch(() => {});
+          } else if (!next && typeof window.screen.orientation.unlock === 'function') {
+            window.screen.orientation.unlock();
+          }
+        } catch (err) {}
+      }
+      return next;
+    });
+  };
 
   // 🧭 Google AI Overview Nearby POIs (Trails, Waterfalls, Viewpoints)
   const [poiSpots, setPoiSpots] = useState([]);
@@ -244,6 +282,24 @@ export default function CampsiteARModal({
       isMounted = false;
     };
   }, [isOpen, campsite?.id, campsite?.name]);
+
+  // 手動即時探勘/重新查詢營區周邊景點
+  const handleRefreshSpots = async () => {
+    if (!campsite) return;
+    setLoadingSpots(true);
+    try {
+      const cacheKey = `campsite_ai_spots_${campsite.id || campsite.name}`;
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(cacheKey);
+      }
+      const spots = await fetchCampsiteSpots(campsite);
+      setPoiSpots(spots || []);
+    } catch (err) {
+      console.warn('Failed to refresh spots:', err);
+    } finally {
+      setLoadingSpots(false);
+    }
+  };
 
   const windDir = liveWind?.windDir ?? (propWindDir !== undefined && propWindDir !== null ? propWindDir : 45);
   const windSpeed = liveWind?.windSpeed ?? (propWindSpeed !== undefined && propWindSpeed !== null ? propWindSpeed : 10);
@@ -422,8 +478,8 @@ export default function CampsiteARModal({
   const computedPeaks = useMemo(() => {
     if (arViewMode !== 'mountain') return [];
     const peaks = computePeaksFromLocation(lat, lng, campElevation, peakMaxDistance);
-    const fovH = 65; // Horizontal Field of View
-    const fovV = 55; // Vertical Field of View
+    const fovH = effectiveLandscape ? 105 : 65; // Horizontal Field of View: 105° ultra-wide in landscape panorama
+    const fovV = effectiveLandscape ? 40 : 55; // Vertical Field of View
 
     return peaks.map(p => {
       let azDiff = (p.azimuth - heading + 540) % 360 - 180;
@@ -445,7 +501,7 @@ export default function CampsiteARModal({
         azimuthDir: getHeadingDirectionName(p.azimuth)
       };
     });
-  }, [arViewMode, lat, lng, campElevation, peakMaxDistance, heading, camElevation]);
+  }, [arViewMode, lat, lng, campElevation, peakMaxDistance, heading, camElevation, effectiveLandscape]);
 
   // Compute Mountain Ridges connecting member peaks
   const computedRidges = useMemo(() => {
@@ -500,11 +556,11 @@ export default function CampsiteARModal({
   const computedPOIs = useMemo(() => {
     if (arViewMode !== 'spots') return [];
     const pois = computeNearbyPOIs(lat, lng, campElevation, poiMaxDistance, poiCategory, poiSpots);
-    return projectPOIsToScreen(pois, heading, camElevation, 65, 55).map(p => ({
+    return projectPOIsToScreen(pois, heading, camElevation, effectiveLandscape ? 105 : 65, effectiveLandscape ? 40 : 55).map(p => ({
       ...p,
       azimuthDir: getHeadingDirectionName(p.azimuth)
     }));
-  }, [arViewMode, lat, lng, campElevation, poiMaxDistance, poiCategory, poiSpots, heading, camElevation]);
+  }, [arViewMode, lat, lng, campElevation, poiMaxDistance, poiCategory, poiSpots, heading, camElevation, effectiveLandscape]);
 
   // Detect POI locked by Central Reticle
   const lockedPoi = useMemo(() => {
@@ -560,12 +616,32 @@ export default function CampsiteARModal({
         currentHeading = (360 - e.alpha) % 360;
       }
 
+      const winOrientation = typeof window !== 'undefined' && typeof window.orientation !== 'undefined' ? window.orientation : 0;
+      if (winOrientation === 90) {
+        currentHeading = (currentHeading + 90) % 360;
+      } else if (winOrientation === -90) {
+        currentHeading = (currentHeading + 270) % 360;
+      } else if (isLandscapeMode && !isDeviceLandscape) {
+        currentHeading = (currentHeading + 90) % 360;
+      }
+
       const rawBeta = e.beta !== null ? e.beta : 0;
       const rawGamma = e.gamma !== null ? e.gamma : 0;
 
-      const groundPitch = Math.max(-90, Math.min(90, Math.round(rawBeta)));
-      const groundRoll = Math.max(-90, Math.min(90, Math.round(rawGamma)));
-      const cameraElevation = Math.max(-90, Math.min(90, Math.round(90 - rawBeta)));
+      let groundPitch, groundRoll, cameraElevation;
+      if (winOrientation === 90 || (isLandscapeMode && !isDeviceLandscape)) {
+        groundPitch = Math.max(-90, Math.min(90, Math.round(rawGamma)));
+        groundRoll = Math.max(-90, Math.min(90, Math.round(rawBeta)));
+        cameraElevation = Math.max(-90, Math.min(90, Math.round(Math.abs(rawGamma))));
+      } else if (winOrientation === -90) {
+        groundPitch = Math.max(-90, Math.min(90, Math.round(-rawGamma)));
+        groundRoll = Math.max(-90, Math.min(90, Math.round(-rawBeta)));
+        cameraElevation = Math.max(-90, Math.min(90, Math.round(Math.abs(rawGamma))));
+      } else {
+        groundPitch = Math.max(-90, Math.min(90, Math.round(rawBeta)));
+        groundRoll = Math.max(-90, Math.min(90, Math.round(rawGamma)));
+        cameraElevation = Math.max(-90, Math.min(90, Math.round(90 - rawBeta)));
+      }
 
       setHeading(Math.round(currentHeading));
       setPitch(groundPitch);
@@ -594,7 +670,7 @@ export default function CampsiteARModal({
         localStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [isOpen]);
+  }, [isOpen, isLandscapeMode, isDeviceLandscape]);
 
   const handleRequestMotionPermission = () => {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -633,11 +709,12 @@ export default function CampsiteARModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-hidden select-none">
-      <div className="relative w-full h-full sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-0 ${effectiveLandscape ? 'sm:p-0' : 'sm:p-4'} bg-slate-950/80 backdrop-blur-md overflow-hidden select-none`}>
+      <div className={`relative w-full h-full ${effectiveLandscape ? 'sm:max-w-none sm:max-h-none sm:rounded-none' : 'sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl'} shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150`}>
         
         {/* Top Header Floating Glass Bar */}
-        <div className="relative shrink-0 z-30 px-3 py-2 bg-slate-900/95 backdrop-blur-md border-b border-white/10 flex justify-between items-center shadow-lg gap-2">
+        {!isHeaderCollapsed && (
+          <div className="relative shrink-0 z-30 px-3 py-2 bg-slate-900/95 backdrop-blur-md border-b border-white/10 flex justify-between items-center shadow-lg gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-sm sm:text-base font-black flex items-center gap-1.5 text-white shrink-0">
@@ -859,13 +936,86 @@ export default function CampsiteARModal({
                 )}
               </p>
             </div>
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+              {arViewMode === 'mountain' && (
+                <button
+                  type="button"
+                  onClick={toggleLandscapeMode}
+                  className={`text-xs px-2.5 py-1.5 rounded-xl font-bold border transition-all flex items-center gap-1 shadow-sm ${
+                    effectiveLandscape
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 border-teal-300 font-black'
+                      : 'text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border-white/20'
+                  }`}
+                  title={effectiveLandscape ? "切換回直向模式" : "切換至 105° 橫向全景模式"}
+                >
+                  <span>{effectiveLandscape ? '📱 直向' : '🔄 橫向全景'}</span>
+                  <span className="font-mono text-[10px] px-1 py-0.2 rounded-full bg-slate-950/70 text-cyan-300">
+                    {effectiveLandscape ? '105°' : '65°'}
+                  </span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsHeaderCollapsed(true)}
+                className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors flex items-center gap-1 shadow-sm"
+                title="隱藏頂部選單，實景相機視野最大化"
+              >
+                <span>▲</span>
+                <span className="hidden sm:inline">全屏實景</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors"
+              >
+                ✕ 關閉
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 📱 實景最大化浮動迷你控制器 (當頂部選單收合時顯示) */}
+        {isHeaderCollapsed && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 shadow-2xl animate-in fade-in slide-in-from-top-3 duration-200">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+              <span>{arViewMode === 'sun' ? '☀️' : arViewMode === 'mountain' ? '⛰️' : arViewMode === 'spots' ? '🧭' : '🌌'}</span>
+              <span className="text-amber-300 font-extrabold">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
+              <span className="text-slate-600">|</span>
+              <span className="text-sky-300">{locationMode === 'current' ? '📍 GPS' : '🏕️ 營地'}</span>
+              {effectiveLandscape && (
+                <span className="px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 text-[10px] font-mono">
+                  105° 橫向
+                </span>
+              )}
+            </div>
+            {arViewMode === 'mountain' && (
+              <button
+                type="button"
+                onClick={toggleLandscapeMode}
+                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all"
+                title={effectiveLandscape ? "切換回直向模式" : "切換至橫向全景模式"}
+              >
+                {effectiveLandscape ? '📱 直向' : '🔄 橫向'}
+              </button>
+            )}
             <button
-              onClick={onClose}
-              className="text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-xl font-bold text-xs backdrop-blur-md transition-colors shrink-0 ml-2"
+              type="button"
+              onClick={() => setIsHeaderCollapsed(false)}
+              className="px-2.5 py-0.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 rounded-full text-xs font-black flex items-center gap-1 transition-all shadow-md active:scale-95"
+              title="展開模式與定位選單"
             >
-              ✕ 關閉
+              <span>▼</span>
+              <span>展開選單</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-400 hover:text-white px-2 py-0.5 rounded-full text-xs font-bold transition-colors ml-0.5"
+              title="完成關閉 AR"
+            >
+              ✕
             </button>
           </div>
+        )}
 
         {/* GPS Error Notification Toast */}
         {geoError && (
@@ -903,91 +1053,38 @@ export default function CampsiteARModal({
                 <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(#818cf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
               )}
 
-              {simControlsMinimized ? (
-                <div className="relative z-10 bg-slate-900/80 border border-slate-700/80 px-3 py-1.5 rounded-full shadow-lg backdrop-blur-md mb-4 flex items-center gap-2 text-xs">
-                  <span className="text-sm">{arViewMode === 'stars' ? '🌌' : '🔭'}</span>
-                  <button
-                    onClick={() => setHeading(h => (h + 315) % 360)}
-                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200"
-                    title="逆轉 45°"
-                  >
-                    ↺ 45°
-                  </button>
-                  <button
-                    onClick={() => setHeading(h => (h + 45) % 360)}
-                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200"
-                    title="順轉 45°"
-                  >
-                    ↻ 45°
-                  </button>
-                  <button
-                    onClick={() => setCamElevation(e => Math.min(85, e + 15))}
-                    className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded border border-indigo-500/40 text-indigo-200"
-                    title="仰角 +15°"
-                  >
-                    ▲ 仰角
-                  </button>
-                  <button
-                    onClick={() => setCamElevation(e => Math.max(-10, e - 15))}
-                    className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded border border-indigo-500/40 text-indigo-200"
-                    title="仰角 -15°"
-                  >
-                    ▼ 仰角
-                  </button>
-                  <button
-                    onClick={() => setSimControlsMinimized(false)}
-                    className="ml-1 text-slate-400 hover:text-slate-200 underline text-[11px]"
-                  >
-                    展開說明
-                  </button>
-                </div>
-              ) : (
-                <div className="relative z-10 max-w-md bg-slate-900/90 border border-slate-700/80 p-4 sm:p-5 rounded-2xl shadow-xl backdrop-blur-md mb-8">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-3xl">{arViewMode === 'stars' ? '🌌' : '🔭'}</span>
-                    <button
-                      onClick={() => setSimControlsMinimized(true)}
-                      className="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
-                      title="收起模擬器提示以獲得清爽星空視野"
-                    >
-                      <span>收起提示</span>
-                      <span>✕</span>
-                    </button>
-                  </div>
-                  <p className="text-sm font-bold text-slate-200 mb-1">
-                    {cameraError || (arViewMode === 'stars' ? '夜間星空全景模擬器' : 'AR 實境全景模擬模式')}
-                  </p>
-                  <p className="text-xs text-slate-400 mb-3">
-                    用手機開啟即可直接啟動後置鏡頭與真實陀螺儀！目前可透過下方旋轉按鈕或仰角調整模擬天頂視野。
-                  </p>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <button
-                      onClick={() => setHeading(h => (h + 315) % 360)}
-                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-600"
-                    >
-                      ↺ 逆轉 45°
-                    </button>
-                    <button
-                      onClick={() => setHeading(h => (h + 45) % 360)}
-                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-600"
-                    >
-                      ↻ 順轉 45°
-                    </button>
-                    <button
-                      onClick={() => setCamElevation(e => Math.min(85, e + 15))}
-                      className="px-2.5 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded-lg border border-indigo-500/40 text-indigo-200"
-                    >
-                      ▲ 仰角 +15°
-                    </button>
-                    <button
-                      onClick={() => setCamElevation(e => Math.max(-10, e - 15))}
-                      className="px-2.5 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded-lg border border-indigo-500/40 text-indigo-200"
-                    >
-                      ▼ 仰角 -15°
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* Discreet Simulator Controls (Positioned at bottom, clean & unobstructed) */}
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 bg-slate-900/85 border border-slate-700/80 px-3 py-1.5 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs">
+                <span className="text-sm">{arViewMode === 'stars' ? '🌌' : arViewMode === 'mountain' ? '⛰️' : '🔭'}</span>
+                <button
+                  onClick={() => setHeading(h => (h + 315) % 360)}
+                  className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200"
+                  title="逆轉 45°"
+                >
+                  ↺ 45°
+                </button>
+                <button
+                  onClick={() => setHeading(h => (h + 45) % 360)}
+                  className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200"
+                  title="順轉 45°"
+                >
+                  ↻ 45°
+                </button>
+                <button
+                  onClick={() => setCamElevation(e => Math.min(85, e + 15))}
+                  className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded border border-indigo-500/40 text-indigo-200"
+                  title="仰角 +15°"
+                >
+                  ▲ 仰角
+                </button>
+                <button
+                  onClick={() => setCamElevation(e => Math.max(-10, e - 15))}
+                  className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded border border-indigo-500/40 text-indigo-200"
+                  title="仰角 -15°"
+                >
+                  ▼ 仰角
+                </button>
+              </div>
             </div>
           )}
 
@@ -1107,32 +1204,34 @@ export default function CampsiteARModal({
                 )}
               </div>
             ) : arViewMode === 'spots' ? (
-              <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-cyan-400/40 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
-                <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <span className="text-cyan-400 font-bold text-xs">🧭 Google AI Overview 周邊景點探索</span>
-                  {lockedPoi ? (
-                    <>
-                      <span className="text-slate-500">|</span>
-                      <span className="text-xs">
-                        <span className="text-cyan-300 font-black">準心鎖定：</span>
-                        <strong className="text-white text-sm">{lockedPoi.icon} {lockedPoi.name}</strong>
-                        <span className="text-cyan-200 text-xs ml-1">
-                          （{lockedPoi.distanceKm} km · {lockedPoi.travelTime}）
-                        </span>
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-slate-500">|</span>
-                      <span className="text-xs text-slate-300">旋轉手機對準周邊步道、瀑布或觀景台</span>
-                    </>
-                  )}
-                </div>
+              <div className="mt-1 px-3 py-1 rounded-full bg-slate-950/85 border border-cyan-400/40 backdrop-blur-md text-center max-w-[92vw] shadow-xl flex items-center justify-center gap-2 flex-wrap">
+                <span className="text-cyan-300 font-bold text-xs flex items-center gap-1">
+                  <span>🧭</span>
+                  <span>周邊景點・步道瀑布</span>
+                  <span className="text-[10px] text-cyan-400 font-mono">({computedPOIs.filter(p => p.inView).length} 處在視野)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRefreshSpots}
+                  disabled={loadingSpots}
+                  className="px-2 py-0.5 bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-400/40 text-cyan-200 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all pointer-events-auto shadow-sm active:scale-95"
+                  title="立即重新探勘最新周邊景點"
+                >
+                  <span className={loadingSpots ? 'animate-spin' : ''}>🔄</span>
+                  <span>{loadingSpots ? '查詢中...' : '即時查詢'}</span>
+                </button>
               </div>
             ) : arViewMode === 'mountain' ? (
               <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-emerald-400/40 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
                 <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <span className="text-emerald-400 font-bold text-xs">⛰️ PeakVisor 遠山稜線模式</span>
+                  <span className="text-emerald-400 font-bold text-xs flex items-center gap-1">
+                    <span>⛰️ PeakVisor 遠山稜線</span>
+                    {effectiveLandscape && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/40 font-mono text-[10px]">
+                        105° 橫向全景
+                      </span>
+                    )}
+                  </span>
                   {lockedPeak ? (
                     <>
                       <span className="text-slate-500">|</span>
@@ -1147,7 +1246,9 @@ export default function CampsiteARModal({
                   ) : (
                     <>
                       <span className="text-slate-500">|</span>
-                      <span className="text-xs text-slate-300">平視遠方準心自動識別群山</span>
+                      <span className="text-xs text-slate-300">
+                        {effectiveLandscape ? '超廣角遠眺稜線群峰全景' : '平視遠方準心自動識別群山'}
+                      </span>
                     </>
                   )}
                 </div>
@@ -1439,6 +1540,17 @@ export default function CampsiteARModal({
               </svg>
             )}
 
+            {/* 3F.5 LANDSCAPE PANORAMA HORIZON REFERENCE */}
+            {effectiveLandscape && arViewMode === 'mountain' && (
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none z-10 flex items-center justify-between px-6 opacity-45">
+                <div className="h-px bg-gradient-to-r from-transparent via-emerald-400 to-transparent flex-1"></div>
+                <span className="text-[10px] font-mono font-bold text-emerald-300 px-2.5 py-0.5 bg-slate-950/80 rounded-full border border-emerald-400/30 shadow-md">
+                  ⛰️ 105° 橫向全景天際線 (PANORAMA SKYLINE)
+                </span>
+                <div className="h-px bg-gradient-to-r from-transparent via-emerald-400 to-transparent flex-1"></div>
+              </div>
+            )}
+
             {/* 3G. MOUNTAIN PEAK PINS & BADGES */}
             {arViewMode === 'mountain' && computedPeaks.map(peak => {
               if (!peak.isVisible) return null;
@@ -1517,12 +1629,14 @@ export default function CampsiteARModal({
                     <span className="text-[10px] font-mono text-cyan-300 font-bold">{poi.distanceKm}km</span>
                   </div>
 
-                  {/* Travel Mode & Azimuth Sub-label */}
-                  <div className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/80 border border-white/10 text-[10px] font-mono text-cyan-300 flex items-center gap-1">
-                    <span>{poi.travelTime}</span>
-                    <span>·</span>
-                    <span>{poi.azimuth}°</span>
-                  </div>
+                  {/* Travel Mode & Azimuth Sub-label: Only show when focused/locked to keep screen clean */}
+                  {isFocus && (
+                    <div className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/80 border border-white/10 text-[10px] font-mono text-cyan-300 flex items-center gap-1 shadow-md animate-in fade-in duration-150">
+                      <span>{poi.travelTime}</span>
+                      <span>·</span>
+                      <span>{poi.azimuth}°</span>
+                    </div>
+                  )}
 
                   {/* Pin Needle Line */}
                   <div className={`w-0.5 h-3 ${isFocus ? 'bg-cyan-400 shadow-[0_0_8px_#06b6d4]' : 'bg-slate-400/60'}`}></div>
@@ -1531,7 +1645,7 @@ export default function CampsiteARModal({
               );
             })}
 
-            {/* 3I. Off-Screen Edge Indicators for POIs */}
+            {/* 3I. Off-Screen Edge Indicators for POIs (Compact Sleek Radars) */}
             {arViewMode === 'spots' && computedPOIs.map(poi => {
               if (poi.isVisible || !poi.edgeIndicator) return null;
               return (
@@ -1543,11 +1657,13 @@ export default function CampsiteARModal({
                     [poi.edgeIndicator === 'left' ? 'left' : 'right']: '10px',
                     transform: 'translateY(-50%)'
                   }}
-                  className="absolute pointer-events-auto cursor-pointer z-20 flex items-center gap-1 px-2.5 py-1 rounded-full bg-cyan-950/95 border border-cyan-400/60 text-cyan-200 text-xs font-bold shadow-lg animate-pulse"
+                  className="absolute pointer-events-auto cursor-pointer z-20 flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-400/50 text-cyan-200 text-xs font-bold shadow-lg transition-transform hover:scale-105"
+                  title={`${poi.name} (${poi.distanceKm}km · ${poi.travelTime})`}
                 >
-                  {poi.edgeIndicator === 'left' && <span>◀</span>}
-                  <span>{poi.icon} {poi.name} ({poi.distanceKm}km)</span>
-                  {poi.edgeIndicator === 'right' && <span>▶</span>}
+                  {poi.edgeIndicator === 'left' && <span className="text-[10px]">◀</span>}
+                  <span>{poi.icon}</span>
+                  <span className="text-[10px] font-mono font-bold text-cyan-300">{poi.distanceKm}km</span>
+                  {poi.edgeIndicator === 'right' && <span className="text-[10px]">▶</span>}
                 </div>
               );
             })}
@@ -1651,36 +1767,37 @@ export default function CampsiteARModal({
             )}
           </div>
 
-          {/* 5. Bottom HUD Status Row (Leveler + Wind / Moon side-by-side) */}
+          {/* 5. Bottom HUD Status Row (Leveler in Sun Mode + Wind / Moon side-by-side) */}
           <div className="absolute bottom-3 left-3 right-3 z-20 flex justify-between items-end gap-2 pointer-events-none">
-            {/* Left Gyro Pitch/Roll Leveler */}
-            <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] pointer-events-auto">
-              <span className="text-slate-400 font-bold block truncate">📐 地勢傾角</span>
-              <div className="flex items-center gap-1.5 font-mono font-bold">
-                {Math.abs(pitch) <= 2 && Math.abs(roll) <= 2 ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <span>平坦 0°</span>
-                    <span className="text-xs bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-sans font-bold">水平</span>
-                  </span>
-                ) : (
-                  <>
-                    <span className={Math.abs(pitch) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
-                      {pitch > 0 ? `坡 +${pitch}°` : `坡 ${pitch}°`}
+            {/* Left Gyro Pitch/Roll Leveler: 僅在搭帳模式下顯示，用於評估營位平整度與睡墊方向 */}
+            {arViewMode === 'sun' ? (
+              <div className="bg-slate-950/85 backdrop-blur-md border border-white/20 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] pointer-events-auto">
+                <span className="text-slate-400 font-bold block truncate">📐 營位地勢傾角</span>
+                <div className="flex items-center gap-1.5 font-mono font-bold">
+                  {Math.abs(pitch) <= 2 && Math.abs(roll) <= 2 ? (
+                    <span className="text-emerald-400 flex items-center gap-1">
+                      <span>平坦 0°</span>
+                      <span className="text-xs bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-sans font-bold">水平</span>
                     </span>
-                    <span className="text-slate-500">|</span>
-                    <span className={Math.abs(roll) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
-                      {roll > 0 ? `右 +${roll}°` : `左 ${roll}°`}
-                    </span>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <span className={Math.abs(pitch) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
+                        {pitch > 0 ? `坡 +${pitch}°` : `坡 ${pitch}°`}
+                      </span>
+                      <span className="text-slate-500">|</span>
+                      <span className={Math.abs(roll) > 5 ? 'text-amber-400' : 'text-emerald-400'}>
+                        {roll > 0 ? `右 +${roll}°` : `左 ${roll}°`}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-sky-300 font-medium truncate pt-0.5 border-t border-white/10">
+                  {Math.abs(pitch) <= 2 ? '✅ 地面平整 適合搭帳' : '💡 睡墊頭朝上坡'}
+                </p>
               </div>
-              <p className="text-xs text-sky-300 font-medium truncate pt-0.5 border-t border-white/10">
-                {arViewMode === 'stars' 
-                  ? (Math.abs(pitch) <= 2 ? '✅ 地面平整 適合架三腳架' : '💡 架相機注意腳架配重')
-                  : (Math.abs(pitch) <= 2 ? '✅ 地面平整 適合搭帳' : '💡 睡墊頭朝上坡')
-                }
-              </p>
-            </div>
+            ) : (
+              <div className="pointer-events-none"></div>
+            )}
 
             {/* Right HUD: Live Wind in Sun mode VS Moon Phase Light Pollution in Star mode */}
             {arViewMode === 'sun' ? (
@@ -1711,16 +1828,16 @@ export default function CampsiteARModal({
               >
                 <div className="text-cyan-300 font-bold flex items-center justify-end gap-1.5 truncate">
                   <span>🧭</span>
-                  <span>Google AI Overview 探索</span>
+                  <span>周邊景點雷達</span>
                 </div>
                 <div className="text-amber-300 font-black text-xs truncate">
-                  視野內 {computedPOIs.filter(p => p.inView).length} / {computedPOIs.length} 處熱點
+                  視野內 {computedPOIs.filter(p => p.inView).length} / {computedPOIs.length} 處秘境
                 </div>
                 <div className="pt-0.5 border-t border-white/10 flex items-center justify-end gap-1.5 flex-wrap text-[10px]">
                   <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 font-bold">
-                    半徑 {poiMaxDistance}km
+                    半徑 {poiMaxDistance}km ❯
                   </span>
-                  <span className="text-slate-400">類別：{poiCategory === 'all' ? '全部' : poiCategory}</span>
+                  <span className="text-slate-400">{poiCategory === 'all' ? '全部' : poiCategory}</span>
                 </div>
               </div>
             ) : arViewMode === 'mountain' ? (
@@ -1744,15 +1861,15 @@ export default function CampsiteARModal({
                 </div>
               </div>
             ) : (
-              <div className="bg-slate-950/85 backdrop-blur-md border border-purple-500/30 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[50%] text-right">
-                <span className="text-purple-300 font-bold flex items-center justify-end gap-1.5 truncate">
+              <div className="bg-slate-950/85 backdrop-blur-md border border-purple-500/30 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[55%] text-right">
+                <span className="text-purple-300 font-bold flex items-center justify-end gap-1.5">
                   <span>{moonInfo.icon}</span>
                   <span>{moonInfo.phaseName} · 月光害指數</span>
                 </span>
-                <div className="text-amber-300 font-black text-xs truncate">
+                <div className="text-amber-300 font-black text-xs">
                   {moonInfo.rating.split(' ')[0]} ({moonInfo.illumination}% 照度)
                 </div>
-                <p className="text-xs text-slate-300 truncate pt-0.5 border-t border-white/10">
+                <p className="text-xs text-slate-300 pt-0.5 border-t border-white/10 leading-tight">
                   {moonInfo.phaseDays < 7 || moonInfo.phaseDays > 22 ? '🌌 最佳深空拍攝良夜' : '🌙 建議觀測明亮行星'}
                 </p>
               </div>
@@ -1763,10 +1880,10 @@ export default function CampsiteARModal({
 
         {/* Selected Star or Constellation Details Bottom Drawer Overlay */}
         {(selectedConstellation || lockedStar || selectedStarTarget) && arViewMode === 'stars' && (
-          <div className="z-30 px-4 py-2.5 bg-slate-900/95 backdrop-blur-md border-t border-indigo-500/30 flex items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150">
+          <div className="z-30 px-4 py-2.5 bg-slate-900/95 backdrop-blur-md border-t border-indigo-500/30 flex items-start justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150 max-h-52 overflow-y-auto">
             {selectedConstellation ? (
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-md">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-md mt-0.5">
                   {selectedConstellation.icon}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -1782,13 +1899,13 @@ export default function CampsiteARModal({
                       {selectedConstellation.visibleStars} / {selectedConstellation.stars.length} 顆星在視野內
                     </span>
                   </div>
-                  <p className="text-slate-300 text-xs mt-0.5 truncate">
+                  <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
                     {selectedConstellation.story}
                   </p>
                 </div>
                 <button
                   onClick={() => setSelectedConstellation(null)}
-                  className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold"
+                  className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold mt-0.5"
                 >
                   ✕
                 </button>
@@ -1796,8 +1913,8 @@ export default function CampsiteARModal({
             ) : (() => {
               const currentTarget = selectedStarTarget || lockedStar;
               return (
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-md">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-700 to-indigo-600 flex items-center justify-center text-xl shrink-0 shadow-md mt-0.5">
                     {currentTarget.icon}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -1813,14 +1930,14 @@ export default function CampsiteARModal({
                         仰角 {currentTarget.elevation}° / 方位 {currentTarget.azimuth}°
                       </span>
                     </div>
-                    <p className="text-slate-300 text-xs mt-0.5 truncate">
+                    <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
                       {currentTarget.story}
                     </p>
                   </div>
                   {selectedStarTarget && (
                     <button
                       onClick={() => setSelectedStarTarget(null)}
-                      className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold"
+                      className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold mt-0.5"
                     >
                       ✕
                     </button>
@@ -1833,12 +1950,12 @@ export default function CampsiteARModal({
 
         {/* Selected Mountain Peak Drawer Overlay */}
         {(selectedPeak || lockedPeak) && arViewMode === 'mountain' && (
-          <div data-testid="mountain-drawer" className="z-30 px-4 py-2.5 bg-slate-900/95 backdrop-blur-md border-t border-emerald-500/30 flex items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150">
+          <div data-testid="mountain-drawer" className="z-30 px-4 py-2.5 bg-slate-900/95 backdrop-blur-md border-t border-emerald-500/30 flex items-start justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150 max-h-52 overflow-y-auto">
             {(() => {
               const currentPeak = selectedPeak || lockedPeak;
               return (
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-700 to-teal-600 flex items-center justify-center text-xl shrink-0 shadow-md">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-700 to-teal-600 flex items-center justify-center text-xl shrink-0 shadow-md mt-0.5">
                     ⛰️
                   </div>
                   <div className="min-w-0 flex-1">
@@ -1860,14 +1977,14 @@ export default function CampsiteARModal({
                         {currentPeak.range}
                       </span>
                     </div>
-                    <p className="text-slate-300 text-xs mt-0.5 truncate">
+                    <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
                       {currentPeak.desc}
                     </p>
                   </div>
                   {selectedPeak && (
                     <button
                       onClick={() => setSelectedPeak(null)}
-                      className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold"
+                      className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold mt-0.5"
                     >
                       ✕
                     </button>
@@ -2051,19 +2168,48 @@ export default function CampsiteARModal({
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {arViewMode === 'mountain' && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleLandscapeMode}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow transition-all flex items-center gap-1.5 border ${
+                    effectiveLandscape
+                      ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 border-teal-300 shadow-[0_0_12px_rgba(20,184,166,0.6)] font-black'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                  }`}
+                  title={effectiveLandscape ? "切換回直向模式" : "切換至 105° 橫向全景模式"}
+                >
+                  <span>{effectiveLandscape ? '📱 直向模式' : '🔄 橫向全景'}</span>
+                  <span className={`font-mono text-xs px-1.5 py-0.2 rounded-full ${effectiveLandscape ? 'bg-slate-950 text-cyan-300' : 'bg-slate-950/60 text-amber-300'}`}>
+                    {effectiveLandscape ? '105°' : '65°'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRidgeLines(v => !v)}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow transition-all flex items-center gap-1.5 border ${
+                    showRidgeLines
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400/50 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                  }`}
+                >
+                  <span>✨ 山稜天際線</span>
+                  <span className="font-mono text-xs px-1.5 py-0.2 rounded-full bg-slate-950/60 text-amber-300">
+                    {showRidgeLines ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+              </>
+            )}
+            {arViewMode === 'spots' && (
               <button
                 type="button"
-                onClick={() => setShowRidgeLines(v => !v)}
-                className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow transition-all flex items-center gap-1.5 border ${
-                  showRidgeLines
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400/50 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                }`}
+                onClick={handleRefreshSpots}
+                disabled={loadingSpots}
+                className="px-3.5 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400/40 text-cyan-200 hover:text-white font-black text-xs rounded-xl shadow transition-all flex items-center gap-1.5"
+                title="重新查詢最新營區周邊步道與瀑布秘境"
               >
-                <span>✨ 山稜天際線</span>
-                <span className="font-mono text-xs px-1.5 py-0.2 rounded-full bg-slate-950/60 text-amber-300">
-                  {showRidgeLines ? 'ON' : 'OFF'}
-                </span>
+                <span className={loadingSpots ? 'animate-spin' : ''}>🔄</span>
+                <span>{loadingSpots ? '查詢中...' : '即時查詢'}</span>
               </button>
             )}
             {arViewMode === 'stars' && (
