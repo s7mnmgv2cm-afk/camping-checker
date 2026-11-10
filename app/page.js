@@ -50,12 +50,67 @@ const TAG_SYNONYMS = {
 };
 
 // 📜 系統版本更新歷程紀錄 (Version History Changelog)
-const APP_VERSION = 'v2.6.0';
+const APP_VERSION = 'v3.0.0';
 const VERSION_HISTORY = [
+  {
+    version: 'v3.0.0',
+    date: '2026-11-09',
+    isLatest: true,
+    tag: '四合一 AR 實境旗艦導覽系統 (日照 ✕ 遠山 ✕ 景點 ✕ 星空)',
+    changes: [
+      { badge: '🧭 四合一 AR 旗艦模式', text: 'AR 實境重磅升級四合一模式：【☀️ 日照搭帳】✕【⛰️ 遠山稜線】✕【🧭 秘境景點】✕【🌌 夜間星空】，遠眺群峰、探勘步道瀑布、觀測行星星座一鍵切換。' },
+      { badge: '🏔️ 台灣百岳與名山稜線圖資', text: '內建台灣 42+ 座經典百岳與中級山（玉山、雪山、大霸尖山、武陵四秀、合歡群峰、奇萊連峰、加里山、火炎山等）及 5 大指標天際線（聖稜線、合歡天際線、奇萊斷崖、北一段、玉山群峰）。' },
+      { badge: '📐 大地測地坐標與地球曲率修正', text: '精確計算營地至山峰的大圓距離、正方位角，並依真實大氣折射率與地球曲率沉降（Δh ≈ 0.0675 × D²）校正視線仰角，確保遠山標註與地平線真實吻合。' },
+      { badge: '🎯 準心認山與半徑過濾', text: '中央準心對準山頭立即鎖定海拔與距離，底層控制台支援 25km (近景) / 50km (中景) / 80km (遠眺) 視野半徑過濾與山稜天際線發光開關。' }
+    ]
+  },
+  {
+    version: 'v2.9.0',
+    date: '2026-11-09',
+    isLatest: false,
+    tag: '蒲福風級搭帳安全評估 ✕ 斷柱翻車物理預警系統',
+    changes: [
+      { badge: '💨 蒲福風級 4 級預警', text: '將風力科學量化為綠/黃/橘/紅 4 級安全紅線（綠燈微風安心搭設、黃燈和風加固抗風、橘燈強風達到極限不建議搭帳、紅燈疾風物理無法定型嚴禁搭帳）。' },
+      { badge: '💥 斷柱與翻車物理危機', text: '具體分析穿骨瞬間迎風折柱、天幕風帆拔釘砸車、側風壓塌客廳帳與帳門迎風氣壓暴衝爆拉鍊等物理毀損機制，提供應變 Plan B（移至雨棚或車宿避風）。' },
+      { badge: '🛑 AR 迎風面反向破風強制警報', text: 'AR 實境搭帳儀新增即時迎風面危險偵測，當帳門正對來風時即刻彈出「🛑 致命危險：帳門正對來風」強烈警報，導引長軸平行破風。' },
+      { badge: '⛅ 營地測站風力深度剖析', text: '天氣預報卡片與 AR 儀表全面升級實測風速、風向與斷柱評估小卡，提供 30cm 鍛造釘與降天幕具體實戰建議。' }
+    ]
+  },
+  {
+    version: 'v2.8.0',
+    date: '2026-11-09',
+    isLatest: false,
+    tag: 'SkyView 星座連線骨架 ✕ 實境觀星沉浸體驗',
+    changes: [
+      { badge: '✨ SkyView 星座連線', text: '仿照 SkyView 天文望遠鏡實境，全天球即時繪製 8 大代表性星座（北斗七星、獵戶座、仙后座、天鵝座、天琴座、天鷹座、天蠍座、金牛座）與夏季/冬季大三角霓虹連線骨架。' },
+      { badge: '🏹 星座識別與浮動名牌', text: '天球演算法自動計算星座可見重心，浮現藝術星座名牌與神話故事，中央準心瞄準任意星體時全星座光暈高亮鎖定。' },
+      { badge: '⚙️ 一鍵切換連線圖層', text: 'AR 頂部導航與操作面板新增「✨ 星座連線」開關，隨心切換純黑夜空點狀星辰或 SkyView 科技星盤。' },
+      { badge: '🌌 營地夜拍觀星大補帖', text: '整合銀河核心拍攝窗口、手機 30 秒夜拍無痛參數、全年度流星雨日曆與月面光害指數推演。' }
+    ]
+  },
+  {
+    version: 'v2.7.0',
+    date: '2026-11-09',
+    tag: 'AR 夜間星空圖 & 觀測重點指南大補帖',
+    changes: [
+      { badge: '🌌 AR 星空圖', text: 'AR 實境搭帳全面升級雙模式：【☀️ 日照搭帳】與【🌌 夜間星空】無縫切換，支援即時與多時段 (20:00~04:30) 夜空推演。' },
+      { badge: '✨ 天體瞄準鎖定', text: '陀螺儀仰望天際自動運算赤道與地平坐標，中央準心智慧鎖定北極星、銀河核心、夏季/冬季大三角與深空星系。' },
+      { badge: '📖 觀星重點指南', text: '內建營地專屬觀星大補帖：銀河核心拍攝黃金月份窗口、手機 30 秒夜拍無痛設定、全年度流星雨週期與四季尋星心法。' },
+      { badge: '🌙 月相光害指標', text: '實時推演農曆月相天象週期（朔望月日月角距演算法），精確計算月面光害照度百分比與深空拍攝能見度。' }
+    ]
+  },
+  {
+    version: 'v2.6.1',
+    date: '2026-11-09',
+    tag: '行動版對照表超緊湊排版修復',
+    changes: [
+      { badge: '📐 消除異常空白', text: '修復手機版 5 欄表格因右側欄位溢出所引發的單列巨大空白與高度拉伸問題。' },
+      { badge: '📱 雙行高密度流', text: '行動版重構為原生雙行高密度卡片流：首行並排名稱/海拔/車程，次行橫列全部快捷鍵，高度從 120px 縮至 48px（完全免橫向滑動）。' }
+    ]
+  },
   {
     version: 'v2.6.0',
     date: '2026-11-09',
-    isLatest: true,
     tag: '手機版對照表折疊優化 & GPS 實境全進化',
     changes: [
       { badge: '📱 對照表折疊', text: '營地快速預約對照表在手機版預設智慧折疊收合，徹底告別 3,000px 無止盡滑動，支援一鍵秒展開。' },
@@ -635,131 +690,185 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-            <span>🏕️</span> 台灣露營地研究中心
-          </h1>
-          <button
-            type="button"
-            onClick={() => setShowHistoryModal(true)}
-            className="px-2.5 py-1 text-xs font-black rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all flex items-center gap-1.5 shadow-sm transform hover:scale-105 cursor-pointer"
-            title="點擊查看版本更新歷程 (Version History)"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-mono">{APP_VERSION}</span>
-            <span className="text-xs text-indigo-500 font-bold hidden sm:inline">📜 更新歷程</span>
-          </button>
-        </div>
-        <div className="flex gap-2 self-start sm:self-auto flex-wrap">
-          <button
-            onClick={handleGenerateAIPrompt}
-            className="px-4 py-2 text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 border bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-transparent"
-          >
-            🤖 Google AI 即時分析推薦
-          </button>
-          <button
-            onClick={() => setShowArGuideModal(true)}
-            className="px-4 py-2 text-sm font-black rounded-xl transition-all shadow-md flex items-center gap-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 transform hover:scale-105"
-          >
-            <span>✨</span> 獨家黑科技：AR 搭帳
-          </button>
-          <div className="flex gap-1.5 flex-wrap">
-            <button
-              onClick={() => {
-                setShowOnlyFavorites(!showOnlyFavorites);
-                setShowOnlyBookmarked(false);
-                setShowOnlyWithNotes(false);
-              }}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border flex items-center gap-1 ${
-                showOnlyFavorites ? 'bg-rose-100 text-rose-700 border-rose-300 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {showOnlyFavorites ? '👈 返回全部' : `❤️ 我的最愛 (${favoriteCamps.size})`}
-            </button>
-            <button
-              onClick={() => {
-                setShowOnlyWithNotes(!showOnlyWithNotes);
-                setShowOnlyBookmarked(false);
-                setShowOnlyFavorites(false);
-              }}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border flex items-center gap-1 ${
-                showOnlyWithNotes ? 'bg-blue-100 text-blue-700 border-blue-300 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {showOnlyWithNotes ? '👈 返回全部' : `📝 露營札記 (${Object.keys(userNotes).filter(k => userNotes[k]?.length > 0).length})`}
-            </button>
-            <button
-              onClick={() => {
-                setShowOnlyBookmarked(!showOnlyBookmarked);
-                setShowOnlyFavorites(false);
-                setShowOnlyWithNotes(false);
-              }}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all border ${
-                showOnlyBookmarked ? 'bg-amber-100 text-amber-700 border-amber-300 shadow' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {showOnlyBookmarked ? '👈 返回全部' : `📌 待確認 (${bookmarkedCamps.size})`}
-            </button>
-            {bookmarkedCamps.size > 0 && (
-              <button
-                onClick={() => {
-                  setBookmarkedCamps(new Set());
-                  setShowOnlyBookmarked(false);
-                }}
-                className="px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all border bg-white text-slate-400 border-slate-200 hover:text-rose-600 hover:border-rose-300"
-                title="清空待確認清單"
-              >
-                🗑️
-              </button>
-            )}
-          </div>
-          <div className="bg-slate-200 p-1 rounded-xl flex gap-1">
-            <button onClick={() => setMapMode('2d')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mapMode === '2d' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}>🗺️ 2D 平面圖</button>
-            <button onClick={() => setMapMode('3d')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${mapMode === '3d' ? 'bg-blue-600 text-white shadow' : 'text-slate-600'}`}>⛰️ 衛星高程圖</button>
-          </div>
-        </div>
-      </div>
-
-      {/* ✨ 獨家黑科技：按鈕點擊打開圖文解說 */}
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-indigo-500/30 shadow-xl">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-3xl shadow-lg flex-shrink-0">
-            📱
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-xs sm:text-sm bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-sm">
-                ✨ 獨家黑科技
-              </span>
-              <h2 className="text-lg sm:text-2xl font-black text-white tracking-wide">
-                AR 實境搭帳導引儀：太陽軌跡 ✕ 陀螺儀防晨曬
-              </h2>
+      {/* 🌲 1. 專業現代品牌導航列 (Clean Glass Navbar) */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-3xl filter drop-shadow-sm">🏕️</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  台灣露營地研究中心
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(true)}
+                  className="px-2 py-0.5 text-[11px] font-mono font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100 transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                  title="點擊查看版本更新歷程 (Version History)"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>{APP_VERSION}</span>
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">全台露營地情資庫 ✕ 數值氣象預報 ✕ WebAR 天文星空稜線</p>
             </div>
-            <p className="text-sm sm:text-base text-slate-200 mt-1.5 leading-relaxed">
-              結合天體日照演算法與即時風向，站在草地上 1 秒找出避晨曬、破側風的最佳帳門方位！
-            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-shrink-0 mt-2 sm:mt-0">
+        {/* 右側：個人收藏與札記快捷膠囊 (Quick Vault Pill) */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
           <button
-            type="button"
             onClick={() => {
-              const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
-              if (targetCamp) handleOpenAR(targetCamp, null, 'current');
+              setShowOnlyFavorites(!showOnlyFavorites);
+              setShowOnlyBookmarked(false);
+              setShowOnlyWithNotes(false);
             }}
-            className="flex-1 sm:flex-none px-5 py-3 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-sm sm:text-base rounded-xl shadow-lg transition-all transform hover:scale-105 flex items-center justify-center gap-2"
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
+              showOnlyFavorites
+                ? 'bg-rose-500 text-white shadow-xs'
+                : 'text-slate-600 hover:text-rose-600 hover:bg-rose-50/60'
+            }`}
           >
-            <span>🚀</span> 立即體驗 AR
+            <span>❤️</span>
+            <span className="hidden xs:inline">最愛</span>
+            <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${showOnlyFavorites ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {favoriteCamps.size}
+            </span>
           </button>
+
           <button
-            type="button"
-            onClick={() => setShowArGuideModal(true)}
-            className="flex-1 sm:flex-none px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-black text-sm sm:text-base rounded-xl border border-white/25 transition-all flex items-center justify-center gap-2 shadow hover:bg-white/25"
+            onClick={() => {
+              setShowOnlyWithNotes(!showOnlyWithNotes);
+              setShowOnlyBookmarked(false);
+              setShowOnlyFavorites(false);
+            }}
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
+              showOnlyWithNotes
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-sky-600 hover:bg-sky-50/60'
+            }`}
           >
-            <span>📖</span> 點擊打開圖文解說
+            <span>📝</span>
+            <span className="hidden xs:inline">札記</span>
+            <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${showOnlyWithNotes ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {Object.keys(userNotes).filter(k => userNotes[k]?.length > 0).length}
+            </span>
           </button>
+
+          <button
+            onClick={() => {
+              setShowOnlyBookmarked(!showOnlyBookmarked);
+              setShowOnlyFavorites(false);
+              setShowOnlyWithNotes(false);
+            }}
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
+              showOnlyBookmarked
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'text-slate-600 hover:text-amber-600 hover:bg-amber-50/60'
+            }`}
+          >
+            <span>📌</span>
+            <span className="hidden xs:inline">待確認</span>
+            <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${showOnlyBookmarked ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {bookmarkedCamps.size}
+            </span>
+          </button>
+
+          {bookmarkedCamps.size > 0 && (
+            <button
+              onClick={() => {
+                setBookmarkedCamps(new Set());
+                setShowOnlyBookmarked(false);
+              }}
+              className="px-2 py-1.5 text-xs text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+              title="清空待確認清單"
+            >
+              🗑️
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* 🌄 2. 旗艦級戶外封面 (Editorial Outdoor Glassmorphism Hero) */}
+      <div className="relative mb-6 rounded-3xl overflow-hidden shadow-2xl border border-slate-800/80 bg-slate-950 text-white">
+        {/* 微光環境光暈與山稜線氛圍漸層 */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/70 pointer-events-none"></div>
+        <div className="absolute -top-12 -right-12 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -bottom-12 -left-12 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        {/* 精緻山稜線背景向量裝飾 */}
+        <div className="absolute inset-x-0 bottom-0 h-28 opacity-15 pointer-events-none overflow-hidden">
+          <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="w-full h-full text-emerald-400 fill-current">
+            <path d="M0 120 L0 80 Q 150 20 300 60 T 600 30 T 900 70 T 1200 40 L 1200 120 Z"></path>
+          </svg>
+        </div>
+
+        <div className="relative z-10 p-5 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          {/* 左側：品牌標語與核心特色 */}
+          <div className="max-w-2xl space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-bold tracking-wide">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>四合一 WebAR · 日照搭帳 ✕ 遠山稜線 ✕ 秘境景點 ✕ 天文星空</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
+              探索全台營地 · 頂級智慧戶外指南
+            </h2>
+
+            <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl font-normal">
+              結合即時數值氣象預報、大氣日照模型與 PeakVisor 群山稜線，在草地上 1 秒找出避晨曬、破側風的最佳帳門方位。
+            </p>
+
+            {/* 核心數據統計亮點 */}
+            <div className="flex items-center gap-3.5 pt-1 text-xs text-slate-400 font-medium flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <span className="text-emerald-400 font-bold font-mono">2,300+</span> 處全台營地
+              </span>
+              <span className="text-slate-600">·</span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-sky-400 font-bold font-mono">100%</span> 即時風向透視
+              </span>
+              <span className="text-slate-600">·</span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-amber-400 font-bold font-mono">360°</span> 百岳天際線辨識
+              </span>
+            </div>
+          </div>
+
+          {/* 右側：旗艦行動呼籲 (Action Hub) */}
+          <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 flex-shrink-0 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
+                if (targetCamp) handleOpenAR(targetCamp, null, 'current');
+              }}
+              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 hover:from-amber-500 hover:to-rose-600 text-slate-950 font-black text-base shadow-xl shadow-orange-500/20 hover:shadow-orange-500/35 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2.5 cursor-pointer group"
+            >
+              <span className="text-lg group-hover:scale-110 transition-transform">🚀</span>
+              <span>立即體驗 AR 實境</span>
+            </button>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleGenerateAIPrompt}
+                className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs sm:text-sm border border-white/20 hover:border-white/30 backdrop-blur-md transition-all flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <span>🤖</span>
+                <span>AI 推薦顧問</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowArGuideModal(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs sm:text-sm border border-white/15 hover:border-white/25 backdrop-blur-md transition-all flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <span>📖</span>
+                <span>實戰指南</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -880,9 +989,31 @@ export default function Home() {
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8 overflow-hidden flex flex-col">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center z-20 relative flex-wrap gap-2">
-          <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">🗺️ 地圖分佈預覽</span>
-          <span className="text-xs text-slate-500 font-medium bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm">
-            📍 顯示目前符合條件的 <strong className="text-blue-600 font-mono">{sortedFilteredCampsites.length}</strong> 處營地（與上方篩選條件即時連動）
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-bold text-slate-800 flex items-center gap-1.5">🗺️ 地圖分佈預覽</span>
+            <div className="bg-slate-200/80 p-0.5 rounded-xl flex gap-1">
+              <button
+                type="button"
+                onClick={() => setMapMode('2d')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  mapMode === '2d' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🗺️ 2D 平面圖
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapMode('3d')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  mapMode === '3d' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                ⛰️ 衛星高程圖
+              </button>
+            </div>
+          </div>
+          <span className="text-xs text-slate-500 font-medium bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
+            📍 符合條件營地：<strong className="text-blue-600 font-mono">{sortedFilteredCampsites.length}</strong> 處
           </span>
         </div>
         <div className="h-80 relative z-10 w-full">
@@ -1435,92 +1566,218 @@ export default function Home() {
             </div>
 
             {/* 限制最大高度與內部獨立滾動 (max-h-[60vh]) */}
-            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm">
-                  <tr className="text-slate-600 border-b border-slate-200 text-xs sm:text-sm">
-                    <th className="p-3 font-bold">營地名稱</th>
-                    <th className="p-3 font-bold">海拔</th>
-                    <th className="p-3 font-bold whitespace-nowrap">車程 / 距離 ({FIXED_ORIGINS[originKey]})</th>
-                    <th className="p-3 font-bold">特色功能</th>
-                    <th className="p-3 font-bold">預約 / 導航</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {tableDisplayCamps.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-6 text-center text-slate-400 text-xs">
-                        目前篩選條件下無符合項目
-                      </td>
-                    </tr>
-                  ) : (
-                    tableDisplayCamps.map((site) => {
-                      const { mins, dist } = getCampDriveInfo(site);
-                      const isBookmarked = bookmarkedCamps.has(site.id);
-                      const isFav = favoriteCamps.has(site.id);
-                      const campNotes = userNotes[site.id] || [];
+            <div className="max-h-[60vh] overflow-y-auto">
+              
+              {/* 1. 📱 行動版專用極致緊湊清單 (sm:hidden) - 無須橫向捲動，單筆高度僅 ~50px，完全沒有多餘空白！ */}
+              <div className="block sm:hidden divide-y divide-slate-100">
+                {tableDisplayCamps.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 text-xs">
+                    目前篩選條件下無符合項目
+                  </div>
+                ) : (
+                  tableDisplayCamps.map((site) => {
+                    const { mins, dist } = getCampDriveInfo(site);
+                    const isBookmarked = bookmarkedCamps.has(site.id);
+                    const isFav = favoriteCamps.has(site.id);
+                    const campNotes = userNotes[site.id] || [];
 
-                      return (
-                        <tr
-                          key={site.id}
-                          className={`transition-colors ${
-                            selectedCamp?.id === site.id ? 'bg-amber-50 font-medium' : isFav ? 'bg-rose-50/40' : isBookmarked ? 'bg-amber-50/40' : 'hover:bg-slate-50/80'
-                          }`}
-                        >
-                          <td className="p-2.5 sm:p-3 font-bold text-slate-900 flex items-center gap-1.5 whitespace-nowrap">
-                            <button onClick={(e) => toggleFavorite(e, site.id)} className="text-base hover:scale-110 transition-transform" title={isFav ? "從我的最愛移除" : "加入我的最愛"}>
+                    let bookUrl = null;
+                    let bookLabel = '🏕️ 訂位';
+                    if (site.booking_url) {
+                      bookUrl = site.booking_url.split('\n')[0].trim();
+                      if (bookUrl.includes('icamping')) bookLabel = '🏕️ 愛露營';
+                      else if (bookUrl.includes('easycamp')) bookLabel = '🏕️ 露營樂';
+                    } else if (site.booking_type === 'line' && site.line_id) {
+                      bookUrl = `https://line.me/R/ti/p/${site.line_id.replace('@', '%40')}`;
+                      bookLabel = '💬 LINE';
+                    } else if (site.phone) {
+                      bookUrl = `tel:${site.phone}`;
+                      bookLabel = `📞 電話`;
+                    } else {
+                      bookUrl = `https://www.google.com/search?q=${encodeURIComponent(site.name + ' 露營 預約')}`;
+                      bookLabel = '🔍 訂位';
+                    }
+                    const gpsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(site.name)}&travelmode=driving`;
+
+                    return (
+                      <div
+                        key={site.id}
+                        className={`p-2.5 transition-colors ${
+                          selectedCamp?.id === site.id ? 'bg-amber-50' : isFav ? 'bg-rose-50/40' : isBookmarked ? 'bg-amber-50/40' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        {/* 第 1 行：收藏 + 營地名稱 + 海拔 + 車程距離 */}
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <button onClick={(e) => toggleFavorite(e, site.id)} className="text-base hover:scale-110 shrink-0 transition-transform" title={isFav ? "從我的最愛移除" : "加入我的最愛"}>
                               {isFav ? '❤️' : '🤍'}
                             </button>
-                            <button onClick={(e) => toggleBookmark(e, site.id)} className={`text-base transition-transform hover:scale-110 ${isBookmarked ? 'text-amber-500' : 'text-slate-300 grayscale opacity-50'}`}>
+                            <button onClick={(e) => toggleBookmark(e, site.id)} className={`text-base shrink-0 transition-transform hover:scale-110 ${isBookmarked ? 'text-amber-500' : 'text-slate-300 grayscale opacity-50'}`}>
                               {isBookmarked ? '📌' : '➕'}
                             </button>
-                            <span className="text-xs sm:text-sm">{site.name}</span>
-                          </td>
-                          <td className="p-2.5 sm:p-3 text-slate-600 text-xs sm:text-sm whitespace-nowrap">{site.altitude || '標示中'}</td>
-                          <td className="p-2.5 sm:p-3 text-slate-600 text-xs sm:text-sm whitespace-nowrap">{mins ? `${mins} 分` : '確認中'} ({dist})</td>
-                          <td className="p-2.5 sm:p-3">
-                            {/* 緊湊橫向排版 (Compact Pills) */}
-                            <div className="flex flex-wrap gap-1 max-w-[210px]">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenAR(site)}
-                                className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
-                              >
-                                📱 AR
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setSafeRouteModalCamp(site)}
-                                className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
-                              >
-                                🛡️ 路徑
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setWeatherModalCamp(site)}
-                                className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
-                              >
-                                ⛅ 天氣
-                              </button>
-                              <button
-                                onClick={() => setActiveNoteCamp(site)}
-                                className={`text-xs px-2 py-0.5 rounded-lg border font-semibold transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap ${
-                                  campNotes.length > 0 
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
-                                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
-                                }`}
-                              >
-                                📝 {campNotes.length > 0 ? `${campNotes.length}筆` : '筆記'}
-                              </button>
-                            </div>
-                          </td>
-                          <td className="p-2.5 sm:p-3">{renderTableActions(site)}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                            <span className="font-bold text-slate-900 text-xs sm:text-sm truncate">{site.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-slate-500 shrink-0 font-medium">
+                            <span className="bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.2 rounded text-xs">
+                              ⛰️ {site.altitude || '標示中'}
+                            </span>
+                            <span>·</span>
+                            <span className="text-amber-700 font-bold text-xs whitespace-nowrap">
+                              🚗 {mins ? `${mins}分` : '確認中'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 第 2 行：所有功能與訂位導航膠囊（全部在一行內橫向展開） */}
+                        <div className="flex items-center justify-between gap-1 flex-wrap">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAR(site)}
+                              className="text-xs px-2 py-0.5 rounded-md border font-bold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-colors shadow-xs"
+                            >
+                              📱 AR
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSafeRouteModalCamp(site)}
+                              className="text-xs px-2 py-0.5 rounded-md border font-bold bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-colors shadow-xs"
+                            >
+                              🛡️ 路徑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWeatherModalCamp(site)}
+                              className="text-xs px-2 py-0.5 rounded-md border font-bold bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 transition-colors shadow-xs"
+                            >
+                              ⛅ 天氣
+                            </button>
+                            <button
+                              onClick={() => setActiveNoteCamp(site)}
+                              className={`text-xs px-2 py-0.5 rounded-md border font-bold transition-colors shadow-xs ${
+                                campNotes.length > 0 
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                  : 'bg-slate-50 text-slate-500 border-slate-200'
+                              }`}
+                            >
+                              📝 {campNotes.length > 0 ? `${campNotes.length}筆` : '筆記'}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <a
+                              href={bookUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-center bg-teal-600 hover:bg-teal-700 text-white font-bold py-0.5 px-2 rounded-md text-xs shadow-xs whitespace-nowrap"
+                            >
+                              {bookLabel}
+                            </a>
+                            <a
+                              href={gpsNavUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-0.5 px-2 rounded-md text-xs shadow-xs whitespace-nowrap"
+                            >
+                              🧭 導航
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* 2. 💻 桌機平板版專用乾淨 5 欄表格 (hidden sm:block) */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm">
+                    <tr className="text-slate-600 border-b border-slate-200 text-xs sm:text-sm">
+                      <th className="p-3 font-bold">營地名稱</th>
+                      <th className="p-3 font-bold">海拔</th>
+                      <th className="p-3 font-bold whitespace-nowrap">車程 / 距離 ({FIXED_ORIGINS[originKey]})</th>
+                      <th className="p-3 font-bold">特色功能</th>
+                      <th className="p-3 font-bold">預約 / 導航</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {tableDisplayCamps.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-6 text-center text-slate-400 text-xs">
+                          目前篩選條件下無符合項目
+                        </td>
+                      </tr>
+                    ) : (
+                      tableDisplayCamps.map((site) => {
+                        const { mins, dist } = getCampDriveInfo(site);
+                        const isBookmarked = bookmarkedCamps.has(site.id);
+                        const isFav = favoriteCamps.has(site.id);
+                        const campNotes = userNotes[site.id] || [];
+
+                        return (
+                          <tr
+                            key={site.id}
+                            className={`transition-colors ${
+                              selectedCamp?.id === site.id ? 'bg-amber-50 font-medium' : isFav ? 'bg-rose-50/40' : isBookmarked ? 'bg-amber-50/40' : 'hover:bg-slate-50/80'
+                            }`}
+                          >
+                            <td className="p-2.5 sm:p-3 font-bold text-slate-900 align-middle">
+                              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                <button onClick={(e) => toggleFavorite(e, site.id)} className="text-base hover:scale-110 transition-transform" title={isFav ? "從我的最愛移除" : "加入我的最愛"}>
+                                  {isFav ? '❤️' : '🤍'}
+                                </button>
+                                <button onClick={(e) => toggleBookmark(e, site.id)} className={`text-base transition-transform hover:scale-110 ${isBookmarked ? 'text-amber-500' : 'text-slate-300 grayscale opacity-50'}`}>
+                                  {isBookmarked ? '📌' : '➕'}
+                                </button>
+                                <span className="text-xs sm:text-sm">{site.name}</span>
+                              </div>
+                            </td>
+                            <td className="p-2.5 sm:p-3 text-slate-600 text-xs sm:text-sm whitespace-nowrap align-middle">{site.altitude || '標示中'}</td>
+                            <td className="p-2.5 sm:p-3 text-slate-600 text-xs sm:text-sm whitespace-nowrap align-middle">{mins ? `${mins} 分` : '確認中'} ({dist})</td>
+                            <td className="p-2.5 sm:p-3 align-middle">
+                              <div className="flex flex-wrap gap-1 max-w-[210px]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAR(site)}
+                                  className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
+                                >
+                                  📱 AR
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSafeRouteModalCamp(site)}
+                                  className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
+                                >
+                                  🛡️ 路徑
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setWeatherModalCamp(site)}
+                                  className="text-xs px-2 py-0.5 rounded-lg border font-semibold bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap"
+                                >
+                                  ⛅ 天氣
+                                </button>
+                                <button
+                                  onClick={() => setActiveNoteCamp(site)}
+                                  className={`text-xs px-2 py-0.5 rounded-lg border font-semibold transition-colors flex items-center gap-1 shadow-sm whitespace-nowrap ${
+                                    campNotes.length > 0 
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
+                                      : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  📝 {campNotes.length > 0 ? `${campNotes.length}筆` : '筆記'}
+                                </button>
+                              </div>
+                            </td>
+                            <td className="p-2.5 sm:p-3 align-middle">{renderTableActions(site)}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {/* 表格底部快速收合列 */}
@@ -1837,6 +2094,33 @@ export default function Home() {
                     </div>
                   </div>
 
+                </div>
+
+                {/* ⛰️ 🌌 新增：AR 遠山稜線 (PeakVisor) 與 SkyView 星座連線亮點橫幅 */}
+                <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-purple-950/60 to-slate-900 border border-emerald-500/40 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-3xl shrink-0">⛰️</span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950">v3.0.0 旗艦四合一</span>
+                        <h4 className="text-sm sm:text-base font-black text-emerald-200">日照搭帳 ✕ PeakVisor 遠山稜線 ✕ 秘境景點 ✕ SkyView 星盤</h4>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        【☀️ 日照搭帳】✕【⛰️ 遠山稜線】✕【🧭 秘境景點】✕【🌌 夜間星空】四合一！自動透視太陽軌跡避晨曬、遠眺辨識台灣百岳天際線、AI 即時探勘營區周邊步道瀑布，夜間更支援 SkyView 12 星座連線與行星軌道。
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowArGuideModal(false);
+                      const targetCamp = selectedCamp || sortedFilteredCampsites[0] || campsites[0];
+                      if (targetCamp) handleOpenAR(targetCamp, null, 'current');
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-lg transition-all shrink-0"
+                  >
+                    🚀 體驗四合一 AR
+                  </button>
                 </div>
               </div>
 
