@@ -6,6 +6,7 @@ import {
   calculateSolarPosition,
   getMoonPhaseInfo,
   CELESTIAL_TARGETS,
+  getRealtimeCelestialTargets,
   CONSTELLATIONS,
   STARGAZING_GUIDE,
   getBeaufortWindSafety,
@@ -523,9 +524,10 @@ export default function CampsiteARModal({
     return getMoonPhaseInfo(activeStarDate);
   }, [activeStarDate]);
 
-  // 4. Compute real-time horizontal coordinates (Azimuth & Elevation) for CELESTIAL_TARGETS
+  // 4. Compute real-time horizontal coordinates (Azimuth & Elevation) for all observable targets (Planets + Stars + Galaxies)
   const computedStars = useMemo(() => {
-    return CELESTIAL_TARGETS.map(target => {
+    const allTargets = getRealtimeCelestialTargets(activeStarDate);
+    return allTargets.map(target => {
       const pos = radecToAltAz(target.ra, target.dec, activeStarDate, lat, lng);
       return {
         ...target,
@@ -1289,18 +1291,18 @@ export default function CampsiteARModal({
               </div>
 
               <div
-                className="absolute flex items-center h-full transition-transform ease-out duration-75 pointer-events-none"
+                className="absolute left-1/2 top-0 bottom-0 flex items-center pointer-events-none transition-transform ease-out duration-75"
                 style={{ transform: `translateX(${-heading * 4}px)` }}
               >
                 {[-360, 0, 360].map(offset => (
-                  <div key={offset} className="flex relative" style={{ width: '1440px' }}>
+                  <div key={offset} className="absolute inset-y-0 flex items-center" style={{ left: `${offset * 4}px`, width: '1440px' }}>
                     {cardinalTicks.map(t => (
                       <div
                         key={t.deg}
-                        className="absolute flex flex-col items-center"
+                        className="absolute flex flex-col items-center -translate-x-1/2"
                         style={{ left: `${t.deg * 4}px` }}
                       >
-                        <span className={`text-[11px] font-black ${t.deg === 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                        <span className={`text-[11px] font-black whitespace-nowrap ${t.deg === 0 ? 'text-rose-400' : 'text-slate-300'}`}>
                           {t.label}
                         </span>
                         <div className={`w-0.5 h-1.5 mt-0.5 ${t.deg === 0 ? 'bg-rose-400' : 'bg-slate-400/80'}`}></div>
@@ -1589,12 +1591,38 @@ export default function CampsiteARModal({
                   style={{ left: `${screenX}%`, top: `${screenY}%` }}
                   onClick={() => setSelectedStarTarget(star)}
                 >
-                  {/* Special Rendering for Milky Way Core */}
-                  {isDeepSky ? (
+                  {/* Special Rendering for Planets, Deep-Sky, and Stars */}
+                  {star.type === 'planet' ? (
+                    <div className="relative flex items-center justify-center">
+                      {isLocked && (
+                        <div className="w-12 h-12 rounded-full bg-amber-400/30 animate-ping absolute"></div>
+                      )}
+                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                        isLocked
+                          ? 'w-10 h-10 bg-amber-400 text-slate-950 font-black shadow-[0_0_25px_#f59e0b] scale-110'
+                          : 'w-9 h-9 bg-gradient-to-tr from-amber-400 via-yellow-200 to-amber-100 text-slate-950 shadow-[0_0_18px_rgba(245,158,11,0.8)] border border-amber-300'
+                      }`}>
+                        <span className="text-base drop-shadow-md">{star.icon}</span>
+                      </div>
+                    </div>
+                  ) : isDeepSky ? (
                     <div className="relative flex items-center justify-center">
                       <div className="w-32 h-16 rounded-full bg-gradient-to-r from-purple-600/30 via-pink-500/40 to-amber-400/30 blur-md animate-pulse absolute"></div>
                       <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-purple-700 via-pink-600 to-amber-400 border-2 border-purple-200 shadow-[0_0_25px_#ec4899] flex items-center justify-center text-2xl z-10">
-                        🌌
+                        {star.icon || '🌌'}
+                      </div>
+                    </div>
+                  ) : star.type === 'galaxy' || star.type === 'nebula' || star.type === 'cluster' ? (
+                    <div className="relative flex items-center justify-center">
+                      {isLocked && (
+                        <div className="w-10 h-10 rounded-full bg-indigo-400/30 animate-ping absolute"></div>
+                      )}
+                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                        isLocked
+                          ? 'w-9 h-9 bg-indigo-400 text-slate-950 font-black shadow-[0_0_20px_#818cf8]'
+                          : 'w-8 h-8 bg-gradient-to-tr from-indigo-500 via-purple-400 to-pink-300 text-white shadow-[0_0_14px_rgba(129,140,248,0.7)] border border-indigo-300/40'
+                      }`}>
+                        <span className="text-sm">{star.icon}</span>
                       </div>
                     </div>
                   ) : (
@@ -1642,7 +1670,7 @@ export default function CampsiteARModal({
               <React.Fragment key={`c-stars-${c.id}`}>
                 {c.starsWithPos.map(star => {
                   if (!star.inFOV) return null;
-                  const isMainTarget = CELESTIAL_TARGETS.some(t => t.id === star.id);
+                  const isMainTarget = computedStars.some(t => t.id === star.id);
                   if (isMainTarget) return null;
 
                   const isStarLocked = lockedStar?.id === star.id;
