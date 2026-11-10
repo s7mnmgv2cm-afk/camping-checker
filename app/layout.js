@@ -5,6 +5,15 @@ export const metadata = {
   description: '整合各大平台露營區空位、車程與 AI 評價',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  themeColor: '#020617',
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="zh-TW">
