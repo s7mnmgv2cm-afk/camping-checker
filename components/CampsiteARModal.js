@@ -1036,50 +1036,28 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* 📱 實景最大化浮動控制器 (當頂部選單收合時顯示：頂部中央懸掛醒目拉環，兩側定位與關閉，絕不遮蔽相機與羅盤) */}
+        {/* 📱 實景最大化浮動控制器 (當頂部選單收合時顯示：左右兩側彈性排列，中間完全留空，絕無橫向重疊) */}
         {isHeaderCollapsed && (
-          <>
-            {/* 1. 頂部中央：超顯眼金黃色「▼ 點擊展開選單」懸掛式拉環按鈕 */}
-            <div 
-              style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 60 }}
-              className="pointer-events-auto"
-            >
-              <button
-                type="button"
-                onClick={() => setIsHeaderCollapsed(false)}
-                style={{
-                  background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)',
-                  boxShadow: '0 4px 20px rgba(245, 158, 11, 0.65), 0 0 0 2px rgba(254, 240, 138, 0.9)'
-                }}
-                className="px-5 py-2 text-slate-950 rounded-b-2xl font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all active:scale-95 hover:brightness-110 cursor-pointer select-none"
-                title="點擊立即展開完整模式與定位控制選單"
-              >
-                <span className="text-sm font-black animate-bounce">▼</span>
-                <span className="tracking-wide">點擊展開選單</span>
-              </button>
-            </div>
-
-            {/* 2. 頂部左側：模式狀態膠囊 */}
-            <div 
-              style={{ position: 'absolute', top: '10px', left: '12px', zIndex: 50 }}
-              className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-2xl text-xs font-bold text-white"
+          <div 
+            style={{ top: '10px', left: '12px', right: '12px', zIndex: 50 }}
+            className="absolute flex items-center justify-between pointer-events-none animate-in fade-in duration-150"
+          >
+            {/* 左側：模式狀態膠囊（點擊也可快速展開選單） */}
+            <button
+              type="button"
+              onClick={() => setIsHeaderCollapsed(false)}
+              className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-3 py-1.5 rounded-full border border-amber-400/50 shadow-2xl text-xs font-bold text-white active:scale-95 transition-all cursor-pointer group"
+              title="點擊展開完整模式與定位選單"
             >
               <span>{arViewMode === 'sun' ? '☀️' : arViewMode === 'mountain' ? '⛰️' : arViewMode === 'spots' ? '🧭' : '🌌'}</span>
               <span className="text-amber-300 font-extrabold">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
               <span className="text-slate-600">|</span>
-              <span className="text-sky-300">{locationMode === 'current' ? '📍 GPS' : '🏕️ 營地'}</span>
-              {effectiveLandscape && (
-                <span className="px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 text-[10px] font-mono">
-                  105°
-                </span>
-              )}
-            </div>
+              <span className="text-sky-300 text-[11px]">{locationMode === 'current' ? 'GPS' : '營地'}</span>
+              <span className="text-[10px] text-amber-400 group-hover:translate-y-0.5 transition-transform">▼</span>
+            </button>
 
-            {/* 3. 頂部右側：快捷全螢幕與關閉按鈕 */}
-            <div 
-              style={{ position: 'absolute', top: '10px', right: '12px', zIndex: 50 }}
-              className="pointer-events-auto flex items-center gap-1.5"
-            >
+            {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
+            <div className="pointer-events-auto flex items-center gap-1.5">
               {arViewMode === 'mountain' && (
                 <button
                   type="button"
@@ -1090,6 +1068,15 @@ export default function CampsiteARModal({
                   {effectiveLandscape ? '📱 直向' : '🔄 橫向'}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setIsHeaderCollapsed(false)}
+                className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-1 transition-all shadow-xl active:scale-95 border border-amber-300"
+                title="展開完整控制選單"
+              >
+                <span>▼</span>
+                <span>展開選單</span>
+              </button>
               <button
                 type="button"
                 onClick={toggleFullscreen}
@@ -1111,7 +1098,7 @@ export default function CampsiteARModal({
                 ✕
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {/* GPS Error Notification Toast */}
@@ -1237,10 +1224,10 @@ export default function CampsiteARModal({
 
             {/* Dynamic Guidance Banner: Sun mode vs Stars mode */}
             {arViewMode === 'sun' ? (
-              <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-white/25 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
+              <div className="mt-1.5 px-3 py-1.5 rounded-2xl bg-slate-950/90 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
                 {/* 🚨 迎風面警告：當帳門直接對著來風時 */}
                 {isFacingDirectWind && windSpeed >= 20 && (
-                  <div className="mb-2 px-3 py-1.5 rounded-xl bg-rose-950/95 border border-rose-500/80 text-rose-200 text-xs font-bold shadow-xl animate-pulse">
+                  <div className="mb-1.5 px-2.5 py-1 rounded-xl bg-rose-950/95 border border-rose-500/80 text-rose-200 text-xs font-bold shadow-xl animate-pulse">
                     <span className="flex items-center justify-center gap-1.5">
                       <span>🛑 致命危險：帳門正對來風 ({windDir}° {getHeadingDirectionName(windDir)})！</span>
                     </span>
@@ -1254,7 +1241,7 @@ export default function CampsiteARModal({
                 {windSafety.riskLevel !== 'low' && (
                   <div 
                     onClick={() => setShowWindSafetyModal(true)}
-                    className={`mb-2 px-3 py-1 rounded-xl border text-xs flex items-center justify-between gap-2 shadow-lg backdrop-blur-md cursor-pointer hover:opacity-95 transition-all ${windSafety.bannerBg}`}
+                    className={`mb-1 px-2.5 py-0.5 rounded-lg border text-xs flex items-center justify-between gap-2 shadow-md backdrop-blur-md cursor-pointer hover:opacity-95 transition-all ${windSafety.bannerBg}`}
                   >
                     <div className="flex items-center gap-1.5 font-bold min-w-0">
                       <span>{windSafety.riskLevel === 'critical' ? '☠️' : windSafety.riskLevel === 'high' ? '🚨' : '⚠️'}</span>
