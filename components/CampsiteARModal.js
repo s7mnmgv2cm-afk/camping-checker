@@ -1036,11 +1036,34 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* 📱 實景最大化浮動迷你控制器 (當頂部選單收合時顯示，清晰浮動於畫面兩側，絕不被羅盤遮擋) */}
+        {/* 📱 實景最大化浮動控制器 (當頂部選單收合時顯示：頂部中央懸掛醒目拉環，兩側定位與關閉，絕不遮蔽相機與羅盤) */}
         {isHeaderCollapsed && (
-          <div className="absolute top-2.5 inset-x-2 sm:inset-x-4 z-40 flex items-center justify-between pointer-events-none animate-in fade-in slide-in-from-top-2 duration-150">
-            {/* 左側：當前模式與定位膠囊 */}
-            <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-2xl text-xs font-bold text-white">
+          <>
+            {/* 1. 頂部中央：超顯眼金黃色「▼ 點擊展開選單」懸掛式拉環按鈕 */}
+            <div 
+              style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 60 }}
+              className="pointer-events-auto"
+            >
+              <button
+                type="button"
+                onClick={() => setIsHeaderCollapsed(false)}
+                style={{
+                  background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)',
+                  boxShadow: '0 4px 20px rgba(245, 158, 11, 0.65), 0 0 0 2px rgba(254, 240, 138, 0.9)'
+                }}
+                className="px-5 py-2 text-slate-950 rounded-b-2xl font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all active:scale-95 hover:brightness-110 cursor-pointer select-none"
+                title="點擊立即展開完整模式與定位控制選單"
+              >
+                <span className="text-sm font-black animate-bounce">▼</span>
+                <span className="tracking-wide">點擊展開選單</span>
+              </button>
+            </div>
+
+            {/* 2. 頂部左側：模式狀態膠囊 */}
+            <div 
+              style={{ position: 'absolute', top: '10px', left: '12px', zIndex: 50 }}
+              className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 shadow-2xl text-xs font-bold text-white"
+            >
               <span>{arViewMode === 'sun' ? '☀️' : arViewMode === 'mountain' ? '⛰️' : arViewMode === 'spots' ? '🧭' : '🌌'}</span>
               <span className="text-amber-300 font-extrabold">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
               <span className="text-slate-600">|</span>
@@ -1052,8 +1075,11 @@ export default function CampsiteARModal({
               )}
             </div>
 
-            {/* 右側：展開選單、橫向切換、全螢幕與關閉按鈕 */}
-            <div className="pointer-events-auto flex items-center gap-1.5">
+            {/* 3. 頂部右側：快捷全螢幕與關閉按鈕 */}
+            <div 
+              style={{ position: 'absolute', top: '10px', right: '12px', zIndex: 50 }}
+              className="pointer-events-auto flex items-center gap-1.5"
+            >
               {arViewMode === 'mountain' && (
                 <button
                   type="button"
@@ -1064,16 +1090,6 @@ export default function CampsiteARModal({
                   {effectiveLandscape ? '📱 直向' : '🔄 橫向'}
                 </button>
               )}
-              {/* ✨ 顯眼金黃色展開按鈕，字樣清晰不遮蔽 */}
-              <button
-                type="button"
-                onClick={() => setIsHeaderCollapsed(false)}
-                className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 rounded-full text-xs font-black flex items-center gap-1 transition-all shadow-xl active:scale-95 border border-amber-300 ring-2 ring-amber-400/30"
-                title="展開模式、營地與相機選單"
-              >
-                <span>▼</span>
-                <span>展開選單</span>
-              </button>
               <button
                 type="button"
                 onClick={toggleFullscreen}
@@ -1095,7 +1111,7 @@ export default function CampsiteARModal({
                 ✕
               </button>
             </div>
-          </div>
+          </>
         )}
 
         {/* GPS Error Notification Toast */}
@@ -2324,6 +2340,16 @@ export default function CampsiteARModal({
                 className="px-3.5 py-1.5 bg-indigo-900/80 hover:bg-indigo-800 border border-indigo-400/40 text-indigo-100 hover:text-white font-black text-xs rounded-xl shadow transition-all flex items-center gap-1"
               >
                 <span>📖 觀星指南</span>
+              </button>
+            )}
+            {isHeaderCollapsed && (
+              <button
+                type="button"
+                onClick={() => setIsHeaderCollapsed(false)}
+                className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all flex items-center gap-1 active:scale-95 border border-amber-300 cursor-pointer"
+                title="展開頂部控制列"
+              >
+                <span>▲ 展開頂部選單</span>
               </button>
             )}
             <button
