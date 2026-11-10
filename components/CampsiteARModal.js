@@ -163,16 +163,28 @@ export default function CampsiteARModal({
 
   const modalRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showFullscreenGuide, setShowFullscreenGuide] = useState(false); // 📱 iPhone / Android 滿版沉浸教學
 
   const toggleFullscreen = () => {
     if (typeof document === 'undefined') return;
+    const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const isStandalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || window.navigator?.standalone);
+
+    // 在 iOS Safari 上，系統限制一般網頁不能隱藏網址列，點擊時智慧彈出「加入主畫面」滿版指南
+    if (isIOS && !isStandalone) {
+      setShowFullscreenGuide(true);
+      return;
+    }
+
     const modalElem = modalRef.current || document.documentElement;
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
       if (modalElem.requestFullscreen) {
-        modalElem.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+        modalElem.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => setShowFullscreenGuide(true));
       } else if (modalElem.webkitRequestFullscreen) {
         modalElem.webkitRequestFullscreen();
         setIsFullscreen(true);
+      } else {
+        setShowFullscreenGuide(true);
       }
     } else {
       if (document.exitFullscreen) {
@@ -853,35 +865,68 @@ export default function CampsiteARModal({
         currentHeading = (360 - e.alpha) % 360;
       }
 
-      const winOrientation = typeof window !== 'undefined' && typeof window.orientation !== 'undefined' ? window.orientation : 0;
-      if (winOrientation === 90) {
+      // 🧭 智慧辨識螢幕旋轉角度 (支援最新 screen.orientation.angle 與舊版 window.orientation 及視窗比例)
+      let screenAngle = 0;
+      if (typeof window !== 'undefined') {
+        if (window.screen?.orientation?.angle !== undefined) {
+          screenAngle = window.screen.orientation.angle;
+        } else if (typeof window.orientation !== 'undefined') {
+          const o = Number(window.orientation);
+          screenAngle = o < 0 ? o + 360 : o;
+        } else if (isDeviceLandscape || window.innerWidth > window.innerHeight) {
+          screenAngle = 90;
+        }
+      }
+
+      // 橫向手持時，方位角自動依旋轉角度補償 (避免相機鏡頭與手機頂部夾角 90° 的偏移)
+      if (screenAngle === 90) {
         currentHeading = (currentHeading + 90) % 360;
-      } else if (winOrientation === -90) {
+      } else if (screenAngle === 270) {
         currentHeading = (currentHeading + 270) % 360;
+      } else if (screenAngle === 180) {
+        currentHeading = (currentHeading + 180) % 360;
       }
 
       const rawBeta = e.beta !== null ? e.beta : 0;
       const rawGamma = e.gamma !== null ? e.gamma : 0;
 
-      let groundPitch, groundRoll, cameraElevation;
-      if (winOrientation === 90) {
-        groundPitch = Math.max(-90, Math.min(90, Math.round(rawGamma)));
-        groundRoll = Math.max(-90, Math.min(90, Math.round(rawBeta)));
-        cameraElevation = Math.max(-90, Math.min(90, Math.round(Math.abs(rawGamma))));
-      } else if (winOrientation === -90) {
-        groundPitch = Math.max(-90, Math.min(90, Math.round(-rawGamma)));
-        groundRoll = Math.max(-90, Math.min(90, Math.round(-rawBeta)));
-        cameraElevation = Math.max(-90, Math.min(90, Math.round(Math.abs(rawGamma))));
+      let groundPitch = 0;
+      let groundRoll = 0;
+      let cameraElevation = 0;
+
+      const isLandscapeMode = screenAngle === 90 || screenAngle === 270 || (isDeviceLandscape && Math.abs(rawBeta) < 55);
+
+      if (isLandscapeMode) {
+        // 📱 手機橫放 (Landscape)：
+        // 物理長軸 (Y) 與水平面平行，物理短軸 (X) 與鉛垂面平行
+        // 在直立握持對準地平線時：
+        // iOS Safari: rawGamma 落在 ±90° (直立手持對準地平線時 |rawGamma| ≈ 90°)，rawBeta 落在 0° 附近
+        // 鏡頭仰角 (面對地平線為 0°，仰望星空為正，俯瞰地面為負)：
+        if (Math.abs(rawGamma) >= 45) {
+          // iOS 橫向直立手持：仰望星空時 |rawGamma| 從 90° 縮小往 0° 走，仰角 = 90 - |rawGamma|
+          // 若俯視低於地平線，rawBeta 偏向負值
+          const baseElev = 90 - Math.abs(rawGamma);
+          cameraElevation = rawBeta < -10 ? -Math.abs(baseElev || rawBeta) : baseElev;
+        } else {
+          // Android 或平放桌面時，rawBeta 承載前後仰角
+          cameraElevation = screenAngle === 90 ? -rawBeta : rawBeta;
+        }
+
+        groundPitch = Math.round(rawGamma);
+        groundRoll = Math.round(rawBeta);
       } else {
-        groundPitch = Math.max(-90, Math.min(90, Math.round(rawBeta)));
-        groundRoll = Math.max(-90, Math.min(90, Math.round(rawGamma)));
-        cameraElevation = Math.max(-90, Math.min(90, Math.round(90 - rawBeta)));
+        // 📱 手機直立 (Portrait)：
+        // rawBeta: 平放桌面為 0°，直立手持對準地平線為 90°
+        // 鏡頭仰角 = 90 - rawBeta (面對地平線為 0°，仰望為正，俯視為負)
+        cameraElevation = 90 - rawBeta;
+        groundPitch = Math.round(rawBeta);
+        groundRoll = Math.round(rawGamma);
       }
 
       setHeading(Math.round(currentHeading));
       setPitch(groundPitch);
       setRoll(groundRoll);
-      setCamElevation(cameraElevation);
+      setCamElevation(Math.max(-90, Math.min(90, Math.round(cameraElevation))));
       setPermissionGranted(true);
     };
 
@@ -973,6 +1018,15 @@ export default function CampsiteARModal({
 
               {/* 右側操作群 */}
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowFullscreenGuide(true)}
+                  className="px-2 py-1 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-400/40 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                  title="查看 iPhone / Android 滿版全螢幕教學"
+                >
+                  <span>📱</span>
+                  <span>滿版教學</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsHeaderCollapsed(true)}
@@ -1155,6 +1209,14 @@ export default function CampsiteARModal({
 
             {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
             <div className="pointer-events-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowFullscreenGuide(true)}
+                className="px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all shadow-md flex items-center gap-1"
+                title="查看 iPhone / Android 滿版教學"
+              >
+                <span>📱 滿版</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setIsHeaderCollapsed(false)}
@@ -2446,7 +2508,7 @@ export default function CampsiteARModal({
         )}
 
         {/* Bottom Floating Control Deck (Glassmorphism & Collapsible) */}
-        <div className="z-30 px-3.5 py-2.5 bg-black/40 backdrop-blur-xl border-t border-white/15 flex flex-col sm:flex-row justify-between items-center gap-2.5">
+        <div className="z-30 px-3.5 pt-2.5 pb-[max(10px,env(safe-area-inset-bottom))] bg-slate-950/70 backdrop-blur-xl border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-2.5">
           
           {/* Left Controls: Season selector (Sun mode) VS Distance selector (Mountain mode) VS Spots selector VS Time simulator (Star mode) */}
           {arViewMode === 'sun' ? (
@@ -2999,6 +3061,119 @@ export default function CampsiteARModal({
                   className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl shadow transition-all"
                 >
                   我知道了 · 返回 AR
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* 📱 Mobile Fullscreen Immersive Guide Modal (iPhone & Android 滿版沉浸教學) */}
+        {showFullscreenGuide && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-lg animate-in fade-in duration-150">
+            <div className="relative w-full max-w-xl max-h-[92vh] bg-slate-900 border border-teal-500/40 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-white">
+              
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-white/10 bg-slate-900/95 flex justify-between items-center">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl sm:text-3xl">📱</span>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                      <span>手機 100% 滿版全螢幕教學</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-teal-400 text-slate-950 font-black">
+                        iOS ✕ Android
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      徹底消除瀏覽器白色網址列，享受零黑邊、如原生 App 的沉浸 AR！
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowFullscreenGuide(false)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all border border-slate-700"
+                >
+                  ✕ 關閉
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-5 overflow-y-auto space-y-4 text-xs sm:text-sm">
+                
+                {/* 1. iPhone (iOS Safari) Section */}
+                <div className="p-4 rounded-2xl bg-slate-800/80 border border-white/10 space-y-3 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-black text-amber-300 flex items-center gap-2 text-sm sm:text-base">
+                      <span>🍎 iPhone (iOS Safari) 專用教學</span>
+                    </h4>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                      最推薦 · 100% 消除網址列
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    因 Apple iOS 系統安全機制，一般網頁無法直接覆蓋瀏覽器網址列。只要使用系統內建的「加入主畫面」，即可啟動純原生 PWA 模式：
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
+                      <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">1</span>
+                      <p className="text-xs text-slate-200">
+                        點擊 iPhone Safari 底部工具列正中央的 <strong>「分享按鈕（方形向上箭頭 ⎋）」</strong>。
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
+                      <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">2</span>
+                      <p className="text-xs text-slate-200">
+                        在選單列表中往下滑動，點選 <strong>「加入主畫面 (Add to Home Screen)」</strong> 並按右上角「新增」。
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
+                      <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">3</span>
+                      <p className="text-xs text-slate-200">
+                        回到手機桌面，點擊 <strong>「台灣露營 AR」</strong> 圖示開啟 ➜ <strong>底部的白色網址列與頂部全部徹底消失</strong>！相機實景 100% 滿版延伸至螢幕圓角，如同原生相機與 SkyView！
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200 flex items-center gap-2">
+                    <span>💡</span>
+                    <span><strong>免加桌面的偷吃步：</strong>在 Safari 畫面中用手指<strong>向上輕輕滑動一下</strong>，底部的白色網址列也會自動最小化收縮。</span>
+                  </div>
+                </div>
+
+                {/* 2. Android Section */}
+                <div className="p-4 rounded-2xl bg-slate-800/80 border border-white/10 space-y-3 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-black text-teal-300 flex items-center gap-2 text-sm sm:text-base">
+                      <span>🤖 Android (Chrome / 瀏覽器) 專用教學</span>
+                    </h4>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-400/20 text-teal-300 border border-teal-400/30">
+                      一鍵全螢幕
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
+                      <span className="w-5 h-5 rounded-full bg-teal-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">A</span>
+                      <p className="text-xs text-slate-200">
+                        <strong>一鍵切換：</strong>直接點擊頂部的 <strong>「⛶ 全螢幕」</strong> 按鈕，系統將自動將網址列與虛擬鍵隱藏。
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
+                      <span className="w-5 h-5 rounded-full bg-teal-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">B</span>
+                      <p className="text-xs text-slate-200">
+                        <strong>加到桌面：</strong>點選 Chrome 右上角選單 <strong>「⋮」</strong> ➜ 選擇 <strong>「安裝應用程式」</strong> 或 <strong>「加到主螢幕」</strong>，隨開隨用零黑邊！
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-5 py-3 border-t border-white/10 bg-slate-900/95 flex justify-end items-center">
+                <button
+                  onClick={() => setShowFullscreenGuide(false)}
+                  className="px-5 py-2 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-slate-950 font-black rounded-xl shadow-lg transition-all active:scale-95 text-xs sm:text-sm"
+                >
+                  我知道了 · 立即體驗
                 </button>
               </div>
 
