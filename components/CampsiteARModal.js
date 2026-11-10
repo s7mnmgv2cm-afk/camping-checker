@@ -14,7 +14,8 @@ import {
 import {
   computePeaksFromLocation,
   TAIWAN_PEAKS,
-  TAIWAN_RIDGES
+  TAIWAN_RIDGES,
+  getDistanceMeters
 } from '../lib/peaks';
 import {
   POI_CATEGORIES,
@@ -119,6 +120,9 @@ export default function CampsiteARModal({
   const [peakMaxDistance, setPeakMaxDistance] = useState(60); // 25km, 50km, 80km
   const [showRidgeLines, setShowRidgeLines] = useState(true);
   const [selectedPeak, setSelectedPeak] = useState(null);
+  const [dismissedPeakId, setDismissedPeakId] = useState(null); // 📱 隱藏鎖定山峰字卡
+  const [isPeakDrawerCollapsed, setIsPeakDrawerCollapsed] = useState(false); // 📱 縮小為單行透明膠囊
+  const [showPeakControls, setShowPeakControls] = useState(false); // 📱 辨識半徑與設定面板可收合/隱藏
   const [isLandscapeMode, setIsLandscapeMode] = useState(false); // ⛰️ 遠山橫向全景模式 (Landscape Panorama)
   const [isDeviceLandscape, setIsDeviceLandscape] = useState(false);
 
@@ -208,6 +212,8 @@ export default function CampsiteARModal({
   // 🧭 Google AI Overview Nearby POIs (Trails, Waterfalls, Viewpoints)
   const [poiSpots, setPoiSpots] = useState([]);
   const [loadingSpots, setLoadingSpots] = useState(false);
+  const [spotSource, setSpotSource] = useState(null);
+  const [spotToast, setSpotToast] = useState(null);
   const [poiCategory, setPoiCategory] = useState('all');
   const [poiMaxDistance, setPoiMaxDistance] = useState(15); // 3km, 5km, 15km, 25km
   const [selectedPoi, setSelectedPoi] = useState(null);
@@ -308,16 +314,22 @@ export default function CampsiteARModal({
     };
   }, [isOpen, lat, lng, locationMode, propWindDir, propWindSpeed]);
 
-  // Fetch Google AI Overview spots when modal opens or campsite changes
+  // Fetch Google AI Overview spots when modal opens, campsite changes, or locationMode changes
   useEffect(() => {
-    if (!isOpen || !campsite) return;
+    if (!isOpen || (!campsite && !userCoords)) return;
     let isMounted = true;
     setLoadingSpots(true);
 
-    fetchCampsiteSpots(campsite)
+    fetchCampsiteSpots(campsite, { lat, lng, locationMode })
       .then(spots => {
         if (isMounted) {
           setPoiSpots(spots || []);
+          if (spots?.__meta?.source) {
+            setSpotSource(spots.__meta.source);
+          }
+          if (spots?.__meta?.summary) {
+            setPoiOverviewSummary(spots.__meta.summary);
+          }
           setLoadingSpots(false);
         }
       })
@@ -329,21 +341,127 @@ export default function CampsiteARModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, campsite?.id, campsite?.name]);
+  }, [isOpen, campsite?.id, campsite?.name, locationMode, (locationMode === 'current' && userCoords ? `${userCoords.lat.toFixed(3)}_${userCoords.lng.toFixed(3)}` : null)]);
 
-  // 手動即時探勘/重新查詢營區周邊景點
+  // 景點即時查詢冷卻與位移保護常數 (冷卻十分鐘 + 500m 位移檢查)
+  const SPOTS_REFRESH_COOLDOWN_MS = 10 * 60 * 1000; // 10 分鐘冷卻 (600,000 ms)
+  const SPOTS_DISPLACEMENT_THRESHOLD_METERS = 500; // 500 公尺位移檢查門檻
+
+  // 即時計算冷卻剩餘分鐘數
+  const [cooldownRemainingMin, setCooldownRemainingMin] = useState(0);
+
+  useEffect(() => {
+    const checkCooldown = () => {
+      if (typeof window === 'undefined') return;
+      try {
+        const raw = localStorage.getItem('campsite_spots_last_refresh_meta');
+        if (!raw) {
+          setCooldownRemainingMin(0);
+          return;
+        }
+        const meta = JSON.parse(raw);
+        const timeElapsed = Date.now() - (meta.timestamp || 0);
+        const distMoved = (meta.lat != null && meta.lng != null)
+          ? getDistanceMeters(lat, lng, meta.lat, meta.lng)
+          : 999999;
+        if (timeElapsed < SPOTS_REFRESH_COOLDOWN_MS && distMoved < SPOTS_DISPLACEMENT_THRESHOLD_METERS) {
+          setCooldownRemainingMin(Math.ceil((SPOTS_REFRESH_COOLDOWN_MS - timeElapsed) / 60000));
+        } else {
+          setCooldownRemainingMin(0);
+        }
+      } catch (e) {
+        setCooldownRemainingMin(0);
+      }
+    };
+    checkCooldown();
+    const timer = setInterval(checkCooldown, 10000);
+    return () => clearInterval(timer);
+  }, [lat, lng, loadingSpots]);
+
+  // 手動即時探勘/重新查詢營區周邊景點 (方案 C: Google 即時實境探勘 + 雲端回存 + 10分鐘/500m冷卻防護)
   const handleRefreshSpots = async () => {
-    if (!campsite) return;
+    if (!campsite && !userCoords) return;
+
+    // 1. 冷卻十分鐘 + 500m 位移檢查 (防止同地點頻繁重複查詢浪費資源)
+    if (typeof window !== 'undefined') {
+      try {
+        const lastMetaRaw = localStorage.getItem('campsite_spots_last_refresh_meta');
+        if (lastMetaRaw) {
+          const lastMeta = JSON.parse(lastMetaRaw);
+          const timeElapsed = Date.now() - (lastMeta.timestamp || 0);
+          const distMoved = (lastMeta.lat != null && lastMeta.lng != null)
+            ? getDistanceMeters(lat, lng, lastMeta.lat, lastMeta.lng)
+            : 999999;
+
+          if (timeElapsed < SPOTS_REFRESH_COOLDOWN_MS && distMoved < SPOTS_DISPLACEMENT_THRESHOLD_METERS) {
+            const remainingSec = Math.ceil((SPOTS_REFRESH_COOLDOWN_MS - timeElapsed) / 1000);
+            const remainingMin = Math.ceil(remainingSec / 60);
+            const distDisplay = Math.round(distMoved);
+            setSpotToast(`⏳ 原地探勘保護中（位移 ${distDisplay}m 未達 500m），冷卻尚餘 ${remainingMin} 分鐘，已保留最新實境景點！`);
+            setTimeout(() => setSpotToast(null), 4000);
+            return;
+          }
+
+          if (distMoved >= SPOTS_DISPLACEMENT_THRESHOLD_METERS) {
+            const distText = distMoved >= 1000 ? `${(distMoved / 1000).toFixed(1)} km` : `${Math.round(distMoved)} 公尺`;
+            setSpotToast(`🚶‍♂️ 偵測到位移 ${distText}（超過 500m 門檻），立即啟動新座標 Google 實境探勘...`);
+          }
+        }
+      } catch (e) {
+        console.warn('Check refresh cooldown meta error:', e);
+      }
+    }
+
     setLoadingSpots(true);
     try {
-      const cacheKey = `campsite_ai_spots_${campsite.id || campsite.name}`;
+      const isCurrentGps = locationMode === 'current';
+      const cacheKey = isCurrentGps
+        ? `campsite_ai_spots_gps_${Number(lat).toFixed(3)}_${Number(lng).toFixed(3)}`
+        : `campsite_ai_spots_${campsite?.id || campsite?.name || 'default'}`;
       if (typeof window !== 'undefined') {
         localStorage.removeItem(cacheKey);
       }
-      const spots = await fetchCampsiteSpots(campsite);
+      const spots = await fetchCampsiteSpots(campsite, {
+        forceRefresh: true,
+        lat,
+        lng,
+        locationMode
+      });
       setPoiSpots(spots || []);
+      if (spots?.__meta?.source) {
+        setSpotSource(spots.__meta.source);
+      }
+      if (spots?.__meta?.summary) {
+        setPoiOverviewSummary(spots.__meta.summary);
+      }
+
+      // 紀錄本次成功探勘的時間與座標，用於 10 分鐘 + 500m 位移比對
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('campsite_spots_last_refresh_meta', JSON.stringify({
+            timestamp: Date.now(),
+            lat,
+            lng,
+            campsiteId: campsite?.id || null
+          }));
+          setCooldownRemainingMin(10);
+        } catch (e) {
+          console.warn('Failed to save refresh meta:', e);
+        }
+      }
+
+      if (spots?.__meta?.source === 'google_places_live_cached') {
+        setSpotToast('🌐 已依即時座標完成 Google 實境探勘並同步回存雲端！');
+      } else if (spots?.__meta?.source === 'google_places_live_gps') {
+        setSpotToast('📍 已依據您當前 GPS 定位即時探勘 Google 周邊景點！');
+      } else {
+        setSpotToast('✨ 已更新最新營地周邊步道與景點！');
+      }
+      setTimeout(() => setSpotToast(null), 3500);
     } catch (err) {
       console.warn('Failed to refresh spots:', err);
+      setSpotToast('⚠️ 查詢稍有延遲，已載入精選山林景點備用方案');
+      setTimeout(() => setSpotToast(null), 3000);
     } finally {
       setLoadingSpots(false);
     }
@@ -580,6 +698,62 @@ export default function CampsiteARModal({
     }).filter(Boolean);
   }, [arViewMode, showRidgeLines, computedPeaks]);
 
+  // PeakVisor Continuous Mountain Skyline Contour across all visible peaks
+  const computedMountainSkyline = useMemo(() => {
+    if (arViewMode !== 'mountain' || !showRidgeLines) return null;
+    
+    const visiblePeaks = computedPeaks
+      .filter(p => p.screenX >= -20 && p.screenX <= 120 && p.screenY >= -30 && p.screenY <= 120)
+      .sort((a, b) => a.screenX - b.screenX);
+
+    if (visiblePeaks.length === 0) return null;
+
+    if (visiblePeaks.length === 1) {
+      const p = visiblePeaks[0];
+      const leftX = Math.max(-10, p.screenX - 25);
+      const rightX = Math.min(110, p.screenX + 25);
+      const baseY = Math.min(100, p.screenY + 22);
+      return {
+        type: 'single',
+        path: `M ${leftX.toFixed(1)} ${baseY.toFixed(1)} Q ${(p.screenX - 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)} Q ${(p.screenX + 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${rightX.toFixed(1)} ${baseY.toFixed(1)}`,
+        fillPath: `M ${leftX.toFixed(1)} ${baseY.toFixed(1)} Q ${(p.screenX - 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)} Q ${(p.screenX + 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${rightX.toFixed(1)} ${baseY.toFixed(1)} V 100 H ${leftX.toFixed(1)} Z`,
+        peaks: visiblePeaks
+      };
+    }
+
+    let pathD = '';
+    let firstPoint = null;
+
+    visiblePeaks.forEach((p, idx) => {
+      if (idx === 0) {
+        const startX = Math.max(-15, p.screenX - 20);
+        const startY = Math.min(95, p.screenY + 18);
+        pathD = `M ${startX.toFixed(1)} ${startY.toFixed(1)} Q ${(p.screenX - 8).toFixed(1)} ${(p.screenY + 5).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)}`;
+        firstPoint = { x: startX, y: startY };
+      } else {
+        const prev = visiblePeaks[idx - 1];
+        const saddleX = (prev.screenX + p.screenX) / 2;
+        const saddleY = Math.max(prev.screenY, p.screenY) + Math.min(18, Math.abs(p.screenX - prev.screenX) * 0.35);
+        pathD += ` Q ${((prev.screenX + saddleX) / 2).toFixed(1)} ${(saddleY - 2).toFixed(1)} ${saddleX.toFixed(1)} ${saddleY.toFixed(1)} Q ${((saddleX + p.screenX) / 2).toFixed(1)} ${(saddleY - 2).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)}`;
+      }
+
+      if (idx === visiblePeaks.length - 1) {
+        const endX = Math.min(115, p.screenX + 20);
+        const endY = Math.min(95, p.screenY + 18);
+        pathD += ` Q ${(p.screenX + 8).toFixed(1)} ${(p.screenY + 5).toFixed(1)} ${endX.toFixed(1)} ${endY.toFixed(1)}`;
+      }
+    });
+
+    const fillPath = `${pathD} V 100 H ${firstPoint?.x ? firstPoint.x.toFixed(1) : -15} Z`;
+
+    return {
+      type: 'multi',
+      path: pathD,
+      fillPath,
+      peaks: visiblePeaks
+    };
+  }, [arViewMode, showRidgeLines, computedPeaks]);
+
   // Detect Mountain Peak locked by Central Reticle
   const lockedPeak = useMemo(() => {
     if (arViewMode !== 'mountain') return null;
@@ -599,6 +773,14 @@ export default function CampsiteARModal({
     }
     return null;
   }, [arViewMode, computedPeaks, heading, camElevation]);
+
+  // Reset dismissed peak when reticle locks onto another peak
+  useEffect(() => {
+    if (lockedPeak && lockedPeak.id !== dismissedPeakId) {
+      setDismissedPeakId(null);
+      setIsPeakDrawerCollapsed(false);
+    }
+  }, [lockedPeak?.id]);
 
   // 8. Compute Google AI Overview POIs (Trails, Waterfalls, Viewpoints)
   const computedPOIs = useMemo(() => {
@@ -921,10 +1103,15 @@ export default function CampsiteARModal({
                       type="button"
                       onClick={handleRefreshSpots}
                       disabled={loadingSpots}
-                      className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-400/40 font-bold transition-all flex items-center gap-1"
+                      title={cooldownRemainingMin > 0 ? `原地冷卻保護中（尚餘 ${cooldownRemainingMin} 分鐘，位移滿 500m 自動解除）` : '立即以目前座標向 Google 探勘最新周邊景點'}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 border ${
+                        cooldownRemainingMin > 0
+                          ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-400/40'
+                          : 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-400/40'
+                      }`}
                     >
                       <span className={loadingSpots ? 'animate-spin' : ''}>🔄</span>
-                      <span>{loadingSpots ? '探勘中' : '即時查詢'}</span>
+                      <span>{loadingSpots ? '探勘中' : cooldownRemainingMin > 0 ? `即時查詢 (${cooldownRemainingMin}m)` : '即時查詢'}</span>
                     </button>
                   </div>
                 )}
@@ -1027,6 +1214,17 @@ export default function CampsiteARModal({
           </div>
         )}
 
+        {/* Plan C: Realtime Google Places / Cloud Cache Notification Toast */}
+        {spotToast && (
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white text-xs font-bold px-4 py-2 flex items-center justify-between shadow-lg transition-all z-40 border-b border-emerald-400 animate-in fade-in slide-in-from-top-1 duration-200">
+            <span className="flex items-center gap-1.5">
+              <span className="text-sm">🌐</span>
+              <span>{spotToast}</span>
+            </span>
+            <button onClick={() => setSpotToast(null)} className="text-emerald-100 hover:text-white font-black text-sm px-1.5">✕</button>
+          </div>
+        )}
+
         {/* Main AR Viewport (Camera Video + Sky Dome Markers) */}
         <div className="relative flex-1 w-full overflow-hidden flex items-center justify-center bg-slate-950">
           
@@ -1087,35 +1285,25 @@ export default function CampsiteARModal({
             </div>
           )}
 
-          {/* 2. Top Rolling Compass Ribbon & Guidance Banner */}
+          {/* 2. Top Rolling Compass Ribbon & Guidance Banner (Unified Glassmorphic HUD) */}
           <div 
             style={{ top: isHeaderCollapsed ? (effectiveLandscape ? '42px' : '48px') : '10px' }}
             className="absolute left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3"
           >
-            {/* Realtime Facing Direction Badge */}
-            <div className="mb-1.5 px-3.5 py-1 rounded-full bg-slate-950/90 border border-amber-400/50 shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs sm:text-sm animate-in fade-in duration-150">
-              <span className="text-amber-400 font-black flex items-center gap-1">
-                <span>🧭 目前面向：</span>
-              </span>
-              <span className="font-mono font-black text-amber-300 text-sm sm:text-base">
-                {heading}°
-              </span>
-              <span className="font-black text-slate-950 bg-amber-400 px-2 py-0.5 rounded-md text-xs sm:text-sm shadow-sm">
-                {getHeadingDirectionName(heading)}
-              </span>
-              <span className="text-slate-500">|</span>
-              <span className="text-sky-300 font-bold text-xs">仰角 {camElevation}°</span>
-            </div>
-
-            {/* Compass Ribbon */}
-            <div className="relative w-72 sm:w-96 h-9 bg-slate-900/85 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center">
+            {/* Unified Glassmorphic Compass Ribbon with Integrated Heading & Pitch (Removes duplicate direction badge) */}
+            <div className="relative w-80 sm:w-96 h-9 bg-black/40 backdrop-blur-md border border-white/20 rounded-full overflow-hidden shadow-xl flex items-center justify-center">
               <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 shadow-[0_0_8px_#f59e0b]"></div>
-              <div className="absolute bottom-0.5 text-xs text-amber-300 font-mono font-black z-10 px-1.5 py-0.2 rounded bg-slate-950/80 border border-amber-400/30">
-                ▲ {heading}°
+              
+              {/* Integrated Center HUD Marker: Degree + Direction Name + Elevation */}
+              <div className="absolute z-10 px-2.5 py-0.5 rounded-full bg-black/75 backdrop-blur-md border border-amber-400/50 text-xs font-mono font-black text-amber-300 flex items-center gap-1.5 shadow-md pointer-events-none">
+                <span className="text-amber-400 font-black">▲ {heading}°</span>
+                <span className="text-[11px] font-sans font-bold text-amber-200">{getHeadingDirectionName(heading)}</span>
+                <span className="text-slate-500">|</span>
+                <span className="text-[11px] font-sans font-semibold text-sky-300">仰角 {camElevation}°</span>
               </div>
 
               <div
-                className="absolute flex items-center h-full transition-transform ease-out duration-75"
+                className="absolute flex items-center h-full transition-transform ease-out duration-75 pointer-events-none"
                 style={{ transform: `translateX(${-heading * 4}px)` }}
               >
                 {[-360, 0, 360].map(offset => (
@@ -1126,10 +1314,10 @@ export default function CampsiteARModal({
                         className="absolute flex flex-col items-center"
                         style={{ left: `${t.deg * 4}px` }}
                       >
-                        <span className={`text-xs font-black ${t.deg === 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+                        <span className={`text-[11px] font-black ${t.deg === 0 ? 'text-rose-400' : 'text-slate-300'}`}>
                           {t.label}
                         </span>
-                        <div className={`w-0.5 h-2 mt-0.5 ${t.deg === 0 ? 'bg-rose-400' : 'bg-slate-400'}`}></div>
+                        <div className={`w-0.5 h-1.5 mt-0.5 ${t.deg === 0 ? 'bg-rose-400' : 'bg-slate-400/80'}`}></div>
                       </div>
                     ))}
                   </div>
@@ -1139,7 +1327,7 @@ export default function CampsiteARModal({
 
             {/* Dynamic Guidance Banner: Sun mode vs Stars mode */}
             {arViewMode === 'sun' ? (
-              <div className="mt-1.5 px-3 py-1.5 rounded-2xl bg-slate-950/90 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
+              <div className="mt-1.5 px-3 py-1.5 rounded-2xl bg-black/45 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
                 {/* 🚨 迎風面警告：當帳門直接對著來風時 */}
                 {isFacingDirectWind && windSpeed >= 20 && (
                   <div className="mb-1.5 px-2.5 py-1 rounded-xl bg-rose-950/95 border border-rose-500/80 text-rose-200 text-xs font-bold shadow-xl animate-pulse">
@@ -1209,46 +1397,60 @@ export default function CampsiteARModal({
                   <span>周邊景點・步道瀑布</span>
                   <span className="text-[10px] text-cyan-400 font-mono">({computedPOIs.filter(p => p.inView).length} 處在視野)</span>
                 </span>
+                {spotSource && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold">
+                    {spotSource.includes('google_places') ? '🌐 Google 實境' : '☁️ 雲端快取'}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={handleRefreshSpots}
                   disabled={loadingSpots}
-                  className="px-2 py-0.5 bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-400/40 text-cyan-200 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all pointer-events-auto shadow-sm active:scale-95"
-                  title="立即重新探勘最新周邊景點"
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all pointer-events-auto shadow-sm active:scale-95 border ${
+                    cooldownRemainingMin > 0
+                      ? 'bg-amber-950/80 hover:bg-amber-900 border-amber-400/40 text-amber-200'
+                      : 'bg-cyan-950/90 hover:bg-cyan-900 border-cyan-400/40 text-cyan-200'
+                  }`}
+                  title={cooldownRemainingMin > 0 ? `原地冷卻中（尚餘 ${cooldownRemainingMin} 分鐘，位移滿 500m 自動解除）` : '立即以目前座標向 Google 探勘最新周邊景點'}
                 >
                   <span className={loadingSpots ? 'animate-spin' : ''}>🔄</span>
-                  <span>{loadingSpots ? '查詢中...' : '即時查詢'}</span>
+                  <span>{loadingSpots ? 'Google 探勘中...' : cooldownRemainingMin > 0 ? `即時查詢 (${cooldownRemainingMin}m)` : '即時查詢'}</span>
                 </button>
               </div>
             ) : arViewMode === 'mountain' ? (
-              <div className="mt-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 border border-emerald-400/40 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-2xl transition-all">
-                <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <span className="text-emerald-400 font-bold text-xs flex items-center gap-1">
-                    <span>⛰️ PeakVisor 遠山稜線</span>
+              <div className="mt-1.5 px-3 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] sm:max-w-md shadow-lg transition-all">
+                <div className="flex items-center justify-center gap-1.5 flex-wrap text-xs">
+                  <span className="text-emerald-400 font-bold flex items-center gap-1">
+                    <span>⛰️ PeakVisor</span>
                     {effectiveLandscape && (
                       <span className="px-1.5 py-0.2 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/40 font-mono text-[10px]">
-                        105° 橫向全景
+                        105° 橫向
                       </span>
                     )}
                   </span>
                   {lockedPeak ? (
                     <>
-                      <span className="text-slate-500">|</span>
+                      <span className="text-slate-400">|</span>
                       <span className="text-xs">
-                        <span className="text-emerald-300 font-black">視野鎖定：</span>
-                        <strong className="text-white text-sm">{lockedPeak.name}</strong>
-                        <span className="text-emerald-200 text-xs ml-1">
-                          （{lockedPeak.altitudeM}m · {lockedPeak.distanceKm} km）
+                        <span className="text-emerald-300 font-bold">鎖定：</span>
+                        <strong className="text-white font-black">{lockedPeak.name}</strong>
+                        <span className="text-emerald-200 text-xs ml-1 font-mono">
+                          ({lockedPeak.altitudeM}m · {lockedPeak.distanceKm}km)
                         </span>
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="text-slate-500">|</span>
-                      <span className="text-xs text-slate-300">
-                        {effectiveLandscape ? '超廣角遠眺稜線群峰全景' : '平視遠方準心自動識別群山'}
+                      <span className="text-slate-400">|</span>
+                      <span className="text-xs text-slate-200">
+                        {effectiveLandscape ? '超廣角遠眺稜線群峰全景' : '準心對準遠方群山自動識別'}
                       </span>
                     </>
+                  )}
+                  {showRidgeLines && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 text-[10px] font-bold">
+                      ✨ 稜線開
+                    </span>
                   )}
                 </div>
               </div>
@@ -1503,18 +1705,76 @@ export default function CampsiteARModal({
               </React.Fragment>
             ))}
 
-            {/* 3F. PEAKVISOR MOUNTAIN RIDGE LINES (SVG) */}
+            {/* 3F. PEAKVISOR MOUNTAIN RIDGE LINES & CONTINUOUS SKYLINE (SVG) */}
             {arViewMode === 'mountain' && showRidgeLines && (
-              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden"
+              >
                 <defs>
-                  <filter id="ridge-glow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="3" result="blur" />
+                  <filter id="ridge-glow" x="-25%" y="-25%" width="150%" height="150%">
+                    <feGaussianBlur stdDeviation="1.6" result="blur" />
                     <feMerge>
                       <feMergeNode in="blur" />
                       <feMergeNode in="SourceGraphic" />
                     </feMerge>
                   </filter>
+                  <linearGradient id="skyline-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.22" />
+                    <stop offset="100%" stopColor="#0f172a" stopOpacity="0.0" />
+                  </linearGradient>
                 </defs>
+
+                {/* 1. Continuous Panorama Mountain Silhouette Contour */}
+                {computedMountainSkyline && (
+                  <g className="transition-all duration-300">
+                    <path
+                      d={computedMountainSkyline.fillPath}
+                      fill="url(#skyline-grad)"
+                    />
+                    <path
+                      d={computedMountainSkyline.path}
+                      stroke="#38bdf8"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      filter="url(#ridge-glow)"
+                      fill="none"
+                      className="drop-shadow-[0_0_8px_rgba(56,189,248,0.85)]"
+                    />
+                    {/* Glowing Beacon Drops from Peak Summits */}
+                    {computedMountainSkyline.peaks.map(p => (
+                      <g key={`skyline-beacon-${p.id}`}>
+                        <circle
+                          cx={p.screenX}
+                          cy={p.screenY}
+                          r="1.2"
+                          fill="#38bdf8"
+                          filter="url(#ridge-glow)"
+                        />
+                        <circle
+                          cx={p.screenX}
+                          cy={p.screenY}
+                          r="0.5"
+                          fill="#ffffff"
+                        />
+                        <line
+                          x1={p.screenX}
+                          y1={p.screenY}
+                          x2={p.screenX}
+                          y2={Math.min(95, p.screenY + 10)}
+                          stroke="#38bdf8"
+                          strokeWidth="0.4"
+                          strokeDasharray="1,1"
+                          strokeOpacity="0.75"
+                        />
+                      </g>
+                    ))}
+                  </g>
+                )}
+
+                {/* 2. Connected Mountain Chain Segments */}
                 {computedRidges.map(ridge => {
                   const isHigh = selectedPeak && ridge.peakIds.includes(selectedPeak.id);
                   return (
@@ -1522,14 +1782,14 @@ export default function CampsiteARModal({
                       {ridge.segments.map((seg, idx) => (
                         <line
                           key={`${ridge.id}-${idx}`}
-                          x1={`${seg.p1.screenX}%`}
-                          y1={`${seg.p1.screenY}%`}
-                          x2={`${seg.p2.screenX}%`}
-                          y2={`${seg.p2.screenY}%`}
+                          x1={seg.p1.screenX}
+                          y1={seg.p1.screenY}
+                          x2={seg.p2.screenX}
+                          y2={seg.p2.screenY}
                           stroke={ridge.color || '#38bdf8'}
-                          strokeWidth={isHigh ? 3.5 : 2.2}
-                          strokeDasharray={ridge.lineStyle === 'dashed' ? '6,4' : 'none'}
-                          strokeOpacity={isHigh ? 0.95 : 0.75}
+                          strokeWidth={isHigh ? 1.4 : 0.9}
+                          strokeDasharray={ridge.lineStyle === 'dashed' ? '2,1.5' : 'none'}
+                          strokeOpacity={isHigh ? 0.95 : 0.8}
                           filter="url(#ridge-glow)"
                         />
                       ))}
@@ -1572,11 +1832,11 @@ export default function CampsiteARModal({
                     isFocus ? 'scale-115 z-30' : 'opacity-90 hover:opacity-100 hover:scale-105'
                   }`}
                 >
-                  {/* Peak Pin Badge */}
-                  <div className={`px-2.5 py-1 rounded-full text-xs font-black shadow-2xl backdrop-blur-md flex items-center gap-1.5 border transition-all ${
+                  {/* Peak Pin Badge (Glassmorphism Transparent) */}
+                  <div className={`px-2.5 py-1 rounded-full text-xs font-black shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
                     isFocus
-                      ? 'bg-emerald-950/95 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
-                      : 'bg-slate-900/90 text-slate-200 border-slate-600 hover:border-emerald-400/70'
+                      ? 'bg-emerald-950/75 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
+                      : 'bg-black/40 text-slate-100 border-white/20 hover:border-emerald-400/70 shadow-md'
                   }`}>
                     <span>{peak.icon || '⛰️'}</span>
                     <span>{peak.name}</span>
@@ -1584,7 +1844,7 @@ export default function CampsiteARModal({
                   </div>
 
                   {/* Distance Sub-label */}
-                  <div className="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/80 border border-white/10 text-[10px] font-mono text-emerald-300">
+                  <div className="mt-0.5 px-1.5 py-0.2 rounded bg-black/35 backdrop-blur-sm border border-white/10 text-[10px] font-mono text-emerald-300">
                     {peak.distanceKm} km · {peak.azimuth}°
                   </div>
 
@@ -1842,21 +2102,18 @@ export default function CampsiteARModal({
             ) : arViewMode === 'mountain' ? (
               <div 
                 onClick={() => setPeakMaxDistance(d => d === 25 ? 50 : d === 50 ? 80 : 25)}
-                className="bg-slate-950/85 backdrop-blur-md border border-emerald-500/30 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[50%] text-right cursor-pointer hover:border-emerald-400 transition-colors"
-                title="點擊切換視野距離過濾"
+                className="bg-black/35 backdrop-blur-md border border-white/20 p-2 sm:p-2.5 rounded-2xl text-xs space-y-0.5 shadow-lg max-w-[50%] text-right cursor-pointer hover:border-emerald-400 transition-all pointer-events-auto"
+                title="點擊切換視野距離 (25km / 50km / 80km)"
               >
-                <div className="text-emerald-300 font-bold flex items-center justify-end gap-1.5 truncate">
+                <div className="text-emerald-300 font-bold flex items-center justify-end gap-1.5 truncate text-[11px]">
                   <span>⛰️</span>
-                  <span>PeakVisor 認山頭</span>
+                  <span>PeakVisor ({computedPeaks.filter(p => p.inView).length}/{computedPeaks.length})</span>
                 </div>
-                <div className="text-amber-300 font-black text-xs truncate">
-                  視野內 {computedPeaks.filter(p => p.inView).length} / {computedPeaks.length} 座名山
-                </div>
-                <div className="pt-0.5 border-t border-white/10 flex items-center justify-end gap-1.5 flex-wrap text-[10px]">
+                <div className="pt-0.5 border-t border-white/10 flex items-center justify-end gap-1 flex-wrap text-[10px]">
                   <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-bold">
-                    半徑 {peakMaxDistance}km
+                    半徑 {peakMaxDistance}km ❯
                   </span>
-                  <span className="text-slate-400">稜線：{showRidgeLines ? '顯示' : '隱藏'}</span>
+                  <span className="text-slate-300">稜線:{showRidgeLines ? '開' : '關'}</span>
                 </div>
               </div>
             ) : (
@@ -1947,52 +2204,101 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* Selected Mountain Peak Drawer Overlay */}
-        {(selectedPeak || lockedPeak) && arViewMode === 'mountain' && (
-          <div data-testid="mountain-drawer" className="z-30 px-4 py-2.5 bg-slate-900/95 backdrop-blur-md border-t border-emerald-500/30 flex items-start justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150 max-h-52 overflow-y-auto">
-            {(() => {
-              const currentPeak = selectedPeak || lockedPeak;
-              return (
-                <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-700 to-teal-600 flex items-center justify-center text-xl shrink-0 shadow-md mt-0.5">
-                    ⛰️
+        {/* Selected Mountain Peak Drawer Overlay (Collapsible & Dismissible) */}
+        {arViewMode === 'mountain' && (() => {
+          const currentPeak = selectedPeak || lockedPeak;
+          if (!currentPeak) return null;
+          if (currentPeak.id === dismissedPeakId) return null;
+
+          return (
+            <div data-testid="mountain-drawer" className="z-30 px-3.5 py-2.5 bg-black/45 backdrop-blur-xl border-t border-white/20 text-xs shadow-2xl transition-all animate-in slide-in-from-bottom duration-150">
+              {isPeakDrawerCollapsed ? (
+                // Collapsed 1-line pill
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm">⛰️</span>
+                    <strong className="text-white font-bold truncate">{currentPeak.name}</strong>
+                    <span className="text-emerald-300 font-mono text-[11px]">{currentPeak.altitudeM}m · {currentPeak.distKm}km</span>
+                    <span className="text-slate-300 font-mono text-[11px] hidden sm:inline">方位 {currentPeak.azimuth}°</span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <strong className="text-sm font-black text-white">{currentPeak.name}</strong>
-                      <span className="px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-400/30">
-                        海拔 {currentPeak.altitudeM}m
-                      </span>
-                      <span className="text-amber-300 font-mono font-bold">
-                        距此 {currentPeak.distKm} km
-                      </span>
-                      <span className="text-slate-300 font-mono">
-                        方位 {currentPeak.azimuth}° ({currentPeak.azimuthDir})
-                      </span>
-                      <span className="text-sky-300 font-mono">
-                        視線仰角 {currentPeak.apparentElevation > 0 ? `+${currentPeak.apparentElevation}°` : `${currentPeak.apparentElevation}°`}
-                      </span>
-                      <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[10px]">
-                        {currentPeak.range}
-                      </span>
-                    </div>
-                    <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words">
-                      {currentPeak.desc}
-                    </p>
-                  </div>
-                  {selectedPeak && (
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => setSelectedPeak(null)}
-                      className="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 shrink-0 font-bold mt-0.5"
+                      type="button"
+                      onClick={() => setIsPeakDrawerCollapsed(false)}
+                      className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 text-[11px] font-bold transition-all hover:bg-emerald-500/30 active:scale-95"
                     >
-                      ✕
+                      ▲ 展開詳情
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDismissedPeakId(currentPeak.id);
+                        setSelectedPeak(null);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                      title="隱藏目前山峰字卡"
+                    >
+                      ✕ 隱藏
+                    </button>
+                  </div>
                 </div>
-              );
-            })()}
-          </div>
-        )}
+              ) : (
+                // Expanded full details with transparent glass
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600/80 to-teal-500/80 flex items-center justify-center text-lg shrink-0 shadow-md border border-white/20 mt-0.5">
+                      {currentPeak.icon || '⛰️'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <strong className="text-sm font-black text-white">{currentPeak.name}</strong>
+                        <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-400/30 text-[11px]">
+                          海拔 {currentPeak.altitudeM}m
+                        </span>
+                        <span className="text-amber-300 font-mono font-bold text-[11px]">
+                          距此 {currentPeak.distKm} km
+                        </span>
+                        <span className="text-slate-200 font-mono text-[11px]">
+                          方位 {currentPeak.azimuth}° ({currentPeak.azimuthDir})
+                        </span>
+                        <span className="text-sky-300 font-mono text-[11px]">
+                          視線仰角 {currentPeak.apparentElevation > 0 ? `+${currentPeak.apparentElevation}°` : `${currentPeak.apparentElevation}°`}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded bg-white/10 text-slate-200 text-[10px]">
+                          {currentPeak.range}
+                        </span>
+                      </div>
+                      <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words opacity-95">
+                        {currentPeak.desc}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsPeakDrawerCollapsed(true)}
+                      className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-bold transition-all"
+                      title="縮小為單行"
+                    >
+                      ▼ 縮小
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDismissedPeakId(currentPeak.id);
+                        setSelectedPeak(null);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                      title="隱藏目前山峰字卡"
+                    >
+                      ✕ 隱藏
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Selected POI (Trail / Waterfall / Viewpoint) Drawer Overlay */}
         {(selectedPoi || lockedPoi) && arViewMode === 'spots' && (
@@ -2056,8 +2362,8 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* Bottom Floating Control Deck */}
-        <div className="z-30 px-4 py-3 bg-slate-900/90 backdrop-blur-md border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-3">
+        {/* Bottom Floating Control Deck (Glassmorphism & Collapsible) */}
+        <div className="z-30 px-3.5 py-2.5 bg-black/40 backdrop-blur-xl border-t border-white/15 flex flex-col sm:flex-row justify-between items-center gap-2.5">
           
           {/* Left Controls: Season selector (Sun mode) VS Distance selector (Mountain mode) VS Spots selector VS Time simulator (Star mode) */}
           {arViewMode === 'sun' ? (
@@ -2115,28 +2421,50 @@ export default function CampsiteARModal({
               </div>
             </div>
           ) : arViewMode === 'mountain' ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold text-emerald-300">⛰️ 辨識範圍半徑：</span>
-              <div className="bg-slate-800 p-1 rounded-xl flex gap-1 border border-emerald-500/30">
-                {[
-                  { dist: 25, label: '近景 25km' },
-                  { dist: 50, label: '中景 50km' },
-                  { dist: 80, label: '遠眺 80km' }
-                ].map(item => (
-                  <button
-                    key={item.dist}
-                    onClick={() => setPeakMaxDistance(item.dist)}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                      peakMaxDistance === item.dist
-                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+            showPeakControls ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-emerald-300">⛰️ 辨識範圍半徑：</span>
+                <div className="bg-black/50 backdrop-blur-md p-1 rounded-xl flex gap-1 border border-white/20">
+                  {[
+                    { dist: 25, label: '近景 25km' },
+                    { dist: 50, label: '中景 50km' },
+                    { dist: 80, label: '遠眺 80km' }
+                  ].map(item => (
+                    <button
+                      key={item.dist}
+                      onClick={() => setPeakMaxDistance(item.dist)}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                        peakMaxDistance === item.dist
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md font-black'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPeakControls(false)}
+                  className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold transition-all"
+                  title="隱藏辨識半徑面板"
+                >
+                  ▼ 隱藏半徑
+                </button>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPeakControls(true)}
+                  className="px-3 py-1.5 rounded-xl bg-black/40 hover:bg-black/60 text-emerald-300 border border-white/20 backdrop-blur-md text-xs font-bold transition-all flex items-center gap-1.5 shadow-md active:scale-95"
+                  title="點擊展開辨識半徑與設定"
+                >
+                  <span>⛰️ 辨識半徑：{peakMaxDistance}km</span>
+                  <span className="text-amber-400 text-[10px]">▲ 展開半徑設定</span>
+                </button>
+              </div>
+            )
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold text-indigo-300">🌌 觀星推演時段：</span>
@@ -2204,11 +2532,15 @@ export default function CampsiteARModal({
                 type="button"
                 onClick={handleRefreshSpots}
                 disabled={loadingSpots}
-                className="px-3.5 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400/40 text-cyan-200 hover:text-white font-black text-xs rounded-xl shadow transition-all flex items-center gap-1.5"
-                title="重新查詢最新營區周邊步道與瀑布秘境"
+                className={`px-3.5 py-1.5 border font-black text-xs rounded-xl shadow transition-all flex items-center gap-1.5 ${
+                  cooldownRemainingMin > 0
+                    ? 'bg-amber-950/80 hover:bg-amber-900 border-amber-400/40 text-amber-200'
+                    : 'bg-cyan-950/80 hover:bg-cyan-900 border-cyan-400/40 text-cyan-200 hover:text-white'
+                }`}
+                title={cooldownRemainingMin > 0 ? `原地冷卻中（尚餘 ${cooldownRemainingMin} 分鐘，位移滿 500m 自動解除）` : '重新查詢最新營區周邊步道與瀑布秘境'}
               >
                 <span className={loadingSpots ? 'animate-spin' : ''}>🔄</span>
-                <span>{loadingSpots ? '查詢中...' : '即時查詢'}</span>
+                <span>{loadingSpots ? '查詢中...' : cooldownRemainingMin > 0 ? `即時查詢 (${cooldownRemainingMin}m)` : '即時查詢'}</span>
               </button>
             )}
             {arViewMode === 'stars' && (
