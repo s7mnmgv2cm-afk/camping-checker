@@ -43,14 +43,18 @@ export async function POST(request) {
     const proto = request.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
     const shareUrl = `${proto}://${host}/api/gpx/share/${id}.gpx`;
 
-    const gpxStudioUrl = `https://gpx.studio/?state=${encodeURIComponent(JSON.stringify({ urls: [shareUrl] }))}`;
+    // 依據 gpx.studio 官方規範 (https://gpx.studio/help/integration)：
+    // App 端支援 ?files=["url"]，Embed 端支援 ?options={"files":["url"]}，且需伺服器 CORS 標頭
+    const gpxStudioUrl = `https://gpx.studio/app?files=${encodeURIComponent(JSON.stringify([shareUrl]))}`;
+    const gpxStudioEmbedUrl = `https://gpx.studio/embed?options=${encodeURIComponent(JSON.stringify({ files: [shareUrl] }))}`;
 
     return NextResponse.json({
       success: true,
       id,
       name: cleanName,
       shareUrl,
-      gpxStudioUrl
+      gpxStudioUrl,
+      gpxStudioEmbedUrl
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*'
