@@ -108,7 +108,9 @@ export default function CampsiteARModal({
   onClose,
   windDir: propWindDir,
   windSpeed: propWindSpeed,
-  initialLocationMode = 'campsite'
+  initialLocationMode = 'campsite',
+  gpxTracker,
+  onOpenGpxTracker
 }) {
   const videoRef = useRef(null);
   const [hasCamera, setHasCamera] = useState(false);
@@ -190,6 +192,7 @@ export default function CampsiteARModal({
   const [dismissedPoiId, setDismissedPoiId] = useState(null); // 📱 隱藏鎖定景點字卡
   const [isPoiDrawerCollapsed, setIsPoiDrawerCollapsed] = useState(true); // 📱 預設縮小為單行透明膠囊
   const [isSpotsBannerDismissed, setIsSpotsBannerDismissed] = useState(false); // 📱 隱藏頂部周邊景點橫幅以節省空間
+  const [showSpotsControls, setShowSpotsControls] = useState(false); // 📱 景點探索半徑控制面板可收合/展開
 
   // 📐 Auto-detect native device orientation changes (Portrait 65° vs Landscape 105°)
   useEffect(() => {
@@ -1539,6 +1542,30 @@ export default function CampsiteARModal({
                     </span>
                   )}
                 </button>
+
+                {/* 🔴 GPX 軌跡航跡記錄器快捷按鈕 (ON/OFF 自由切換) */}
+                {gpxTracker && (
+                  <button
+                    type="button"
+                    data-testid="ar-gpx-btn"
+                    onClick={() => {
+                      if (onOpenGpxTracker) {
+                        onOpenGpxTracker();
+                      } else {
+                        gpxTracker.toggleRecording(campsite?.name ? `${campsite.name}_健行軌跡` : '健行軌跡');
+                      }
+                    }}
+                    className={`px-2 py-1 rounded-lg border font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${
+                      gpxTracker.isRecording
+                        ? 'bg-rose-500/25 hover:bg-rose-500/35 text-rose-300 border-rose-400/60 ring-1 ring-rose-400/40 animate-pulse'
+                        : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-white/10 hover:text-white'
+                    }`}
+                    title={gpxTracker.isRecording ? "GPX 記錄中，點擊開啟儀表板或停止" : "點擊開始記錄 ON/OFF 健行 GPX 軌跡"}
+                  >
+                    <span>{gpxTracker.isRecording ? '🔴' : '🧭'}</span>
+                    <span>{gpxTracker.isRecording ? `GPX ON (${gpxTracker.currentStats?.totalDistanceKm || '0'}km)` : 'GPX OFF'}</span>
+                  </button>
+                )}
               </div>
 
               {/* 右側：模式專屬徽章或動作 */}
@@ -1635,6 +1662,24 @@ export default function CampsiteARModal({
                 <span>{liveWeather?.weatherInfo?.icon || '⛅'}</span>
                 <span>{liveWeather ? `${Math.round(liveWeather.temp)}°` : '天候'}</span>
               </button>
+
+              {/* 🔴 折疊狀態下的 GPX 快速膠囊 */}
+              {gpxTracker && (
+                <button
+                  type="button"
+                  data-testid="gpx-collapsed-btn"
+                  onClick={() => onOpenGpxTracker ? onOpenGpxTracker() : gpxTracker.toggleRecording()}
+                  className={`flex items-center gap-1 backdrop-blur-md px-2.5 py-1.5 rounded-full border shadow-xl text-xs font-bold active:scale-95 transition-all ${
+                    gpxTracker.isRecording
+                      ? 'bg-rose-950/90 text-rose-300 border-rose-400/60 ring-1 ring-rose-400/40'
+                      : 'bg-slate-950/90 hover:bg-slate-900 text-slate-300 border-white/20'
+                  }`}
+                  title={gpxTracker.isRecording ? "GPX 記錄中，點擊開啟儀表板" : "開啟 GPX 軌跡記錄"}
+                >
+                  <span>{gpxTracker.isRecording ? '🔴' : '🧭'}</span>
+                  <span>{gpxTracker.isRecording ? `${gpxTracker.currentStats?.totalDistanceKm || '0'}km` : 'GPX'}</span>
+                </button>
+              )}
             </div>
 
             {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
@@ -1700,6 +1745,28 @@ export default function CampsiteARModal({
               <span>{spotToast}</span>
             </span>
             <button onClick={() => setSpotToast(null)} className="text-emerald-100 hover:text-white font-black text-sm px-1.5">✕</button>
+          </div>
+        )}
+
+        {/* 🧭 GPX 參考航跡與偏離航線即時 HUD 提示條 (離線/飛航模式防走錯) */}
+        {gpxTracker?.activeRoute && (
+          <div 
+            onClick={() => onOpenGpxTracker && onOpenGpxTracker()}
+            className={`px-3.5 py-1.5 flex items-center justify-between text-xs font-bold shadow-lg transition-all z-40 border-b cursor-pointer ${
+              gpxTracker.routeAdherence?.isOffTrack
+                ? 'bg-rose-600/95 text-white border-rose-400 animate-pulse'
+                : 'bg-emerald-900/90 text-emerald-200 border-emerald-400/40 backdrop-blur-md'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <span>{gpxTracker.routeAdherence?.isOffTrack ? '⚠️' : '🧭'}</span>
+              <span className="truncate">
+                {gpxTracker.routeAdherence?.isOffTrack 
+                  ? `【${gpxTracker.activeRoute.name}】偏離航線 ${gpxTracker.routeAdherence.distanceToRouteM}m！請回頭確認叉路`
+                  : `跟隨航跡：【${gpxTracker.activeRoute.name}】(在航線上 · 距 ${gpxTracker.routeAdherence?.distanceToRouteM || 0}m)`}
+              </span>
+            </div>
+            <span className="text-[10px] underline shrink-0 ml-2">航跡儀表板 ↗</span>
           </div>
         )}
 
@@ -3023,29 +3090,25 @@ export default function CampsiteARModal({
                     ? 'p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-sky-400/30 shadow-2xl max-w-xl'
                     : ''
                 }`}>
-                  {/* Top Row: Icon + Name + Badge + Distance on Left | [▼ 縮小] [✕ 隱藏] on Right */}
+                  {/* Row 1: Icon + Name + Badge on Left | [▼ 縮小] [✕ 隱藏] on Right (精準對齊 Image 2) */}
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-blue-600 flex items-center justify-center text-xl shrink-0 shadow-md border border-sky-300/40">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-600 to-blue-600 flex items-center justify-center text-lg shrink-0 shadow-md border border-sky-300/40">
                         {currentPoi.icon || '🌲'}
                       </div>
-                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                        <strong className="text-sm font-black text-white">{currentPoi.name}</strong>
-                        <span className="px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-400/30 text-[11px] whitespace-nowrap">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <strong className="text-sm font-black text-white truncate">{currentPoi.name}</strong>
+                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-400/30 text-[10px] whitespace-nowrap shrink-0">
                           {currentPoi.type === 'waterfall' ? '💧 瀑布野溪' : currentPoi.type === 'trail' ? '🥾 健行步道' : currentPoi.type === 'viewpoint' ? '🌅 景觀展望' : '🌲 秘境景點'}
-                        </span>
-                        <span className="text-amber-300 font-mono font-bold text-[11px] whitespace-nowrap">
-                          距此 {currentPoi.distanceKm} km
                         </span>
                       </div>
                     </div>
 
-                    {/* Symmetrical action buttons exactly matching Mountain Drawer */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => setIsPoiDrawerCollapsed(true)}
-                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-bold transition-all"
+                        className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-bold transition-all"
                         title="縮小為單行"
                       >
                         ▼ 縮小
@@ -3056,7 +3119,7 @@ export default function CampsiteARModal({
                           setDismissedPoiId(currentPoi.id);
                           setSelectedPoi(null);
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                        className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
                         title="隱藏目前景點字卡"
                       >
                         ✕ 隱藏
@@ -3064,40 +3127,47 @@ export default function CampsiteARModal({
                     </div>
                   </div>
 
-                  {/* Second Row: Direction, Travel Time & Google Maps Navigation Button */}
-                  <div className="flex items-center gap-2 text-[11px] flex-wrap pt-0.5">
-                    <span className="text-slate-300 font-mono">
-                      方位 {currentPoi.azimuth}° ({currentPoi.azimuthDir})
-                    </span>
-                    {currentPoi.travelTime && (
-                      <span className="px-1.5 py-0.2 rounded bg-slate-800 text-sky-300 font-semibold text-[10px]">
-                        {currentPoi.travelTime}
+                  {/* Row 2: 距此 X km (醒目亮黃字體) */}
+                  <div className="text-amber-300 font-mono font-bold text-xs pl-10">
+                    距此 {currentPoi.distanceKm} km
+                  </div>
+
+                  {/* Row 3: 方位 + 車程/步程 (左) | Google 導航按鈕 (右) */}
+                  <div className="flex items-center justify-between gap-2 text-[11px] pt-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-slate-300 font-mono">
+                        方位 {currentPoi.azimuth}° ({currentPoi.azimuthDir})
                       </span>
-                    )}
+                      {currentPoi.travelTime && (
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 font-semibold text-[10px] border border-sky-400/20">
+                          {currentPoi.travelTime}
+                        </span>
+                      )}
+                    </div>
                     <a
                       href={gmapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ml-auto px-3 py-1 bg-sky-400 hover:bg-sky-300 text-slate-950 font-black rounded-lg shadow-md transition-all flex items-center gap-1 text-[11px] active:scale-95"
+                      className="px-3 py-1 bg-sky-400 hover:bg-sky-300 text-slate-950 font-black rounded-lg shadow-md transition-all flex items-center gap-1 text-[11px] active:scale-95 shrink-0"
                     >
                       <span>🧭</span>
                       <span>Google 導航 ↗</span>
                     </a>
                   </div>
 
-                  {/* Third Row: Highlights / Trail details (Clamped to safe height with smooth scroll to preserve AR viewport) */}
+                  {/* Row 4: Highlights / 步道簡介 (最大限高以保證 AR 視野開闊) */}
                   {currentPoi.highlights && (
-                    <div className="max-h-[64px] overflow-y-auto overscroll-contain pr-1 text-slate-200 text-xs leading-relaxed break-words opacity-95 pt-0.5">
+                    <div className="max-h-[56px] overflow-y-auto overscroll-contain text-slate-200 text-xs leading-relaxed break-words opacity-95 pt-0.5 pr-1">
                       {currentPoi.highlights}
                     </div>
                   )}
 
-                  {/* Fourth Row: Safety Warning (FULL WIDTH) */}
+                  {/* Row 5: Safety Warning (安全提示全寬度對齊，避免壓縮文字) */}
                   {currentPoi.safetyWarning && (
-                    <p className="text-amber-300 text-[11px] flex items-center gap-1 pt-0.5">
-                      <span className="shrink-0">⚠️ 安全提示：</span>
-                      <span>{currentPoi.safetyWarning}</span>
-                    </p>
+                    <div className="text-amber-300 text-[11px] flex items-start gap-1 pt-0.5 leading-snug">
+                      <span className="shrink-0 font-bold">⚠️ 安全提示：</span>
+                      <span className="flex-1">{currentPoi.safetyWarning}</span>
+                    </div>
                   )}
                 </div>
               )}
