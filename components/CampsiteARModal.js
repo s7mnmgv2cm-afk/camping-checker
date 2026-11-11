@@ -113,9 +113,12 @@ export default function CampsiteARModal({
   onOpenGpxTracker
 }) {
   const videoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
   const [hasCamera, setHasCamera] = useState(false);
   const [cameraError, setCameraError] = useState(null);
+  const [isCameraOff, setIsCameraOff] = useState(false); // 🔋 關鏡頭極限省電 AR 模式 (釋放相機感光元件與 ISP，純陀螺儀 3D 運算，節省 70-80% 電力)
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [hasGyroscope, setHasGyroscope] = useState(false); // 🧭 是否偵測到硬體陀螺儀（有陀螺儀時完全隱藏底部手動轉盤）
   
   // AR View Mode: 'sun' (太陽搭帳導引) | 'stars' (夜間星空圖)
   const [arViewMode, setArViewMode] = useState('sun');
@@ -1190,24 +1193,35 @@ export default function CampsiteARModal({
     }
   }, [lockedPoi?.id, effectiveLandscape, selectedPoi]);
 
-  // Request Gyroscope & Camera Permissions on open
-  useEffect(() => {
-    if (!isOpen) return;
+  // 關閉相機串流硬體以達成最省電 (完全釋放 CMOS 感光元件與 ISP 晶片)
+  const stopCameraHardware = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => {
+        try { track.stop(); } catch (e) {}
+      });
+      cameraStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setHasCamera(false);
+  };
 
-    let localStream = null;
-
+  // 啟動後置相機鏡頭
+  const startCameraHardware = () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false
       })
       .then(stream => {
-        localStream = stream;
+        cameraStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(() => {});
         }
         setHasCamera(true);
+        setCameraError(null);
       })
       .catch(err => {
         console.warn('Camera access notice:', err);
@@ -1215,6 +1229,40 @@ export default function CampsiteARModal({
         setHasCamera(false);
       });
     }
+  };
+
+  // 切換關鏡頭極限省電 AR 模式
+  const toggleCameraPowerSave = () => {
+    setIsCameraOff(prev => {
+      const next = !prev;
+      if (next) {
+        stopCameraHardware();
+      } else {
+        startCameraHardware();
+      }
+      return next;
+    });
+  };
+
+  // 📷 相機生命週期獨立管理：僅隨 isOpen 與 isCameraOff 聯動，絕不受螢幕旋轉打斷重連
+  useEffect(() => {
+    if (!isOpen) {
+      stopCameraHardware();
+      return;
+    }
+
+    if (!isCameraOff) {
+      startCameraHardware();
+    }
+
+    return () => {
+      stopCameraHardware();
+    };
+  }, [isOpen, isCameraOff]);
+
+  // 🧭 陀螺儀與空間感測器生命週期（不論鏡頭開或關，持續以高精密度 3D 矩陣計算空間仰角與方位）
+  useEffect(() => {
+    if (!isOpen) return;
 
     const handleOrientation = (e) => {
       // 1. 🧭 智慧辨識螢幕旋轉角度 (支援最新 screen.orientation.angle 與舊版 window.orientation 及視窗比例)
@@ -1295,6 +1343,7 @@ export default function CampsiteARModal({
       setRoll(groundRoll || 0);
       setCamElevation(Math.max(-90, Math.min(90, roundedElev)));
       setPermissionGranted(true);
+      setHasGyroscope(true);
     };
 
     if (typeof DeviceOrientationEvent !== 'undefined') {
@@ -1313,9 +1362,6 @@ export default function CampsiteARModal({
 
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation);
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
     };
   }, [isOpen, isDeviceLandscape, permissionGranted]);
 
@@ -1385,6 +1431,21 @@ export default function CampsiteARModal({
 
               {/* 右側操作群 */}
               <div className="flex items-center gap-1.5">
+                {/* 🔋 關鏡頭極限省電 AR 模式切換按鈕 */}
+                <button
+                  type="button"
+                  data-testid="toggle-camera-power-save-btn"
+                  onClick={toggleCameraPowerSave}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer ${
+                    isCameraOff
+                      ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/60 ring-1 ring-emerald-400/40'
+                      : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border-white/15'
+                  }`}
+                  title={isCameraOff ? "相機硬體已關閉（極限省電中），點擊開啟實景鏡頭" : "關閉鏡頭進入極限省電 AR 模式（陀螺儀空間追蹤持續運作，節省 70-80% 電力）"}
+                >
+                  <span>{isCameraOff ? '🔋 關鏡省電中' : '📷 關鏡頭省電'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setShowFullscreenGuide(true)}
@@ -1684,6 +1745,22 @@ export default function CampsiteARModal({
 
             {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
             <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5">
+              {/* 🔋 關鏡頭極限省電微膠囊 */}
+              <button
+                type="button"
+                data-testid="toggle-camera-power-save-btn-collapsed"
+                onClick={toggleCameraPowerSave}
+                className={`px-2 sm:px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all shadow-md flex items-center gap-1 active:scale-95 cursor-pointer ${
+                  isCameraOff
+                    ? 'bg-emerald-950/90 text-emerald-300 border-emerald-400/60 ring-1 ring-emerald-400/40'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border-white/20'
+                }`}
+                title={isCameraOff ? "相機硬體已關閉（極限省電中），點擊開啟實景鏡頭" : "關閉鏡頭進入極限省電 AR 模式"}
+              >
+                <span>{isCameraOff ? '🔋' : '📷'}</span>
+                <span className="hidden sm:inline">{isCameraOff ? '省電中' : '關鏡省電'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowFullscreenGuide(true)}
@@ -1778,14 +1855,14 @@ export default function CampsiteARModal({
             ref={videoRef}
             playsInline
             muted
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${hasCamera ? 'opacity-100' : 'opacity-0'}`}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${hasCamera && !isCameraOff ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           />
 
-          {/* 1.5 Desktop / Fallback Stargazing Night Sky Backdrop */}
-          {!hasCamera && (
+          {/* 1.5 Desktop / Fallback / Eco Power-Saving Stargazing Backdrop */}
+          {(!hasCamera || isCameraOff) && (
             <div className={`absolute inset-0 transition-colors duration-500 flex flex-col items-center justify-center p-6 text-center ${
               arViewMode === 'stars' 
-                ? 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950 via-slate-950 to-black' 
+                ? 'bg-black' 
                 : 'bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950/60'
             }`}>
               <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30"></div>
@@ -1795,38 +1872,26 @@ export default function CampsiteARModal({
                 <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(#818cf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
               )}
 
-              {/* Discreet Simulator Controls (Positioned at bottom, clean & unobstructed) */}
-              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 bg-slate-900/85 border border-slate-700/80 px-3 py-1.5 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs">
-                <span className="text-sm">{arViewMode === 'stars' ? '🌌' : arViewMode === 'mountain' ? '⛰️' : '🔭'}</span>
-                <button
-                  onClick={() => setHeading(h => (h + 315) % 360)}
-                  className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200"
-                  title="逆轉 45°"
-                >
-                  ↺ 45°
-                </button>
-                <button
-                  onClick={() => setHeading(h => (h + 45) % 360)}
-                  className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200"
-                  title="順轉 45°"
-                >
-                  ↻ 45°
-                </button>
-                <button
-                  onClick={() => setCamElevation(e => Math.min(85, e + 15))}
-                  className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded border border-indigo-500/40 text-indigo-200"
-                  title="仰角 +15°"
-                >
-                  ▲ 仰角
-                </button>
-                <button
-                  onClick={() => setCamElevation(e => Math.max(-10, e - 15))}
-                  className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800 text-xs font-bold rounded border border-indigo-500/40 text-indigo-200"
-                  title="仰角 -15°"
-                >
-                  ▼ 仰角
-                </button>
-              </div>
+              {/* Discreet Simulator Controls (在有陀螺儀時完全不渲染，僅於無陀螺儀之電腦桌面備援) */}
+              {!hasGyroscope && !permissionGranted && (
+                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 bg-slate-900/85 border border-slate-700/80 px-3 py-1.5 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs">
+                  <span className="text-sm">{arViewMode === 'stars' ? '🌌' : arViewMode === 'mountain' ? '⛰️' : '🔭'}</span>
+                  <button
+                    onClick={() => setHeading(h => (h + 315) % 360)}
+                    className="px-2.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200 active:scale-95 transition-all cursor-pointer"
+                    title="逆轉 45°"
+                  >
+                    ↺ 45°
+                  </button>
+                  <button
+                    onClick={() => setHeading(h => (h + 45) % 360)}
+                    className="px-2.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200 active:scale-95 transition-all cursor-pointer"
+                    title="順轉 45°"
+                  >
+                    ↻ 45°
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1880,6 +1945,22 @@ export default function CampsiteARModal({
                 ))}
               </div>
             </div>
+
+            {/* 🔋 關鏡頭極限省電微膠囊 (居中顯示於羅盤正下方，完全不重疊擋視線) */}
+            {isCameraOff && (
+              <div className="mt-1.5 pointer-events-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 text-xs font-mono shadow-xl backdrop-blur-md animate-in fade-in">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-bold">🔋 關鏡頭極限省電中</span>
+                <span className="text-emerald-400/70 text-[11px] hidden sm:inline">(相機感光元件已關閉 · 陀螺儀 3D 空間追蹤中)</span>
+                <button
+                  type="button"
+                  onClick={toggleCameraPowerSave}
+                  className="ml-1 px-2.5 py-0.5 rounded-full bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-200 text-[11px] font-bold border border-emerald-400/40 transition-all cursor-pointer active:scale-95"
+                >
+                  開鏡 ↗
+                </button>
+              </div>
+            )}
 
             {/* Dynamic Guidance Banner: Sun mode vs Stars mode */}
             {arViewMode === 'sun' ? (

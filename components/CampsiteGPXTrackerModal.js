@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { PRESET_HIKING_TRAILS } from '../lib/gpx';
+import { PRESET_HIKING_TRAILS, generatePresetGPX, downloadGPXFile } from '../lib/gpx';
 import ElevationProfileChart from './ElevationProfileChart';
 import AutomotiveClusterDashboard from './AutomotiveClusterDashboard';
 
@@ -29,6 +29,7 @@ export default function CampsiteGPXTrackerModal({
     lastFinishedTrack,
     downloadGPX,
     exportToGoogleMyMaps,
+    openInGPXStudio,
     resetTrack,
     geoError,
     savedTracks = [],
@@ -55,6 +56,7 @@ export default function CampsiteGPXTrackerModal({
   const [editingTrack, setEditingTrack] = useState(null); // { id, name } for inline renaming
   const [editTrackNameInput, setEditTrackNameInput] = useState('');
   const [scrubbedPoint, setScrubbedPoint] = useState(null); // 聯動高度圖與時速表紅針
+  const [isPocketMode, setIsPocketMode] = useState(false); // 🌙 OLED 口袋暗屏省電防休眠模式
 
   const fileInputRef = useRef(null);
 
@@ -81,6 +83,41 @@ export default function CampsiteGPXTrackerModal({
       setSaveSuccessMsg('✅ 已成功將航跡存檔至手機記憶體！離線與飛航模式皆可隨時讀取。');
       setTimeout(() => setSaveSuccessMsg(null), 4000);
     }
+  };
+
+  const handleOpenGPXStudio = async (targetTrack = null) => {
+    try {
+      const res = await openInGPXStudio(targetTrack);
+      if (res?.mode === 'auto') {
+        setSaveSuccessMsg('🚀 已在 gpx.studio 全自動展開航跡與 3D/等高線分析！');
+      } else if (res?.mode === 'local') {
+        setSaveSuccessMsg('✨ 已下載 GPX 檔案並為您開啟 gpx.studio，直接將檔案拖入或點「載入」即可 0 秒檢視！');
+      }
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
+    } catch (e) {
+      console.error('Failed to open in gpx.studio:', e);
+    }
+  };
+
+  const handleOpenPresetInGPXStudio = (presetId) => {
+    const isLocalhost = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    
+    if (!isLocalhost && typeof window !== 'undefined') {
+      const shareUrl = `${window.location.origin}/api/gpx/share/${presetId}.gpx`;
+      const url = `https://gpx.studio/?state=${encodeURIComponent(JSON.stringify({ urls: [shareUrl] }))}`;
+      window.open(url, '_blank');
+      setSaveSuccessMsg(`🚀 已在 gpx.studio 自動載入【${presetId}】官方航跡！`);
+    } else {
+      const xml = generatePresetGPX(presetId);
+      const trail = PRESET_HIKING_TRAILS.find(t => t.id === presetId);
+      downloadGPXFile(`${trail?.name || presetId}.gpx`, xml);
+      if (typeof window !== 'undefined') {
+        window.open('https://gpx.studio/', '_blank');
+      }
+      setSaveSuccessMsg(`✨ 已下載【${trail?.name || presetId}】GPX 並開啟 gpx.studio，直接拖入即可 0 秒預覽！`);
+    }
+    setTimeout(() => setSaveSuccessMsg(null), 5000);
   };
 
   const handleFileUpload = async (e) => {
@@ -301,34 +338,54 @@ export default function CampsiteGPXTrackerModal({
                   }}
                   className="p-4 rounded-2xl border shadow-sm transition-all"
                 >
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
                         <span style={{ fontSize: '18px' }}>{isRecording ? '🔴' : '⚪'}</span>
-                        <strong style={{ color: isRecording ? '#DC2626' : '#2C231C', fontSize: '15px' }}>
+                        <strong style={{ color: isRecording ? '#DC2626' : '#2C231C', fontSize: '15px' }} className="whitespace-nowrap">
                           {isRecording ? '路徑記錄：ON (持續記錄中)' : '路徑記錄：OFF (待機狀態)'}
                         </strong>
                       </div>
                       <p style={{ color: '#706254', fontSize: '12px' }}>
                         {isRecording 
-                          ? '已啟動高精度 GPS 航跡收錄，切換為 OFF 即可完成此段路徑並匯出。'
+                          ? '已啟動高精度 GPS 航跡收錄。放口袋健行時可點「🌙 口袋省電」享 0 耗電與防休眠！'
                           : '切換為 ON 即可隨身記錄您在步道、營地周邊的實際行走足跡。'}
                       </p>
                     </div>
 
-                    {/* Tactile Big ON/OFF Switch Button */}
-                    <button
-                      type="button"
-                      onClick={handleToggleSwitch}
-                      style={{
-                        backgroundColor: isRecording ? '#DC2626' : '#E5E7EB',
-                        color: isRecording ? '#FFFFFF' : '#374151'
-                      }}
-                      className="px-5 py-2.5 rounded-2xl font-black text-sm shadow-md transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer"
-                    >
-                      <span className={`w-3 h-3 rounded-full ${isRecording ? 'bg-white animate-pulse' : 'bg-gray-400'}`} />
-                      <span>{isRecording ? '切換為 OFF' : '切換為 ON'}</span>
-                    </button>
+                    {/* Action Buttons: Pocket Mode + ON/OFF Master Switch */}
+                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                      {isRecording && (
+                        <button
+                          type="button"
+                          onClick={() => setIsPocketMode(true)}
+                          style={{
+                            backgroundColor: '#1E293B',
+                            color: '#F8FAFC',
+                            borderColor: '#334155'
+                          }}
+                          className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-2xl font-bold text-xs border shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer hover:bg-slate-800"
+                          title="關閉彩色螢幕改為純黑底，省電防誤觸，維持 100% GPS 連續記錄"
+                        >
+                          <span>🌙</span>
+                          <span>口袋省電 (防休眠)</span>
+                        </button>
+                      )}
+
+                      {/* Tactile Big ON/OFF Switch Button */}
+                      <button
+                        type="button"
+                        onClick={handleToggleSwitch}
+                        style={{
+                          backgroundColor: isRecording ? '#DC2626' : '#E5E7EB',
+                          color: isRecording ? '#FFFFFF' : '#374151'
+                        }}
+                        className="flex-1 sm:flex-none px-5 py-2.5 rounded-2xl font-black text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                      >
+                        <span className={`w-3 h-3 rounded-full ${isRecording ? 'bg-white animate-pulse' : 'bg-gray-400'}`} />
+                        <span>{isRecording ? '切換為 OFF' : '切換為 ON'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Track Name Customization */}
@@ -461,19 +518,39 @@ export default function CampsiteGPXTrackerModal({
                     </button>
                   </div>
 
+                  {/* 🌐 一鍵在 gpx.studio 線上檢視 (手機/電腦 0 秒直看) */}
+                  <button
+                    type="button"
+                    disabled={displayPointsCount === 0}
+                    onClick={() => handleOpenGPXStudio()}
+                    style={{
+                      background: displayPointsCount > 0 
+                        ? 'linear-gradient(135deg, #059669 0%, #0D9488 100%)' 
+                        : '#E5E7EB',
+                      color: displayPointsCount > 0 ? '#FFFFFF' : '#9CA3AF'
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer border border-emerald-600/30"
+                    title="免裝 App，一鍵在 gpx.studio 開啟完整衛星/等高線/3D高度分析"
+                  >
+                    <span className="text-base">🌐</span>
+                    <span>一鍵在 gpx.studio 線上檢視 (衛星/等高線/坡度) ↗</span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-white/25 text-[10px] font-mono font-bold">免裝 App</span>
+                  </button>
+
                   {/* 🗺️ 匯入至 Google 我的地圖 */}
                   <button
                     type="button"
                     disabled={displayPointsCount === 0}
                     onClick={() => setShowGoogleGuide(true)}
                     style={{
-                      backgroundColor: displayPointsCount > 0 ? '#2563EB' : '#E5E7EB',
-                      color: displayPointsCount > 0 ? '#FFFFFF' : '#9CA3AF'
+                      backgroundColor: displayPointsCount > 0 ? '#FAF7F2' : '#E5E7EB',
+                      borderColor: displayPointsCount > 0 ? '#DECDB9' : '#D1D5DB',
+                      color: displayPointsCount > 0 ? '#4A3C30' : '#9CA3AF'
                     }}
-                    className="w-full py-2.5 px-4 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-2 px-4 rounded-xl font-bold text-xs border shadow-xs transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>🗺️</span>
-                    <span>匯入至 Google 我的地圖 (Google My Maps) ↗</span>
+                    <span>備用方案：匯入至 Google 我的地圖 (Google My Maps) ↗</span>
                   </button>
 
                   {/* Reset Track Button */}
@@ -665,6 +742,17 @@ export default function CampsiteGPXTrackerModal({
 
                           <button
                             type="button"
+                            onClick={() => handleOpenGPXStudio(item)}
+                            style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', color: '#065F46' }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-emerald-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            title="在 gpx.studio 線上打開此軌跡"
+                          >
+                            <span>🌐</span>
+                            <span>gpx.studio</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => downloadGPX(item)}
                             style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
                             className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1 cursor-pointer"
@@ -823,6 +911,17 @@ export default function CampsiteGPXTrackerModal({
                           </div>
 
                           <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPresetInGPXStudio(trail.id)}
+                              style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', color: '#065F46' }}
+                              className="px-2 py-1 rounded-lg text-[10px] font-bold border hover:bg-emerald-100 transition-all flex items-center gap-1 cursor-pointer"
+                              title="在 gpx.studio 開啟此官方步道"
+                            >
+                              <span>🌐</span>
+                              <span>gpx.studio 預覽</span>
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => handleLoadPreset(trail.id)}
@@ -1073,6 +1172,78 @@ export default function CampsiteGPXTrackerModal({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🌙 OLED 口袋暗屏省電模式 (100% 保持前景 WakeLock + 0 耗電 + 防誤觸) */}
+      {isPocketMode && isRecording && (
+        <div 
+          onClick={() => setIsPocketMode(false)}
+          style={{ zIndex: 99999, backgroundColor: '#000000' }}
+          className="fixed inset-0 text-zinc-300 flex flex-col justify-between p-6 select-none cursor-pointer"
+        >
+          {/* Top Status */}
+          <div className="flex items-center justify-between text-xs text-zinc-500 font-mono pt-4 border-b border-zinc-900 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-emerald-400 font-bold tracking-wider">🛰️ GPS 背景持續記錄中</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-zinc-500 text-[11px]">
+              <span>🔒 防休眠 WakeLock 已鎖定</span>
+            </div>
+          </div>
+
+          {/* Central Dim Odometer HUD (OLED 0 耗電黑底極簡顯示) */}
+          <div className="text-center space-y-5 my-auto">
+            <div className="inline-block px-3 py-1 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-400 text-xs font-mono">
+              🌙 口袋暗屏省電中 (OLED 黑色像素 0 耗電)
+            </div>
+
+            {/* Giant Dim Time */}
+            <div className="text-5xl sm:text-6xl font-mono font-black text-zinc-100 tracking-tight">
+              {displayStats?.durationFormatted || '00:00:00'}
+            </div>
+
+            {/* Secondary Metrics */}
+            <div className="flex items-center justify-center gap-6 text-sm font-mono text-zinc-400 pt-2">
+              <div>
+                <span className="text-zinc-600 block text-xs">累計里程</span>
+                <span className="text-xl font-bold text-zinc-200">{displayStats?.totalDistanceKm || '0.00'} km</span>
+              </div>
+              <div className="w-px h-8 bg-zinc-800" />
+              <div>
+                <span className="text-zinc-600 block text-xs">即時時速</span>
+                <span className="text-xl font-bold text-emerald-400">{displayStats?.currentSpeedKmh || '0.0'} km/h</span>
+              </div>
+              <div className="w-px h-8 bg-zinc-800" />
+              <div>
+                <span className="text-zinc-600 block text-xs">當前海拔</span>
+                <span className="text-xl font-bold text-blue-400">{displayStats?.currentElevation !== null ? `${displayStats.currentElevation}m` : '--'}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 max-w-xs mx-auto pt-3 leading-relaxed">
+              手機可安心放入背包或口袋，黑屏防止誤觸，且維持 100% GPS 航跡不中斷！
+            </p>
+          </div>
+
+          {/* Bottom Tactile Unlock Button */}
+          <div className="pb-6 w-full max-w-xs mx-auto">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPocketMode(false);
+              }}
+              className="w-full py-3.5 px-6 rounded-2xl bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm font-bold shadow-lg hover:bg-zinc-800 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>🔓</span>
+              <span>點擊喚醒螢幕・返回儀表板</span>
+            </button>
+            <p className="text-[11px] text-zinc-700 text-center mt-2">
+              點擊畫面任意處或按鈕即可瞬間喚醒
+            </p>
           </div>
         </div>
       )}

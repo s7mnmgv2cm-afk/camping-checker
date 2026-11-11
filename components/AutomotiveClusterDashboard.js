@@ -134,38 +134,49 @@ export default function AutomotiveClusterDashboard({
   // Speedometer ticks with human-friendly intervals (0, 200, 400, 600, 800, 1000 for plane; 0, 40, 80, 120, 160 for car, etc.)
   const ticks = (() => {
     let step = 2;
-    let majorFreq = 2;
+    let majorFreq = 1;
+    let minorStep = 1;
     if (dialMax >= 1000) {
       step = 200; // 0, 200, 400, 600, 800, 1000
       majorFreq = 1;
+      minorStep = 100;
     } else if (dialMax >= 300) {
       step = 50; // 0, 50, 100, 150, 200, 250, 300, 350
       majorFreq = 1;
+      minorStep = 25;
     } else if (dialMax >= 150) {
-      step = 40; // 0, 40, 80, 120, 160
-      majorFreq = 1;
+      step = 20; // 0, 20, 40, 60, 80, 100, 120, 140, 160
+      majorFreq = 2; // labels on 0, 40, 80, 120, 160
+      minorStep = 10;
     } else if (dialMax >= 50) {
       step = 10; // 0, 10, 20, 30, 40, 50, 60
       majorFreq = 1;
+      minorStep = 5;
     } else if (dialMax >= 25) {
       step = 5; // 0, 5, 10, 15, 20, 25, 30
       majorFreq = 1;
+      minorStep = 2.5;
     } else {
-      step = 2; // 0, 2, 4, 6, 8, 10, 12
-      majorFreq = 2; // labels on 0, 4, 8, 12
+      // 徒步健行 12 km/h: 完美對稱 0, 2, 4, 6(頂峰), 8, 10, 12
+      step = 2;
+      majorFreq = 1; // 每一格都有主刻度數字，頂峰剛好是 6
+      minorStep = 1; // 1, 3, 5, 7, 9, 11 為副刻度線
     }
 
-    const count = Math.round(dialMax / step);
     const arr = [];
-    for (let i = 0; i <= count; i++) {
-      const val = Math.min(dialMax, i * step);
+    const totalSteps = Math.round(dialMax / minorStep);
+    for (let i = 0; i <= totalSteps; i++) {
+      const val = Math.min(dialMax, i * minorStep);
       const ratio = val / dialMax;
       const angle = startAngleDeg + (ratio * sweepAngleDeg);
-      const isMajor = (i % majorFreq === 0) || i === count || i === 0;
+      const isMajor = Math.abs((val % step)) < 0.001 || i === totalSteps || i === 0;
+      const isLabeled = isMajor && (Math.round(val / step) % majorFreq === 0 || i === totalSteps || i === 0);
+      
       const outer = polarToCartesian(cx, cy, 96, angle);
-      const inner = polarToCartesian(cx, cy, isMajor ? 84 : 88, angle);
-      const labelPos = polarToCartesian(cx, cy, 68, angle);
-      arr.push({ val, outer, inner, labelPos, isMajor });
+      const inner = polarToCartesian(cx, cy, isMajor ? 84 : 89, angle);
+      // 將標籤位置推近外環 (r=73)，徹底遠離中心文字，杜絕重疊碰撞
+      const labelPos = polarToCartesian(cx, cy, 73, angle);
+      arr.push({ val: Math.round(val), outer, inner, labelPos, isMajor, isLabeled });
     }
     return arr;
   })();
@@ -475,7 +486,7 @@ export default function AutomotiveClusterDashboard({
               />
             )}
 
-            {/* Ticks and Scale Numbers (Large and High Contrast) */}
+            {/* Ticks and Scale Numbers (Large and High Contrast, Outer Rim Alignment) */}
             {ticks.map((t, idx) => (
               <g key={idx}>
                 <line
@@ -484,15 +495,15 @@ export default function AutomotiveClusterDashboard({
                   x2={t.outer.x}
                   y2={t.outer.y}
                   stroke={t.isMajor ? themeStyles.gaugeTickMajor : themeStyles.gaugeTickMinor}
-                  strokeWidth={t.isMajor ? 2.5 : 1.5}
+                  strokeWidth={t.isMajor ? 2.5 : 1.2}
                 />
-                {t.isMajor && (
+                {t.isLabeled && (
                   <text
                     x={t.labelPos.x}
                     y={t.labelPos.y + 4}
                     textAnchor="middle"
                     fill={themeStyles.gaugeTickText}
-                    fontSize={dialMax >= 1000 ? "11" : "13"}
+                    fontSize={dialMax >= 1000 ? "10" : "12"}
                     fontFamily="monospace"
                     fontWeight="900"
                   >
@@ -502,22 +513,10 @@ export default function AutomotiveClusterDashboard({
               </g>
             ))}
 
-            {/* Speed Digital Readout (Clean layout: label at y=cy-48, big speed at y=cy-12, KM/H at y=cy+28) */}
+            {/* Speed Digital Readout (Porsche Cockpit Layout: Big Speed at center, KM/H below pivot, Status badge in open lower quadrant) */}
             <text 
               x={cx} 
-              y={cy - 48} 
-              textAnchor="middle" 
-              fill={themeStyles.accentColor} 
-              fontSize="12" 
-              fontFamily="sans-serif" 
-              fontWeight="900" 
-              letterSpacing="1"
-            >
-              {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 步道巡航均速' : '即時行走速度'))}
-            </text>
-            <text 
-              x={cx} 
-              y={cy - 12} 
+              y={cy - 14} 
               textAnchor="middle" 
               fill={themeStyles.textColorPrimary} 
               fontSize={effectiveSpeed >= 100 ? "38" : "44"} 
@@ -528,15 +527,27 @@ export default function AutomotiveClusterDashboard({
             </text>
             <text 
               x={cx} 
-              y={cy + 28} 
+              y={cy + 26} 
               textAnchor="middle" 
               fill={themeStyles.textColorSecondary} 
-              fontSize="13" 
+              fontSize="12" 
               fontFamily="monospace" 
               fontWeight="900" 
-              letterSpacing="1.5"
+              letterSpacing="2"
             >
               KM / H
+            </text>
+            <text 
+              x={cx} 
+              y={cy + 42} 
+              textAnchor="middle" 
+              fill={themeStyles.accentColor} 
+              fontSize="11" 
+              fontFamily="sans-serif" 
+              fontWeight="900" 
+              letterSpacing="0.5"
+            >
+              {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 步道巡航均速' : '即時行走速度'))}
             </text>
 
             {/* Speed Needle Pointer (Classic Rally Red with CSS 60fps Hardware Smooth Transition & Counterweight Tail) */}
