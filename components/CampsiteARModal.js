@@ -458,8 +458,8 @@ export default function CampsiteARModal({
     try {
       const isCurrentGps = locationMode === 'current';
       const cacheKey = isCurrentGps
-        ? `campsite_ai_spots_gps_${Number(lat).toFixed(3)}_${Number(lng).toFixed(3)}`
-        : `campsite_ai_spots_${campsite?.id || campsite?.name || 'default'}`;
+        ? `campsite_ai_spots_v3_gps_${Number(lat).toFixed(3)}_${Number(lng).toFixed(3)}`
+        : `campsite_ai_spots_v3_${campsite?.id || campsite?.name || 'default'}`;
       if (typeof window !== 'undefined') {
         localStorage.removeItem(cacheKey);
       }
