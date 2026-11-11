@@ -4,6 +4,11 @@ import './globals.css';
 export const metadata = {
   title: '全台露營區即時空位搜尋',
   description: '整合各大平台露營區空位、車程與 AI 評價',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: '露營小幫手'
+  }
 };
 
 export const viewport = {
@@ -12,7 +17,7 @@ export const viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#020617',
+  themeColor: '#000000',
 };
 
 export default function RootLayout({ children }) {
