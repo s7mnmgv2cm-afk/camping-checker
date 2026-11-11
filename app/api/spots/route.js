@@ -412,12 +412,33 @@ export async function POST(request) {
           .maybeSingle();
 
         if (!campErr && campTableRecord?.spots && Array.isArray(campTableRecord.spots) && campTableRecord.spots.length > 0) {
+          // 確保即便是歷史快取，也即時聚合《健行筆記》官方步道
+          const hasBiji = campTableRecord.spots.some(s => s.source === '健行筆記 (hiking.biji.co)');
+          let finalSpots = campTableRecord.spots;
+
+          if (!hasBiji) {
+            const bijiTrails = getNearbyHikingBijiTrails(lat, lng, 20, 6);
+            if (bijiTrails.length > 0) {
+              const combinedSpots = [...campTableRecord.spots];
+              const spotNames = new Set(combinedSpots.map(s => s.name));
+              for (const bt of bijiTrails) {
+                if (!spotNames.has(bt.name)) {
+                  combinedSpots.push(bt);
+                }
+              }
+              combinedSpots.sort((a, b) => a.distance_km - b.distance_km);
+              finalSpots = combinedSpots.slice(0, 10);
+              // 非同步更新 Supabase 雲端快取
+              supabase.from('campsites').update({ spots: finalSpots }).eq('id', id).then(() => {});
+            }
+          }
+
           return NextResponse.json({
             success: true,
             source: 'supabase_cloud',
             campsite: campTableRecord.name || name,
             summary: `${campTableRecord.name || name} 周邊鄰近天然步道、溪谷瀑布與觀景點位。`,
-            spots: campTableRecord.spots
+            spots: finalSpots
           });
         }
       } catch (sbErr) {
