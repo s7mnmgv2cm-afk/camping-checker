@@ -1872,26 +1872,7 @@ export default function CampsiteARModal({
                 <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(#818cf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
               )}
 
-              {/* Discreet Simulator Controls (在有陀螺儀時完全不渲染，僅於無陀螺儀之電腦桌面備援) */}
-              {!hasGyroscope && !permissionGranted && (
-                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 bg-slate-900/85 border border-slate-700/80 px-3 py-1.5 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 text-xs">
-                  <span className="text-sm">{arViewMode === 'stars' ? '🌌' : arViewMode === 'mountain' ? '⛰️' : '🔭'}</span>
-                  <button
-                    onClick={() => setHeading(h => (h + 315) % 360)}
-                    className="px-2.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200 active:scale-95 transition-all cursor-pointer"
-                    title="逆轉 45°"
-                  >
-                    ↺ 45°
-                  </button>
-                  <button
-                    onClick={() => setHeading(h => (h + 45) % 360)}
-                    className="px-2.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded border border-slate-600 text-slate-200 active:scale-95 transition-all cursor-pointer"
-                    title="順轉 45°"
-                  >
-                    ↻ 45°
-                  </button>
-                </div>
-              )}
+
             </div>
           )}
 

@@ -58,6 +58,87 @@ export default function CampsiteGPXTrackerModal({
   const [scrubbedPoint, setScrubbedPoint] = useState(null); // 聯動高度圖與時速表紅針
   const [isPocketMode, setIsPocketMode] = useState(false); // 🌙 OLED 口袋暗屏省電防休眠模式
 
+  // 🔒 口袋防誤觸雙重機制狀態 (滑軌滑動解鎖 + 2 秒長按緊急解鎖)
+  const [sliderPosition, setSliderPosition] = useState(0);
+  const [isDraggingSlider, setIsDraggingSlider] = useState(false);
+  const [longPressProgress, setLongPressProgress] = useState(0);
+  const [showTouchHint, setShowTouchHint] = useState(false);
+  const sliderTrackRef = useRef(null);
+  const longPressIntervalRef = useRef(null);
+  const touchHintTimeoutRef = useRef(null);
+
+  // 1. 滑動解鎖處理函式 (Touch & Pointer Events)
+  const handleSliderPointerDown = (e) => {
+    e.stopPropagation();
+    setIsDraggingSlider(true);
+    try {
+      e.target.setPointerCapture?.(e.pointerId);
+    } catch (err) {}
+  };
+
+  const handleSliderPointerMove = (e) => {
+    if (!isDraggingSlider || !sliderTrackRef.current) return;
+    const trackRect = sliderTrackRef.current.getBoundingClientRect();
+    const handleWidth = 48;
+    const maxDrag = Math.max(50, trackRect.width - handleWidth - 8);
+    const currentX = e.clientX - trackRect.left - handleWidth / 2;
+    const clampedX = Math.max(0, Math.min(maxDrag, currentX));
+    setSliderPosition(clampedX);
+
+    // 拖曳超過 80% 門檻即確認為使用者意圖解鎖，杜絕口袋布料摩擦
+    if (clampedX >= maxDrag * 0.8) {
+      setIsDraggingSlider(false);
+      setIsPocketMode(false);
+      setSliderPosition(0);
+      try { navigator.vibrate?.([30, 60, 30]); } catch (err) {}
+    }
+  };
+
+  const handleSliderPointerUp = (e) => {
+    if (!isDraggingSlider) return;
+    setIsDraggingSlider(false);
+    setSliderPosition(0); // 未拉滿則立即彈回原點
+  };
+
+  // 2. 長按 2 秒解鎖處理函式 (手套或雨中情境)
+  const startLongPress = (e) => {
+    e.stopPropagation();
+    const startTime = Date.now();
+    const duration = 2000;
+
+    if (longPressIntervalRef.current) clearInterval(longPressIntervalRef.current);
+    longPressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(100, Math.round((elapsed / duration) * 100));
+      setLongPressProgress(progress);
+      if (elapsed >= duration) {
+        clearInterval(longPressIntervalRef.current);
+        longPressIntervalRef.current = null;
+        setIsPocketMode(false);
+        setLongPressProgress(0);
+        try { navigator.vibrate?.(60); } catch (err) {}
+      }
+    }, 40);
+  };
+
+  const cancelLongPress = (e) => {
+    if (e) e.stopPropagation();
+    if (longPressIntervalRef.current) {
+      clearInterval(longPressIntervalRef.current);
+      longPressIntervalRef.current = null;
+    }
+    setLongPressProgress(0);
+  };
+
+  // 3. 口袋盲摸/腿部皮膚碰觸偵測（不解鎖，僅亮起淡雅防誤觸提示，保持暗屏極限省電）
+  const handlePocketScreenTap = () => {
+    setShowTouchHint(true);
+    if (touchHintTimeoutRef.current) clearTimeout(touchHintTimeoutRef.current);
+    touchHintTimeoutRef.current = setTimeout(() => {
+      setShowTouchHint(false);
+    }, 2500);
+  };
+
   const fileInputRef = useRef(null);
 
   // Toggle handler for the ON/OFF switch
@@ -1176,37 +1257,45 @@ export default function CampsiteGPXTrackerModal({
         </div>
       )}
 
-      {/* 🌙 OLED 口袋暗屏省電模式 (100% 保持前景 WakeLock + 0 耗電 + 防誤觸) */}
+      {/* 🌙 OLED 口袋暗屏省電模式 (100% 保持前景 WakeLock + 0 耗電 + 滑軌/長按雙重防誤觸) */}
       {isPocketMode && isRecording && (
         <div 
-          onClick={() => setIsPocketMode(false)}
+          onClick={handlePocketScreenTap}
           style={{ zIndex: 99999, backgroundColor: '#000000' }}
-          className="fixed inset-0 text-zinc-300 flex flex-col justify-between p-6 select-none cursor-pointer"
+          className="fixed inset-0 text-zinc-300 flex flex-col justify-between p-5 select-none overflow-hidden"
         >
           {/* Top Status */}
-          <div className="flex items-center justify-between text-xs text-zinc-500 font-mono pt-4 border-b border-zinc-900 pb-3">
+          <div className="flex items-center justify-between text-xs text-zinc-500 font-mono pt-3 border-b border-zinc-900 pb-3">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-emerald-400 font-bold tracking-wider">🛰️ GPS 背景持續記錄中</span>
             </div>
             <div className="flex items-center gap-1.5 text-zinc-500 text-[11px]">
-              <span>🔒 防休眠 WakeLock 已鎖定</span>
+              <span>🔒 防誤觸鎖定中 · 0 耗電</span>
             </div>
           </div>
 
           {/* Central Dim Odometer HUD (OLED 0 耗電黑底極簡顯示) */}
-          <div className="text-center space-y-5 my-auto">
-            <div className="inline-block px-3 py-1 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-400 text-xs font-mono">
-              🌙 口袋暗屏省電中 (OLED 黑色像素 0 耗電)
-            </div>
+          <div className="text-center space-y-4 my-auto">
+            {/* Accidental Touch Feedback Toast */}
+            {showTouchHint ? (
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-amber-500/40 bg-amber-950/80 text-amber-300 text-xs font-mono shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+                <span>🔒</span>
+                <span>口袋防誤觸中：請向右滑動滑軌或長按 2 秒解鎖</span>
+              </div>
+            ) : (
+              <div className="inline-block px-3 py-1 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-500 text-xs font-mono">
+                🌙 口袋暗屏省電中 (OLED 黑色像素 0 耗電)
+              </div>
+            )}
 
             {/* Giant Dim Time */}
-            <div className="text-5xl sm:text-6xl font-mono font-black text-zinc-100 tracking-tight">
+            <div className="text-5xl sm:text-6xl font-mono font-black text-zinc-200 tracking-tight">
               {displayStats?.durationFormatted || '00:00:00'}
             </div>
 
             {/* Secondary Metrics */}
-            <div className="flex items-center justify-center gap-6 text-sm font-mono text-zinc-400 pt-2">
+            <div className="flex items-center justify-center gap-6 text-sm font-mono text-zinc-400 pt-1">
               <div>
                 <span className="text-zinc-600 block text-xs">累計里程</span>
                 <span className="text-xl font-bold text-zinc-200">{displayStats?.totalDistanceKm || '0.00'} km</span>
@@ -1223,27 +1312,69 @@ export default function CampsiteGPXTrackerModal({
               </div>
             </div>
 
-            <p className="text-xs text-zinc-600 max-w-xs mx-auto pt-3 leading-relaxed">
-              手機可安心放入背包或口袋，黑屏防止誤觸，且維持 100% GPS 航跡不中斷！
+            <p className="text-xs text-zinc-600 max-w-xs mx-auto pt-2 leading-relaxed">
+              放入背包或口袋時，布料摩擦與皮膚碰觸絕不誤觸喚醒，維持 100% GPS 航跡！
             </p>
           </div>
 
-          {/* Bottom Tactile Unlock Button */}
-          <div className="pb-6 w-full max-w-xs mx-auto">
+          {/* Bottom Dual Anti-Touch Unlock Controls (向右滑軌 + 2 秒長按備援) */}
+          <div className="pb-4 w-full max-w-sm mx-auto space-y-2.5" onClick={(e) => e.stopPropagation()}>
+            
+            {/* 1. 滑動解鎖滑軌 (Swipe to Unlock Slider) */}
+            <div 
+              ref={sliderTrackRef}
+              onPointerMove={handleSliderPointerMove}
+              onPointerUp={handleSliderPointerUp}
+              onPointerCancel={handleSliderPointerUp}
+              className="relative h-14 bg-zinc-900/90 border border-zinc-700/80 rounded-2xl flex items-center justify-center overflow-hidden touch-none select-none shadow-xl"
+            >
+              {/* Animated Progress Fill Behind Thumb */}
+              <div 
+                style={{ width: `${sliderPosition + 48}px` }} 
+                className="absolute left-0 top-0 bottom-0 bg-emerald-950/70 border-r border-emerald-500/40 pointer-events-none transition-all duration-75"
+              />
+
+              {/* Background Guide Text */}
+              <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-zinc-400 pointer-events-none tracking-wider">
+                <span>向右滑動解鎖</span>
+                <span className="animate-pulse">❯❯❯</span>
+                <span className="text-emerald-400">🔓</span>
+              </div>
+
+              {/* Draggable Slider Thumb Handle */}
+              <div 
+                style={{
+                  transform: `translateX(${sliderPosition}px)`,
+                  transition: isDraggingSlider ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1)'
+                }}
+                onPointerDown={handleSliderPointerDown}
+                data-testid="pocket-slider-thumb"
+                className="absolute left-1 top-1 bottom-1 w-12 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 text-white flex items-center justify-center font-bold text-lg shadow-lg cursor-grab active:cursor-grabbing active:scale-95"
+              >
+                <span>➔</span>
+              </div>
+            </div>
+
+            {/* 2. 手套/雨中長按 2 秒解鎖備援 (Press & Hold for 2 seconds) */}
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsPocketMode(false);
-              }}
-              className="w-full py-3.5 px-6 rounded-2xl bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm font-bold shadow-lg hover:bg-zinc-800 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              onPointerDown={startLongPress}
+              onPointerUp={cancelLongPress}
+              onPointerLeave={cancelLongPress}
+              onPointerCancel={cancelLongPress}
+              data-testid="pocket-long-press-unlock-btn"
+              className="relative w-full py-2.5 px-4 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-mono font-bold flex items-center justify-center gap-2 overflow-hidden active:scale-98 transition-all cursor-pointer"
             >
-              <span>🔓</span>
-              <span>點擊喚醒螢幕・返回儀表板</span>
+              {/* Fill Progress Bar */}
+              <div 
+                style={{ width: `${longPressProgress}%` }}
+                className="absolute left-0 top-0 bottom-0 bg-emerald-600/30 border-r border-emerald-400 pointer-events-none transition-all duration-75"
+              />
+              <span className="relative z-10">⏱️</span>
+              <span className="relative z-10">
+                {longPressProgress > 0 ? `解鎖中 ${longPressProgress}% (長按不放)` : '手套或雨中：長按 2 秒解鎖'}
+              </span>
             </button>
-            <p className="text-[11px] text-zinc-700 text-center mt-2">
-              點擊畫面任意處或按鈕即可瞬間喚醒
-            </p>
           </div>
         </div>
       )}
