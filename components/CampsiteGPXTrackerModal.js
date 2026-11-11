@@ -61,6 +61,18 @@ export default function CampsiteGPXTrackerModal({
   const [pocketAlwaysDim, setPocketAlwaysDim] = useState(false); // 是否切換為常駐微光
   const pocketAwakeTimeoutRef = useRef(null);
 
+  // 🌙 OLED 0 耗電純黑 ⇄ ☀️ 首頁純白主題切換
+  const [displayTheme, setDisplayTheme] = useState('white'); // 'white' | 'oled'
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('camping_gpx_display_theme');
+      if (saved === 'oled' || saved === 'white') {
+        setDisplayTheme(saved);
+      }
+    } catch (e) {}
+  }, []);
+  const isOled = displayTheme === 'oled';
+
   // 🌙 口袋省電黑化原生系統狀態列 (消滅 iOS Safari 頂部白條，鎖定 True OLED Black)
   useEffect(() => {
     if (!isPocketMode) return;
@@ -316,26 +328,41 @@ export default function CampsiteGPXTrackerModal({
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-150">
         <div 
-          style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
-          className="relative w-full max-w-xl max-h-[94vh] border rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+          style={{
+            backgroundColor: isOled ? '#000000' : '#F8FAFC',
+            borderColor: isOled ? '#27272A' : '#E2E8F0',
+            color: isOled ? '#F4F4F5' : '#0F172A'
+          }}
+          className="relative w-full max-w-xl max-h-[94vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden font-sans border transition-colors duration-200"
         >
           {/* Header */}
           <div 
-            style={{ backgroundColor: '#F4EDE2', borderColor: '#E7DFD3' }}
-            className="px-4 sm:px-5 py-3 border-b flex items-center justify-between gap-3 shrink-0"
+            style={{
+              backgroundColor: isOled ? '#000000' : '#FFFFFF',
+              borderColor: isOled ? '#18181B' : '#E2E8F0'
+            }}
+            className="px-4 sm:px-5 py-3 border-b flex items-center justify-between gap-2.5 shrink-0"
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <span className="text-2xl sm:text-3xl shrink-0">🧭</span>
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 style={{ color: '#2C231C' }} className="text-base sm:text-lg font-black leading-tight">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className={`text-base sm:text-lg font-black tracking-tight leading-tight ${
+                    isOled ? 'text-white' : 'text-slate-900'
+                  }`}>
                     GPX 戶外路徑記錄器
                   </h3>
                   <span 
                     style={{
-                      backgroundColor: isRecording ? '#FEE2E2' : '#E5E7EB',
-                      color: isRecording ? '#DC2626' : '#4B5563',
-                      borderColor: isRecording ? '#FCA5A5' : '#D1D5DB'
+                      backgroundColor: isRecording 
+                        ? (isOled ? '#450A0A' : '#FEE2E2') 
+                        : (isOled ? '#18181B' : '#F1F5F9'),
+                      color: isRecording 
+                        ? (isOled ? '#F87171' : '#DC2626') 
+                        : (isOled ? '#A1A1AA' : '#475569'),
+                      borderColor: isRecording 
+                        ? (isOled ? '#7F1D1D' : '#FCA5A5') 
+                        : (isOled ? '#27272A' : '#CBD5E1')
                     }}
                     className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border flex items-center gap-1"
                   >
@@ -343,28 +370,56 @@ export default function CampsiteGPXTrackerModal({
                     <span>{isRecording ? 'ON 記錄中' : 'OFF 已停止'}</span>
                   </span>
                 </div>
-                <p style={{ color: '#706254' }} className="text-xs mt-0.5 font-mono">
+                <p className={`text-xs mt-0.5 font-mono ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                   精確記錄 ON/OFF 航線 · 離線手機存檔 · 支援別人的 GPX
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              style={{ backgroundColor: '#EAE0D2', color: '#4A3C30' }}
-              className="w-8 h-8 rounded-full hover:opacity-80 flex items-center justify-center font-bold text-sm transition-opacity shrink-0 cursor-pointer"
-              title="關閉視窗 (背景仍會持續記錄)"
-            >
-              ✕
-            </button>
+            {/* Header Right Actions: OLED Theme Toggle + Close Button */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* 🌙 OLED 0 耗電純黑 ⇄ ☀️ 首頁純白快速切換鈕 */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = displayTheme === 'white' ? 'oled' : 'white';
+                  setDisplayTheme(next);
+                  try { localStorage.setItem('camping_gpx_display_theme', next); } catch (e) {}
+                }}
+                className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold border transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                  isOled
+                    ? 'bg-zinc-900 text-emerald-400 border-emerald-500/50 shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+                title="切換首頁純白 ⇄ OLED 極黑 (0 耗電)"
+              >
+                <span>{isOled ? '🌙 OLED 極黑' : '☀️ 首頁純白'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors shrink-0 cursor-pointer ${
+                  isOled 
+                    ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+                }`}
+                title="關閉視窗 (背景仍會持續記錄)"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* ✈️ 飛航模式無網路·安全導航與防走錯提示條 (點擊看科學原理) */}
           <div 
             onClick={() => setShowAirplaneModeModal(true)}
-            style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', color: '#92400E' }}
-            className="px-3.5 py-1.5 border-b text-xs flex items-center justify-between gap-2 cursor-pointer hover:bg-amber-100 transition-colors shrink-0"
+            style={{
+              backgroundColor: isOled ? '#1C1917' : '#FEF3C7',
+              borderColor: isOled ? '#292524' : '#FDE68A',
+              color: isOled ? '#FBBF24' : '#92400E'
+            }}
+            className="px-3.5 py-1.5 border-b text-xs flex items-center justify-between gap-2 cursor-pointer hover:opacity-90 transition-opacity shrink-0"
           >
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-sm shrink-0">✈️</span>
@@ -375,17 +430,20 @@ export default function CampsiteGPXTrackerModal({
 
           {/* Navigation Tabs: 1. 路徑記錄 | 2. 手機存檔庫 | 3. 匯入/別人紀錄 */}
           <div 
-            style={{ backgroundColor: '#EFE6D8', borderColor: '#DECDB9' }}
-            className="flex items-center border-b p-1 gap-1 text-xs font-bold shrink-0"
+            style={{
+              backgroundColor: isOled ? '#09090B' : '#F1F5F9',
+              borderColor: isOled ? '#18181B' : '#E2E8F0'
+            }}
+            className="flex items-center border-b p-1.5 gap-1.5 text-xs font-bold shrink-0"
           >
             <button
               type="button"
               onClick={() => setActiveTab('record')}
-              style={{
-                backgroundColor: activeTab === 'record' ? '#FAF7F2' : 'transparent',
-                color: activeTab === 'record' ? '#261E18' : '#706254'
-              }}
-              className="flex-1 py-1.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+              className={`flex-1 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'record' 
+                  ? (isOled ? 'bg-zinc-900 text-emerald-400 border border-zinc-700 shadow-sm font-black' : 'bg-white text-slate-900 shadow-xs font-black')
+                  : (isOled ? 'text-zinc-500 hover:text-zinc-300 font-medium' : 'text-slate-600 hover:text-slate-900 font-medium')
+              }`}
             >
               <span>⏺️</span>
               <span>路徑記錄 (ON/OFF)</span>
@@ -395,11 +453,11 @@ export default function CampsiteGPXTrackerModal({
             <button
               type="button"
               onClick={() => setActiveTab('history')}
-              style={{
-                backgroundColor: activeTab === 'history' ? '#FAF7F2' : 'transparent',
-                color: activeTab === 'history' ? '#261E18' : '#706254'
-              }}
-              className="flex-1 py-1.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+              className={`flex-1 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'history' 
+                  ? (isOled ? 'bg-zinc-900 text-emerald-400 border border-zinc-700 shadow-sm font-black' : 'bg-white text-slate-900 shadow-xs font-black')
+                  : (isOled ? 'text-zinc-500 hover:text-zinc-300 font-medium' : 'text-slate-600 hover:text-slate-900 font-medium')
+              }`}
             >
               <span>📱</span>
               <span>手機存檔庫 ({savedTracks.length})</span>
@@ -408,11 +466,11 @@ export default function CampsiteGPXTrackerModal({
             <button
               type="button"
               onClick={() => setActiveTab('import')}
-              style={{
-                backgroundColor: activeTab === 'import' ? '#FAF7F2' : 'transparent',
-                color: activeTab === 'import' ? '#261E18' : '#706254'
-              }}
-              className="flex-1 py-1.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+              className={`flex-1 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'import' 
+                  ? (isOled ? 'bg-zinc-900 text-emerald-400 border border-zinc-700 shadow-sm font-black' : 'bg-white text-slate-900 shadow-xs font-black')
+                  : (isOled ? 'text-zinc-500 hover:text-zinc-300 font-medium' : 'text-slate-600 hover:text-slate-900 font-medium')
+              }`}
             >
               <span>📥</span>
               <span>匯入 / 別人紀錄</span>
@@ -437,8 +495,11 @@ export default function CampsiteGPXTrackerModal({
 
           {/* Modal Body */}
           <div 
-            style={{ backgroundColor: '#FAF7F2' }}
-            className="p-3.5 sm:p-5 space-y-3.5 overflow-y-auto flex-1 max-h-[75vh]"
+            style={{
+              backgroundColor: isOled ? '#000000' : '#F8FAFC',
+              color: isOled ? '#F4F4F5' : '#0F172A'
+            }}
+            className="p-3.5 sm:p-5 space-y-3.5 overflow-y-auto flex-1 max-h-[75vh] font-sans"
           >
             {/* ── TAB 1: 即時路徑記錄 (ON / OFF) ── */}
             {activeTab === 'record' && (
@@ -447,8 +508,12 @@ export default function CampsiteGPXTrackerModal({
                 {activeRoute && (
                   <div 
                     style={{
-                      backgroundColor: routeAdherence?.isOffTrack ? '#FEF2F2' : '#F0FDF4',
-                      borderColor: routeAdherence?.isOffTrack ? '#F87171' : '#86EFAC'
+                      backgroundColor: routeAdherence?.isOffTrack 
+                        ? (isOled ? '#450A0A' : '#FEF2F2') 
+                        : (isOled ? '#022C22' : '#F0FDF4'),
+                      borderColor: routeAdherence?.isOffTrack 
+                        ? (isOled ? '#991B1B' : '#F87171') 
+                        : (isOled ? '#065F46' : '#86EFAC')
                     }}
                     className="p-3 rounded-2xl border shadow-sm flex items-center justify-between gap-2"
                   >
@@ -456,11 +521,11 @@ export default function CampsiteGPXTrackerModal({
                       <span className="text-lg shrink-0">{routeAdherence?.isOffTrack ? '⚠️' : '🧭'}</span>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <strong style={{ color: routeAdherence?.isOffTrack ? '#991B1B' : '#166534' }} className="text-xs font-black truncate">
+                          <strong style={{ color: routeAdherence?.isOffTrack ? '#F87171' : '#34D399' }} className="text-xs font-black truncate">
                             跟隨航跡：{activeRoute.name}
                           </strong>
                         </div>
-                        <p style={{ color: routeAdherence?.isOffTrack ? '#B91C1C' : '#15803D' }} className="text-[11px] font-mono">
+                        <p style={{ color: routeAdherence?.isOffTrack ? '#FCA5A5' : '#6EE7B7' }} className="text-[11px] font-mono">
                           {routeAdherence ? (
                             routeAdherence.isOffTrack 
                               ? `⚠️ 偏離軌跡 ${routeAdherence.distanceToRouteM}m！建議回頭確認叉路口`
@@ -473,8 +538,11 @@ export default function CampsiteGPXTrackerModal({
                     <button
                       type="button"
                       onClick={clearActiveRoute}
-                      style={{ backgroundColor: '#E2E8F0', color: '#475569' }}
-                      className="px-2 py-1 rounded-lg text-[10px] font-bold shrink-0 hover:bg-slate-300"
+                      style={{ 
+                        backgroundColor: isOled ? '#18181B' : '#E2E8F0', 
+                        color: isOled ? '#A1A1AA' : '#475569' 
+                      }}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold shrink-0 hover:opacity-80 cursor-pointer"
                     >
                       解除跟隨
                     </button>
@@ -484,20 +552,24 @@ export default function CampsiteGPXTrackerModal({
                 {/* 🔴 ON / OFF Main Master Switch Card */}
                 <div 
                   style={{
-                    backgroundColor: isRecording ? '#FFF9F7' : '#FFFFFF',
-                    borderColor: isRecording ? '#FCA5A5' : '#E8DFD1'
+                    backgroundColor: isOled ? '#09090B' : (isRecording ? '#FFF1F2' : '#FFFFFF'),
+                    borderColor: isOled ? (isRecording ? '#991B1B' : '#27272A') : (isRecording ? '#FECDD3' : '#E2E8F0')
                   }}
-                  className="p-4 rounded-2xl border shadow-sm transition-all"
+                  className="p-4 rounded-2xl border shadow-xs transition-all"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span style={{ fontSize: '18px' }}>{isRecording ? '🔴' : '⚪'}</span>
-                        <strong style={{ color: isRecording ? '#DC2626' : '#2C231C', fontSize: '15px' }} className="whitespace-nowrap">
+                        <span className="text-lg">{isRecording ? '🔴' : '⚪'}</span>
+                        <strong className={`text-[15px] font-black tracking-tight whitespace-nowrap ${
+                          isRecording 
+                            ? (isOled ? 'text-rose-400' : 'text-rose-600') 
+                            : (isOled ? 'text-white' : 'text-slate-900')
+                        }`}>
                           {isRecording ? '路徑記錄：ON (持續記錄中)' : '路徑記錄：OFF (待機狀態)'}
                         </strong>
                       </div>
-                      <p style={{ color: '#706254', fontSize: '12px' }}>
+                      <p className={`text-xs ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                         {isRecording 
                           ? '已啟動高精度 GPS 航跡收錄。放口袋健行時可點「🌙 口袋省電」享 0 耗電與防休眠！'
                           : '切換為 ON 即可隨身記錄您在步道、營地周邊的實際行走足跡。'}
@@ -511,11 +583,11 @@ export default function CampsiteGPXTrackerModal({
                           type="button"
                           onClick={() => setIsPocketMode(true)}
                           style={{
-                            backgroundColor: '#1E293B',
+                            backgroundColor: isOled ? '#18181B' : '#1E293B',
                             color: '#F8FAFC',
-                            borderColor: '#334155'
+                            borderColor: isOled ? '#3F3F46' : '#334155'
                           }}
-                          className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-2xl font-bold text-xs border shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer hover:bg-slate-800"
+                          className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-2xl font-bold text-xs border shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer hover:opacity-90"
                           title="關閉彩色螢幕改為純黑底，省電防誤觸，維持 100% GPS 連續記錄"
                         >
                           <span>🌙</span>
@@ -528,21 +600,21 @@ export default function CampsiteGPXTrackerModal({
                         type="button"
                         onClick={handleToggleSwitch}
                         style={{
-                          backgroundColor: isRecording ? '#DC2626' : '#E5E7EB',
-                          color: isRecording ? '#FFFFFF' : '#374151'
+                          backgroundColor: isRecording ? '#DC2626' : (isOled ? '#27272A' : '#E2E8F0'),
+                          color: isRecording ? '#FFFFFF' : (isOled ? '#F4F4F5' : '#334155')
                         }}
                         className="flex-1 sm:flex-none px-5 py-2.5 rounded-2xl font-black text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
                       >
-                        <span className={`w-3 h-3 rounded-full ${isRecording ? 'bg-white animate-pulse' : 'bg-gray-400'}`} />
+                        <span className={`w-3 h-3 rounded-full ${isRecording ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
                         <span>{isRecording ? '切換為 OFF' : '切換為 ON'}</span>
                       </button>
                     </div>
                   </div>
 
                   {/* Track Name Customization */}
-                  <div className="mt-3 pt-3 border-t border-[#EFE7DC] space-y-1.5">
+                  <div className={`mt-3 pt-3 border-t space-y-1.5 ${isOled ? 'border-zinc-800' : 'border-slate-100'}`}>
                     <div className="flex items-center gap-2">
-                      <span style={{ color: '#6B5C4F', fontSize: '11px', fontWeight: 'bold' }} className="shrink-0">
+                      <span className={`text-xs font-bold shrink-0 ${isOled ? 'text-zinc-300' : 'text-slate-700'}`}>
                         🏷️ 航跡標題：
                       </span>
                       <input
@@ -550,11 +622,15 @@ export default function CampsiteGPXTrackerModal({
                         value={trackName}
                         onChange={(e) => setTrackName(e.target.value)}
                         placeholder="例如: 微光露營區_蝙蝠洞步道健行"
-                        style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
-                        className="flex-1 px-2.5 py-1 text-xs font-bold rounded-lg border focus:outline-none focus:border-[#8C532B]"
+                        style={{
+                          backgroundColor: isOled ? '#000000' : '#F8FAFC',
+                          borderColor: isOled ? '#27272A' : '#CBD5E1',
+                          color: isOled ? '#F4F4F5' : '#0F172A'
+                        }}
+                        className="flex-1 px-3 py-1.5 text-xs font-bold rounded-xl border focus:outline-none focus:border-emerald-500 transition-colors"
                       />
                     </div>
-                    <div className="flex items-center gap-1 text-[11px] text-[#706254]">
+                    <div className={`flex items-center gap-1 text-[11px] ${isOled ? 'text-zinc-500' : 'text-slate-500'}`}>
                       <span>💡</span>
                       <span>存檔於手機本機離線空間；若標題重複將自動編為「<strong>{trackName ? `${trackName.replace(/\s*\(第\s*\d+\s*段\)$/, '')} (第 2 段)` : '同名 (第 2 段)'}</strong>」，絕不覆蓋舊檔案！</span>
                     </div>
@@ -570,6 +646,8 @@ export default function CampsiteGPXTrackerModal({
                   isManuallyResting={isManuallyResting}
                   toggleManualRest={toggleManualRest}
                   scrubbedSpeed={scrubbedPoint?.speed ?? null}
+                  theme={displayTheme}
+                  onThemeChange={(newTheme) => setDisplayTheme(newTheme === 'obsidian' ? 'oled' : newTheme)}
                 />
 
                 {/* 📈 高度剖面圖 (Elevation Profile Chart) - 完全對齊使用者上傳的圖表 */}
@@ -581,27 +659,31 @@ export default function CampsiteGPXTrackerModal({
                   totalAscentM={displayStats?.totalAscentM || 0}
                   totalDescentM={displayStats?.totalDescentM || 0}
                   onHoverPoint={setScrubbedPoint}
+                  theme={displayTheme}
                 />
 
                 {/* 📍 Waypoints Tagging Section */}
                 <div 
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-                  className="p-3.5 rounded-2xl border shadow-sm"
+                  style={{
+                    backgroundColor: isOled ? '#09090B' : '#FFFFFF',
+                    borderColor: isOled ? '#27272A' : '#E2E8F0'
+                  }}
+                  className="p-3.5 rounded-2xl border shadow-xs"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm">📍</span>
-                      <strong style={{ color: '#2C231C', fontSize: '12px' }}>沿途地標與打卡點 ({displayWaypoints.length})</strong>
+                      <strong className={`text-xs font-bold ${isOled ? 'text-white' : 'text-slate-900'}`}>沿途地標與打卡點 ({displayWaypoints.length})</strong>
                     </div>
                     <button
                       type="button"
                       disabled={!isRecording && trackPoints.length === 0}
                       onClick={() => setShowWaypointDialog(true)}
-                      style={{
-                        backgroundColor: (isRecording || trackPoints.length > 0) ? '#8C532B' : '#E5E7EB',
-                        color: (isRecording || trackPoints.length > 0) ? '#FFFFFF' : '#9CA3AF'
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer ${
+                        (isRecording || trackPoints.length > 0)
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          : (isOled ? 'bg-zinc-800 text-zinc-600' : 'bg-slate-100 text-slate-400')
+                      }`}
                     >
                       <span>＋</span>
                       <span>新增打卡點</span>
@@ -613,22 +695,25 @@ export default function CampsiteGPXTrackerModal({
                       {displayWaypoints.map((wpt, idx) => (
                         <div 
                           key={idx}
-                          style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }}
-                          className="px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-xs"
+                          style={{
+                            backgroundColor: isOled ? '#000000' : '#F8FAFC',
+                            borderColor: isOled ? '#27272A' : '#E2E8F0'
+                          }}
+                          className="px-3 py-2 rounded-xl border flex items-center justify-between text-xs"
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-amber-600 font-bold shrink-0">#{idx + 1}</span>
-                            <span style={{ color: '#2C231C' }} className="font-bold truncate">{wpt.name}</span>
-                            {wpt.ele && <span style={{ color: '#706254' }} className="text-[10px] font-mono">({Math.round(wpt.ele)}m)</span>}
+                            <span className="text-emerald-400 font-bold font-mono shrink-0">#{idx + 1}</span>
+                            <span className={`font-bold truncate ${isOled ? 'text-zinc-200' : 'text-slate-900'}`}>{wpt.name}</span>
+                            {wpt.ele && <span className={`text-[10px] font-mono ${isOled ? 'text-sky-400' : 'text-slate-500'}`}>({Math.round(wpt.ele)}m)</span>}
                           </div>
-                          <span style={{ color: '#8C532B' }} className="text-[10px] font-mono shrink-0">
+                          <span className={`text-[10px] font-mono shrink-0 ${isOled ? 'text-zinc-500' : 'text-slate-400'}`}>
                             {new Date(wpt.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p style={{ color: '#8C7E72', fontSize: '11px' }} className="text-center py-2">
+                    <p className={`text-[11px] text-center py-2 ${isOled ? 'text-zinc-500' : 'text-slate-500'}`}>
                       尚無打卡點。在行走時可隨時記錄岔路、觀景台、水源或營區地標。
                     </p>
                   )}
@@ -643,8 +728,8 @@ export default function CampsiteGPXTrackerModal({
                       disabled={displayPointsCount === 0}
                       onClick={() => handleSaveToPhone(trackName)}
                       style={{
-                        backgroundColor: displayPointsCount > 0 ? '#10B981' : '#E5E7EB',
-                        color: displayPointsCount > 0 ? '#FFFFFF' : '#9CA3AF'
+                        backgroundColor: displayPointsCount > 0 ? '#10B981' : (isOled ? '#18181B' : '#E2E8F0'),
+                        color: displayPointsCount > 0 ? '#FFFFFF' : (isOled ? '#52525B' : '#94A3B8')
                       }}
                       className="py-2.5 px-3 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                       title="保存到手機瀏覽器記憶體，離線隨時可用"
@@ -659,10 +744,11 @@ export default function CampsiteGPXTrackerModal({
                       disabled={displayPointsCount === 0}
                       onClick={() => downloadGPX(trackName)}
                       style={{
-                        backgroundColor: displayPointsCount > 0 ? '#8C532B' : '#E5E7EB',
-                        color: displayPointsCount > 0 ? '#FFFFFF' : '#9CA3AF'
+                        backgroundColor: displayPointsCount > 0 ? (isOled ? '#18181B' : '#1E293B') : (isOled ? '#18181B' : '#E2E8F0'),
+                        borderColor: isOled ? '#27272A' : 'transparent',
+                        color: displayPointsCount > 0 ? '#FFFFFF' : (isOled ? '#52525B' : '#94A3B8')
                       }}
-                      className="py-2.5 px-3 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="py-2.5 px-3 rounded-xl font-black text-xs border shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer hover:opacity-90"
                     >
                       <span>📥</span>
                       <span>下載標準 GPX 檔案</span>
@@ -677,8 +763,8 @@ export default function CampsiteGPXTrackerModal({
                     style={{
                       background: displayPointsCount > 0 
                         ? 'linear-gradient(135deg, #059669 0%, #0D9488 100%)' 
-                        : '#E5E7EB',
-                      color: displayPointsCount > 0 ? '#FFFFFF' : '#9CA3AF'
+                        : (isOled ? '#18181B' : '#E2E8F0'),
+                      color: displayPointsCount > 0 ? '#FFFFFF' : (isOled ? '#52525B' : '#94A3B8')
                     }}
                     className="w-full py-2.5 px-4 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer border border-emerald-600/30"
                     title="免裝 App，一鍵在 gpx.studio 開啟完整衛星/等高線/3D高度分析"
@@ -694,11 +780,11 @@ export default function CampsiteGPXTrackerModal({
                     disabled={displayPointsCount === 0}
                     onClick={() => setShowGoogleGuide(true)}
                     style={{
-                      backgroundColor: displayPointsCount > 0 ? '#FAF7F2' : '#E5E7EB',
-                      borderColor: displayPointsCount > 0 ? '#DECDB9' : '#D1D5DB',
-                      color: displayPointsCount > 0 ? '#4A3C30' : '#9CA3AF'
+                      backgroundColor: displayPointsCount > 0 ? (isOled ? '#000000' : '#FFFFFF') : (isOled ? '#09090B' : '#F1F5F9'),
+                      borderColor: displayPointsCount > 0 ? (isOled ? '#27272A' : '#CBD5E1') : (isOled ? '#18181B' : '#E2E8F0'),
+                      color: displayPointsCount > 0 ? (isOled ? '#A1A1AA' : '#334155') : (isOled ? '#52525B' : '#94A3B8')
                     }}
-                    className="w-full py-2 px-4 rounded-xl font-bold text-xs border shadow-xs transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-2 px-4 rounded-xl font-bold text-xs border shadow-xs transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer hover:opacity-90"
                   >
                     <span>🗺️</span>
                     <span>備用方案：匯入至 Google 我的地圖 (Google My Maps) ↗</span>
@@ -710,8 +796,8 @@ export default function CampsiteGPXTrackerModal({
                       <button
                         type="button"
                         onClick={resetTrack}
-                        style={{ color: '#9CA3AF' }}
-                        className="text-xs hover:text-rose-600 underline cursor-pointer"
+                        style={{ color: isOled ? '#71717A' : '#94A3B8' }}
+                        className="text-xs hover:text-rose-500 underline cursor-pointer"
                       >
                         清空本次航跡重置
                       </button>
@@ -723,13 +809,13 @@ export default function CampsiteGPXTrackerModal({
 
             {/* ── TAB 2: 手機存檔庫 (存檔在自己的手機內) ── */}
             {activeTab === 'history' && (
-              <div className="space-y-3">
+              <div className="space-y-3 font-sans">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <strong style={{ color: '#2C231C' }} className="text-xs font-black">
+                    <strong className={`text-xs font-black block ${isOled ? 'text-zinc-100' : 'text-slate-900'}`}>
                       📱 本機離線航跡庫 ({savedTracks.length} 筆)
                     </strong>
-                    <p style={{ color: '#706254' }} className="text-[11px]">
+                    <p className={`text-[11px] ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                       航跡永久保存於手機記憶體，在深山開飛航模式無網路時依然完整可用。
                     </p>
                   </div>
@@ -738,8 +824,7 @@ export default function CampsiteGPXTrackerModal({
                     <button
                       type="button"
                       onClick={() => handleSaveToPhone(trackName)}
-                      style={{ backgroundColor: '#10B981', color: '#FFFFFF' }}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm shrink-0 cursor-pointer active:scale-95 transition-all"
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
                     >
                       ＋ 儲存目前航跡
                     </button>
@@ -748,15 +833,19 @@ export default function CampsiteGPXTrackerModal({
 
                 {/* 📍 手機存檔庫位置與防覆蓋說明 Banner */}
                 <div 
-                  style={{ backgroundColor: '#FBF5EC', borderColor: '#E5D6C5' }}
-                  className="p-3 rounded-xl border text-xs space-y-1.5 shadow-xs"
+                  style={{
+                    backgroundColor: isOled ? '#1C1917' : '#FEF3C7',
+                    borderColor: isOled ? '#44403C' : '#FDE68A',
+                    color: isOled ? '#FDE68A' : '#78350F'
+                  }}
+                  className="p-3.5 rounded-2xl border text-xs space-y-1.5 shadow-xs"
                 >
-                  <div className="flex items-center gap-1.5 font-bold text-[#4A3B32]">
+                  <div className={`flex items-center gap-1.5 font-bold ${isOled ? 'text-amber-300' : 'text-amber-900'}`}>
                     <span>📍 航跡存放在哪裡？與防覆蓋機制：</span>
                   </div>
-                  <div className="space-y-1 text-[11px] text-[#6B5C4F] leading-relaxed">
+                  <div className={`space-y-1 text-[11px] leading-relaxed ${isOled ? 'text-amber-200/90' : 'text-amber-800/90'}`}>
                     <p>
-                      • <strong>儲存位置</strong>：航跡保存在您手機的<strong>本機離線安全空間</strong>（LocalStorage 鍵值：<code className="text-[10px] bg-white px-1 py-0.5 rounded border border-[#E5D6C5] font-mono">camping_checker_saved_tracks_v1</code>）。在深山開啟飛航模式、無網路訊號、或是把 App 完全關閉重啟、手機重開機，資料都 100% 完整保留！
+                      • <strong>儲存位置</strong>：航跡保存在您手機的<strong>本機離線安全空間</strong>（LocalStorage 鍵值：<code className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${isOled ? 'bg-zinc-900 border-zinc-700 text-amber-300' : 'bg-white border-amber-200 text-amber-900'}`}>camping_checker_saved_tracks_v1</code>）。在深山開啟飛航模式、無網路訊號、或是把 App 完全關閉重啟、手機重開機，資料都 100% 完整保留！
                     </p>
                     <p>
                       • <strong>實體檔案</strong>：點擊「📥 下載 GPX」，標準 GPX 檔案將直接下載至手機的「檔案 / 下載」資料夾，隨時可匯入至 Google 我的地圖、健行筆記或 Garmin。
@@ -772,20 +861,33 @@ export default function CampsiteGPXTrackerModal({
                     {savedTracks.map((item) => (
                       <div 
                         key={item.id}
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-                        className="p-3.5 rounded-2xl border shadow-sm space-y-2"
+                        style={{
+                          backgroundColor: isOled ? '#000000' : '#FFFFFF',
+                          borderColor: isOled ? '#27272A' : '#E2E8F0'
+                        }}
+                        className="p-3.5 rounded-2xl border shadow-xs space-y-2"
                       >
                         {/* Inline Renaming or Track Header */}
                         {editingTrack?.id === item.id ? (
-                          <div className="flex items-center gap-1.5 py-1 bg-[#FAF7F2] p-2 rounded-xl border border-[#8C532B]">
+                          <div 
+                            style={{
+                              backgroundColor: isOled ? '#18181B' : '#F8FAFC',
+                              borderColor: '#10B981'
+                            }}
+                            className="flex items-center gap-1.5 py-1 p-2 rounded-xl border"
+                          >
                             <span className="text-xs shrink-0">🏷️</span>
                             <input
                               type="text"
                               value={editTrackNameInput}
                               onChange={(e) => setEditTrackNameInput(e.target.value)}
                               placeholder="輸入新名稱"
-                              style={{ backgroundColor: '#FFFFFF', borderColor: '#DECDB9', color: '#2D241E' }}
-                              className="flex-1 px-2.5 py-1 text-xs font-bold rounded-lg border focus:outline-none focus:border-[#8C532B]"
+                              style={{
+                                backgroundColor: isOled ? '#09090B' : '#FFFFFF',
+                                borderColor: isOled ? '#27272A' : '#E2E8F0',
+                                color: isOled ? '#FFFFFF' : '#0F172A'
+                              }}
+                              className="flex-1 px-2.5 py-1 text-xs font-bold rounded-lg border focus:outline-none focus:border-emerald-500"
                               autoFocus
                             />
                             <button
@@ -798,14 +900,18 @@ export default function CampsiteGPXTrackerModal({
                                 }
                                 setEditingTrack(null);
                               }}
-                              className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold shrink-0 hover:bg-emerald-700"
+                              className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold shrink-0 hover:bg-emerald-700 cursor-pointer"
                             >
                               確定
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingTrack(null)}
-                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold shrink-0 hover:bg-gray-300"
+                              style={{
+                                backgroundColor: isOled ? '#27272A' : '#E2E8F0',
+                                color: isOled ? '#D4D4D8' : '#334155'
+                              }}
+                              className="px-2 py-1 rounded-lg text-xs font-bold shrink-0 hover:opacity-80 cursor-pointer"
                             >
                               取消
                             </button>
@@ -813,22 +919,22 @@ export default function CampsiteGPXTrackerModal({
                         ) : (
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <strong style={{ color: '#2C231C' }} className="text-sm font-black block truncate">
+                              <strong className={`text-sm font-black block truncate ${isOled ? 'text-zinc-100' : 'text-slate-900'}`}>
                                 {item.name}
                               </strong>
-                              <div className="flex items-center gap-2 text-[10px] font-mono text-[#706254] mt-0.5 flex-wrap">
+                              <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 flex-wrap ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                                 <span>📅 {new Date(item.finishedAt || Date.now()).toLocaleDateString('zh-TW')}</span>
                                 <span>·</span>
-                                <span className="text-[#8C532B] font-bold">📏 {item.stats?.totalDistanceKm || '0'} km</span>
+                                <span className={isOled ? 'text-emerald-400 font-bold' : 'text-emerald-700 font-bold'}>📏 {item.stats?.totalDistanceKm || '0'} km</span>
                                 <span>·</span>
-                                <span className="text-[#2563EB]">⛰️ +{item.stats?.totalAscentM || 0}m</span>
+                                <span className={isOled ? 'text-sky-400 font-bold' : 'text-sky-600 font-bold'}>⛰️ +{item.stats?.totalAscentM || 0}m</span>
                                 <span>·</span>
                                 <span>⏱️ {item.stats?.durationFormatted || '--'}</span>
                                 {item.source === 'imported' && (
-                                  <span className="px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-bold">外部匯入</span>
+                                  <span className={`px-1.5 py-0.2 rounded font-bold ${isOled ? 'bg-sky-950/80 text-sky-300 border border-sky-800' : 'bg-sky-100 text-sky-800'}`}>外部匯入</span>
                                 )}
                                 {item.source === 'preset' && (
-                                  <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">官方範本</span>
+                                  <span className={`px-1.5 py-0.2 rounded font-bold ${isOled ? 'bg-amber-950/80 text-amber-300 border border-amber-800' : 'bg-amber-100 text-amber-800'}`}>官方範本</span>
                                 )}
                               </div>
                             </div>
@@ -836,8 +942,7 @@ export default function CampsiteGPXTrackerModal({
                             <button
                               type="button"
                               onClick={() => deleteSavedTrack(item.id)}
-                              style={{ color: '#9CA3AF' }}
-                              className="p-1 hover:text-rose-600 text-xs shrink-0 cursor-pointer"
+                              className={`p-1 text-xs shrink-0 cursor-pointer transition-colors ${isOled ? 'text-zinc-500 hover:text-rose-400' : 'text-slate-400 hover:text-rose-600'}`}
                               title="從本機刪除此航跡"
                             >
                               ✕
@@ -846,7 +951,10 @@ export default function CampsiteGPXTrackerModal({
                         )}
 
                         {/* Actions for this saved track */}
-                        <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-[#F4EDE2]">
+                        <div 
+                          style={{ borderColor: isOled ? '#18181B' : '#F1F5F9' }}
+                          className="flex items-center gap-1.5 flex-wrap pt-1 border-t"
+                        >
                           <button
                             type="button"
                             onClick={() => {
@@ -856,9 +964,15 @@ export default function CampsiteGPXTrackerModal({
                               setTimeout(() => setSaveSuccessMsg(null), 4000);
                             }}
                             style={{
-                              backgroundColor: activeRoute?.id === item.id ? '#10B981' : '#FAF7F2',
-                              color: activeRoute?.id === item.id ? '#FFFFFF' : '#2C231C',
-                              borderColor: activeRoute?.id === item.id ? '#10B981' : '#DECDB9'
+                              backgroundColor: activeRoute?.id === item.id 
+                                ? '#059669' 
+                                : (isOled ? '#18181B' : '#F1F5F9'),
+                              borderColor: activeRoute?.id === item.id 
+                                ? '#059669' 
+                                : (isOled ? '#27272A' : '#E2E8F0'),
+                              color: activeRoute?.id === item.id 
+                                ? '#FFFFFF' 
+                                : (isOled ? '#D4D4D8' : '#334155')
                             }}
                             className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1 cursor-pointer"
                           >
@@ -869,8 +983,12 @@ export default function CampsiteGPXTrackerModal({
                           <button
                             type="button"
                             onClick={() => setExpandedHistoryTrackId(prev => prev === item.id ? null : item.id)}
-                            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1 cursor-pointer"
+                            style={{
+                              backgroundColor: isOled ? '#18181B' : '#F1F5F9',
+                              borderColor: isOled ? '#27272A' : '#E2E8F0',
+                              color: isOled ? '#D4D4D8' : '#334155'
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <span>📈</span>
                             <span>{expandedHistoryTrackId === item.id ? '收合圖表' : '速度與高度圖'}</span>
@@ -883,8 +1001,12 @@ export default function CampsiteGPXTrackerModal({
                               setEditingTrack({ id: item.id, name: item.name });
                               setEditTrackNameInput(item.name);
                             }}
-                            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
-                            className="px-2 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1 cursor-pointer"
+                            style={{
+                              backgroundColor: isOled ? '#18181B' : '#F1F5F9',
+                              borderColor: isOled ? '#27272A' : '#E2E8F0',
+                              color: isOled ? '#D4D4D8' : '#334155'
+                            }}
+                            className="px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer"
                             title="重新命名此航跡"
                           >
                             <span>✏️</span>
@@ -894,8 +1016,12 @@ export default function CampsiteGPXTrackerModal({
                           <button
                             type="button"
                             onClick={() => handleOpenGPXStudio(item)}
-                            style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', color: '#065F46' }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-emerald-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            style={{
+                              backgroundColor: isOled ? '#064E3B40' : '#ECFDF5',
+                              borderColor: isOled ? '#065F46' : '#A7F3D0',
+                              color: isOled ? '#6EE7B7' : '#065F46'
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer"
                             title="在 gpx.studio 線上打開此軌跡"
                           >
                             <span>🌐</span>
@@ -905,8 +1031,12 @@ export default function CampsiteGPXTrackerModal({
                           <button
                             type="button"
                             onClick={() => downloadGPX(item)}
-                            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1 cursor-pointer"
+                            style={{
+                              backgroundColor: isOled ? '#18181B' : '#F1F5F9',
+                              borderColor: isOled ? '#27272A' : '#E2E8F0',
+                              color: isOled ? '#D4D4D8' : '#334155'
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <span>📥</span>
                             <span>下載 GPX</span>
@@ -918,8 +1048,12 @@ export default function CampsiteGPXTrackerModal({
                               downloadGPX(item);
                               setShowGoogleGuide(true);
                             }}
-                            style={{ backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', color: '#1D4ED8' }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-blue-100 transition-colors flex items-center gap-1 ml-auto cursor-pointer"
+                            style={{
+                              backgroundColor: isOled ? '#082F4950' : '#F0F9FF',
+                              borderColor: isOled ? '#075985' : '#BAE6FD',
+                              color: isOled ? '#7DD3FC' : '#0369A1'
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1 ml-auto cursor-pointer"
                           >
                             <span>🗺️</span>
                             <span>匯入地圖</span>
@@ -935,6 +1069,7 @@ export default function CampsiteGPXTrackerModal({
                               isRecording={false}
                               displayPointsCount={item.points?.length || 0}
                               displayTitle={item.name}
+                              theme={displayTheme}
                             />
 
                             {/* Chart */}
@@ -945,6 +1080,7 @@ export default function CampsiteGPXTrackerModal({
                               minElevationM={item.stats?.minElevationM}
                               totalAscentM={item.stats?.totalAscentM || 0}
                               totalDescentM={item.stats?.totalDescentM || 0}
+                              theme={displayTheme}
                             />
                           </div>
                         )}
@@ -953,12 +1089,15 @@ export default function CampsiteGPXTrackerModal({
                   </div>
                 ) : (
                   <div 
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-                    className="p-8 rounded-2xl border text-center space-y-2"
+                    style={{
+                      backgroundColor: isOled ? '#000000' : '#FFFFFF',
+                      borderColor: isOled ? '#27272A' : '#E2E8F0'
+                    }}
+                    className="p-8 rounded-2xl border text-center space-y-2 shadow-xs"
                   >
                     <span className="text-3xl block">📱</span>
-                    <strong style={{ color: '#2C231C' }} className="text-xs font-bold block">手機本機尚無儲存航跡</strong>
-                    <p style={{ color: '#706254' }} className="text-xs max-w-sm mx-auto">
+                    <strong className={`text-xs font-bold block ${isOled ? 'text-zinc-200' : 'text-slate-800'}`}>手機本機尚無儲存航跡</strong>
+                    <p className={`text-xs max-w-sm mx-auto ${isOled ? 'text-zinc-500' : 'text-slate-500'}`}>
                       當您在「路徑記錄」切換 OFF 後，或在「匯入」分頁匯入別人的 GPX 時，都會自動存放在這裡，隨時可離線讀取！
                     </p>
                   </div>
@@ -968,19 +1107,22 @@ export default function CampsiteGPXTrackerModal({
 
             {/* ── TAB 3: 匯入 / 別人紀錄 ── */}
             {activeTab === 'import' && (
-              <div className="space-y-4">
+              <div className="space-y-4 font-sans">
                 {/* 1. 外部檔案匯入區 (健行筆記、山友 AirDrop / Line 分享) */}
                 <div 
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-                  className="p-4 rounded-2xl border shadow-sm space-y-2.5"
+                  style={{
+                    backgroundColor: isOled ? '#000000' : '#FFFFFF',
+                    borderColor: isOled ? '#27272A' : '#E2E8F0'
+                  }}
+                  className="p-4 rounded-2xl border shadow-xs space-y-2.5"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-lg">📂</span>
                     <div>
-                      <strong style={{ color: '#2C231C' }} className="text-xs font-black block">
+                      <strong className={`text-xs font-black block ${isOled ? 'text-zinc-100' : 'text-slate-900'}`}>
                         匯入外部 GPX 檔 (健行筆記 / 山友分享)
                       </strong>
-                      <p style={{ color: '#706254' }} className="text-[11px]">
+                      <p className={`text-[11px] ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                         支援標準 .gpx 格式。匯入後直接保存在手機本機，離線登山防走錯。
                       </p>
                     </div>
@@ -997,20 +1139,23 @@ export default function CampsiteGPXTrackerModal({
 
                   <label
                     htmlFor="gpx-file-upload-input"
-                    style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', borderStyle: 'dashed' }}
-                    className="p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:bg-[#F4EDE2] transition-colors"
+                    style={{
+                      backgroundColor: isOled ? '#09090B' : '#F8FAFC',
+                      borderColor: isOled ? '#27272A' : '#CBD5E1'
+                    }}
+                    className="p-4 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:opacity-90 transition-colors"
                   >
                     <span className="text-2xl">📥</span>
-                    <span style={{ color: '#8C532B' }} className="text-xs font-black">
+                    <span className="text-xs font-black text-emerald-500">
                       點擊選取手機內的 .gpx 航跡檔
                     </span>
-                    <span style={{ color: '#8C7E72' }} className="text-[10px]">
+                    <span className={`text-[10px] ${isOled ? 'text-zinc-500' : 'text-slate-400'}`}>
                       例如：從《健行筆記》網站或山友傳送之 GPX 檔案
                     </span>
                   </label>
 
                   {importError && (
-                    <p className="text-rose-600 text-xs font-bold pt-1">
+                    <p className="text-rose-500 text-xs font-bold pt-1">
                       ⚠️ {importError}
                     </p>
                   )}
@@ -1020,10 +1165,10 @@ export default function CampsiteGPXTrackerModal({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div>
-                      <strong style={{ color: '#2C231C' }} className="text-xs font-black block">
+                      <strong className={`text-xs font-black block ${isOled ? 'text-zinc-100' : 'text-slate-900'}`}>
                         🌲 台灣熱門露營步道 GPX 雲端範本庫
                       </strong>
-                      <p style={{ color: '#706254' }} className="text-[11px]">
+                      <p className={`text-[11px] ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                         免自行尋找，一鍵載入官方航跡點位到手機，開飛航模式也能跟著走！
                       </p>
                     </div>
@@ -1033,30 +1178,40 @@ export default function CampsiteGPXTrackerModal({
                     {PRESET_HIKING_TRAILS.map((trail) => (
                       <div 
                         key={trail.id}
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-                        className="p-3 rounded-2xl border shadow-sm space-y-1.5"
+                        style={{
+                          backgroundColor: isOled ? '#000000' : '#FFFFFF',
+                          borderColor: isOled ? '#27272A' : '#E2E8F0'
+                        }}
+                        className="p-3.5 rounded-2xl border shadow-xs space-y-2"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <strong style={{ color: '#2C231C' }} className="text-xs font-black truncate">
+                              <strong className={`text-xs font-black truncate ${isOled ? 'text-zinc-100' : 'text-slate-900'}`}>
                                 {trail.name}
                               </strong>
-                              <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                isOled 
+                                  ? 'bg-emerald-950/70 text-emerald-400 border-emerald-800' 
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                              }`}>
                                 {trail.tag}
                               </span>
                             </div>
-                            <p style={{ color: '#706254' }} className="text-[11px] leading-snug mt-0.5 line-clamp-2">
+                            <p className={`text-[11px] leading-snug mt-0.5 line-clamp-2 ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                               {trail.description}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#F4EDE2] text-[11px] font-mono flex-wrap">
-                          <div className="flex items-center gap-2 text-[#706254]">
-                            <span className="text-[#8C532B] font-bold">📏 {trail.distanceKm}km</span>
+                        <div 
+                          style={{ borderColor: isOled ? '#18181B' : '#F1F5F9' }}
+                          className="flex items-center justify-between gap-2 pt-1 border-t text-[11px] font-mono flex-wrap"
+                        >
+                          <div className={`flex items-center gap-2 ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
+                            <span className={isOled ? 'text-emerald-400 font-bold' : 'text-emerald-700 font-bold'}>📏 {trail.distanceKm}km</span>
                             <span>·</span>
-                            <span className="text-[#2563EB]">⛰️ +{trail.ascentM}m</span>
+                            <span className={isOled ? 'text-sky-400 font-bold' : 'text-sky-600 font-bold'}>⛰️ +{trail.ascentM}m</span>
                             <span>·</span>
                             <span>⏱️ {trail.duration}</span>
                           </div>
@@ -1065,8 +1220,12 @@ export default function CampsiteGPXTrackerModal({
                             <button
                               type="button"
                               onClick={() => handleOpenPresetInGPXStudio(trail.id)}
-                              style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', color: '#065F46' }}
-                              className="px-2 py-1 rounded-lg text-[10px] font-bold border hover:bg-emerald-100 transition-all flex items-center gap-1 cursor-pointer"
+                              style={{
+                                backgroundColor: isOled ? '#064E3B40' : '#ECFDF5',
+                                borderColor: isOled ? '#065F46' : '#A7F3D0',
+                                color: isOled ? '#6EE7B7' : '#065F46'
+                              }}
+                              className="px-2 py-1 rounded-lg text-[10px] font-bold border transition-all flex items-center gap-1 cursor-pointer"
                               title="在 gpx.studio 開啟此官方步道"
                             >
                               <span>🌐</span>
@@ -1076,8 +1235,7 @@ export default function CampsiteGPXTrackerModal({
                             <button
                               type="button"
                               onClick={() => handleLoadPreset(trail.id)}
-                              style={{ backgroundColor: '#8C532B', color: '#FFFFFF' }}
-                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-sm hover:opacity-90 active:scale-95"
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 transition-all cursor-pointer"
                             >
                               📥 載入防走錯
                             </button>
@@ -1097,23 +1255,20 @@ export default function CampsiteGPXTrackerModal({
       {showAirplaneModeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
           <div 
-            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
-            className="w-full max-w-lg max-h-[90vh] border rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            className="w-full max-w-lg max-h-[90vh] bg-white border border-slate-200 text-slate-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden font-sans"
           >
             <div 
-              style={{ backgroundColor: '#F4EDE2', borderColor: '#E7DFD3' }}
-              className="px-5 py-3.5 border-b flex items-center justify-between"
+              className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
                 <span className="text-xl">✈️</span>
-                <strong style={{ color: '#2C231C' }} className="text-base font-black">
+                <strong className="text-base font-black text-slate-900">
                   開飛航模式真的不會走錯路嗎？
                 </strong>
               </div>
               <button 
                 onClick={() => setShowAirplaneModeModal(false)}
-                style={{ backgroundColor: '#EAE0D2', color: '#4A3C30' }}
-                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs"
+                className="w-7 h-7 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors"
               >
                 ✕
               </button>
@@ -1121,33 +1276,33 @@ export default function CampsiteGPXTrackerModal({
 
             <div className="p-4 sm:p-6 space-y-4 overflow-y-auto text-xs leading-relaxed">
               {/* Question 1: 手機硬體衛星接收原理 */}
-              <div style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }} className="p-3.5 rounded-2xl border space-y-1.5">
-                <strong style={{ color: '#166534', fontSize: '13px' }} className="block flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-1.5">
+                <strong className="text-[13px] font-black text-emerald-700 block flex items-center gap-1.5">
                   <span>✅</span> 答案是：完全可以！而且是專業山友最推薦的做法！
                 </strong>
-                <p style={{ color: '#574C42' }}>
+                <p className="text-slate-600">
                   智慧型手機（iPhone / Android）內部裝有<strong>獨立的硬體衛星天線與 GPS 晶片</strong>。
                   GPS 運作是<strong>「純被動接收」</strong>太空中 2 萬公里軌道上的衛星電波廣播，手機只聽訊號、不發射任何電磁波，因此<strong>完全不受飛航模式影響</strong>，隨時隨地都能鎖定精確經緯度與海拔。
                 </p>
               </div>
 
               {/* Question 2: 為什麼登山強烈建議開飛航模式？ */}
-              <div style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }} className="p-3.5 rounded-2xl border space-y-1.5">
-                <strong style={{ color: '#8C532B', fontSize: '13px' }} className="block flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-1.5">
+                <strong className="text-[13px] font-black text-amber-800 block flex items-center gap-1.5">
                   <span>🔋</span> 飛航模式的超級優點：省電 80%
                 </strong>
-                <p style={{ color: '#574C42' }}>
+                <p className="text-slate-600">
                   在深山無訊號時，手機若開著行動網路，會以最大功率不斷向遠方搜尋 4G/5G 基地台，導致手機發燙且 2~3 小時就耗盡電量！
                   <strong>切換為飛航模式後，關閉行動通訊發射，僅保留純被動 GPS 運作，手機能支撐整整一至兩天健行！</strong>
                 </p>
               </div>
 
               {/* Question 3: 怎樣確保「絕不走錯路」？ */}
-              <div style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }} className="p-3.5 rounded-2xl border space-y-1.5">
-                <strong style={{ color: '#2563EB', fontSize: '13px' }} className="block flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-1.5">
+                <strong className="text-[13px] font-black text-sky-700 block flex items-center gap-1.5">
                   <span>🧭</span> 本系統如何幫您防走錯路？
                 </strong>
-                <ul className="list-disc list-inside space-y-1 text-[#574C42] pl-1">
+                <ul className="list-disc list-inside space-y-1 text-slate-600 pl-1">
                   <li><strong>離線儲存於手機</strong>：您下載或載入的 GPX 航跡已經完整保存在手機記憶體內，完全不吃任何網路流量。</li>
                   <li><strong>即時偏離軌道警報 (Cross-Track Alert)</strong>：系統隨時將您的衛星定位與航跡進行比對，只要偏離航線超過 <strong>35 公尺</strong>，即會發出警示！</li>
                   <li><strong>AR 實境視覺指引</strong>：在山徑岔路口時，舉起手機 AR 即可看到方位與步道方向，一目了然該走哪條叉路。</li>
@@ -1155,7 +1310,7 @@ export default function CampsiteGPXTrackerModal({
               </div>
 
               {/* 注意事項 */}
-              <div style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }} className="p-3 rounded-xl border text-[#92400E]">
+              <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50/80 text-amber-900">
                 <strong className="block mb-1">💡 專家小叮嚀 (冷啟動技巧)：</strong>
                 在進入茂密樹林前，建議先在開闊處開啟定位 30~60 秒讓手機鎖定 4 顆以上衛星，定位會更加穩定精確。
               </div>
@@ -1163,8 +1318,7 @@ export default function CampsiteGPXTrackerModal({
               <button
                 type="button"
                 onClick={() => setShowAirplaneModeModal(false)}
-                style={{ backgroundColor: '#8C532B', color: '#FFFFFF' }}
-                className="w-full py-2.5 rounded-xl font-black text-xs shadow-md"
+                className="w-full py-2.5 rounded-xl font-black text-xs shadow-md bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer active:scale-95 transition-all"
               >
                 我了解了，返回記錄器
               </button>
@@ -1177,38 +1331,35 @@ export default function CampsiteGPXTrackerModal({
       {showWaypointDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div 
-            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
-            className="w-full max-w-sm border rounded-2xl p-4 shadow-2xl space-y-3"
+            className="w-full max-w-sm bg-white border border-slate-200 text-slate-900 rounded-3xl p-5 shadow-2xl space-y-3.5 font-sans"
           >
-            <strong style={{ color: '#2C231C' }} className="text-sm font-black block">📍 新增打卡地標點</strong>
+            <strong className="text-sm font-black text-slate-900 block">📍 新增打卡地標點</strong>
             
             <div className="space-y-1">
-              <label style={{ color: '#706254' }} className="text-xs font-bold block">點位名稱</label>
+              <label className="text-xs font-bold text-slate-700 block">點位名稱</label>
               <input
                 type="text"
                 value={waypointName}
                 onChange={(e) => setWaypointName(e.target.value)}
                 placeholder="例如: 巨石觀景台 / 岔路取左 / 水源處"
-                style={{ backgroundColor: '#FFFFFF', borderColor: '#DECDB9', color: '#2D241E' }}
-                className="w-full px-3 py-1.5 text-xs rounded-lg border focus:outline-none focus:border-[#8C532B]"
+                className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 transition-colors"
                 autoFocus
               />
             </div>
 
             <div className="space-y-1">
-              <label style={{ color: '#706254' }} className="text-xs font-bold block">類型標籤</label>
+              <label className="text-xs font-bold text-slate-700 block">類型標籤</label>
               <div className="grid grid-cols-4 gap-1.5">
                 {['景點', '步道', '營地', '水源'].map(t => (
                   <button
                     key={t}
                     type="button"
                     onClick={() => setWaypointType(t)}
-                    style={{
-                      backgroundColor: waypointType === t ? '#8C532B' : '#FFFFFF',
-                      color: waypointType === t ? '#FFFFFF' : '#4A3C30',
-                      borderColor: '#DECDB9'
-                    }}
-                    className="py-1 text-xs font-bold rounded-lg border transition-all"
+                    className={`py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                      waypointType === t
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    }`}
                   >
                     {t}
                   </button>
@@ -1220,16 +1371,14 @@ export default function CampsiteGPXTrackerModal({
               <button
                 type="button"
                 onClick={() => setShowWaypointDialog(false)}
-                style={{ backgroundColor: '#EAE0D2', color: '#4A3C30' }}
-                className="flex-1 py-1.5 rounded-lg text-xs font-bold"
+                className="flex-1 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={handleConfirmWaypoint}
-                style={{ backgroundColor: '#8C532B', color: '#FFFFFF' }}
-                className="flex-1 py-1.5 rounded-lg text-xs font-black shadow-md"
+                className="flex-1 py-2 rounded-xl text-xs font-black shadow-md bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer transition-colors"
               >
                 確認新增
               </button>
@@ -1242,70 +1391,67 @@ export default function CampsiteGPXTrackerModal({
       {showGoogleGuide && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
           <div 
-            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
-            className="w-full max-w-lg max-h-[90vh] border rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            className="w-full max-w-lg max-h-[90vh] bg-white border border-slate-200 text-slate-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden font-sans"
           >
             <div 
-              style={{ backgroundColor: '#F4EDE2', borderColor: '#E7DFD3' }}
-              className="px-5 py-3.5 border-b flex items-center justify-between"
+              className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
                 <span className="text-xl">🗺️</span>
-                <strong style={{ color: '#2C231C' }} className="text-base font-black">
+                <strong className="text-base font-black text-slate-900">
                   如何將 GPX 匯入 Google 我的地圖
                 </strong>
               </div>
               <button 
                 onClick={() => setShowGoogleGuide(false)}
-                style={{ backgroundColor: '#EAE0D2', color: '#4A3C30' }}
-                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs"
+                className="w-7 h-7 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors"
               >
                 ✕
               </button>
             </div>
 
             <div className="p-4 sm:p-6 space-y-4 overflow-y-auto text-xs leading-relaxed">
-              <p style={{ color: '#574C42' }}>
+              <p className="text-slate-600">
                 依照<strong>《健行筆記》官方教學流程</strong>，您可以將剛才下載的 GPX 檔案（或匯入的別人的 GPX）匯入至個人的 <strong>Google 我的地圖 (Google My Maps)</strong>，在 Google 地圖 App 或電腦上永久查看行走軌跡：
               </p>
 
               <div className="space-y-3">
-                <div style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }} className="p-3.5 rounded-2xl border space-y-1">
-                  <strong style={{ color: '#8C532B' }} className="font-bold flex items-center gap-1.5 text-xs">
-                    <span className="w-5 h-5 rounded-full bg-[#FAF7F2] border border-[#DECDB9] flex items-center justify-center text-[10px]">1</span>
+                <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-1">
+                  <strong className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold shadow-2xs">1</span>
                     進入 Google 我的地圖網站
                   </strong>
-                  <p style={{ color: '#706254' }}>
+                  <p className="text-slate-600">
                     使用瀏覽器開啟 <a href="https://mymaps.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-bold">Google My Maps (mymaps.google.com)</a> 並登入您的 Google 帳號。
                   </p>
                 </div>
 
-                <div style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }} className="p-3.5 rounded-2xl border space-y-1">
-                  <strong style={{ color: '#8C532B' }} className="font-bold flex items-center gap-1.5 text-xs">
-                    <span className="w-5 h-5 rounded-full bg-[#FAF7F2] border border-[#DECDB9] flex items-center justify-center text-[10px]">2</span>
+                <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-1">
+                  <strong className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold shadow-2xs">2</span>
                     建立新地圖 ➜ 點擊「匯入」
                   </strong>
-                  <p style={{ color: '#706254' }}>
+                  <p className="text-slate-600">
                     點擊左上角的<strong>「＋ 建立新地圖」</strong>，在左側「未命名的圖層」下方點擊<strong>「匯入」</strong>按鈕。
                   </p>
                 </div>
 
-                <div style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }} className="p-3.5 rounded-2xl border space-y-1">
-                  <strong style={{ color: '#8C532B' }} className="font-bold flex items-center gap-1.5 text-xs">
-                    <span className="w-5 h-5 rounded-full bg-[#FAF7F2] border border-[#DECDB9] flex items-center justify-center text-[10px]">3</span>
+                <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-1">
+                  <strong className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold shadow-2xs">3</span>
                     上傳剛剛下載的 .gpx 檔案
                   </strong>
-                  <p style={{ color: '#706254' }}>
+                  <p className="text-slate-600">
                     將剛才下載的 <strong>{trackName || '健行軌跡記錄'}.gpx</strong> 檔案拖曳至上傳方框，或點擊「瀏覽」從手機「下載項目/檔案」選取。
                   </p>
                 </div>
 
-                <div style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }} className="p-3.5 rounded-2xl border space-y-1">
-                  <strong style={{ color: '#8C532B' }} className="font-bold flex items-center gap-1.5 text-xs">
-                    <span className="w-5 h-5 rounded-full bg-[#FAF7F2] border border-[#DECDB9] flex items-center justify-center text-[10px]">4</span>
+                <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-1">
+                  <strong className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold shadow-2xs">4</span>
                     在手機 Google Maps App 隨時開啟
                   </strong>
-                  <p style={{ color: '#706254' }}>
+                  <p className="text-slate-600">
                     匯入後，地圖即自動顯示連續彩色軌跡與所有地標！開啟手機 <strong>Google Maps App ➜ 點擊下方「已儲存」➜ 最下方「地圖」</strong>即可隨時疊加查看！
                   </p>
                 </div>
@@ -1316,7 +1462,7 @@ export default function CampsiteGPXTrackerModal({
                   type="button"
                   onClick={() => exportToGoogleMyMaps(trackName)}
                   style={{ backgroundColor: '#2563EB', color: '#FFFFFF' }}
-                  className="flex-1 py-2.5 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl font-black text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer hover:bg-blue-700"
                 >
                   <span>🚀</span>
                   <span>立即開啟 Google 我的地圖網站 ↗</span>

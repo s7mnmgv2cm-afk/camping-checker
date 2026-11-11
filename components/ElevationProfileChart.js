@@ -17,8 +17,10 @@ export default function ElevationProfileChart({
   minElevationM = null,
   totalAscentM = 0,
   totalDescentM = 0,
-  onHoverPoint = null
+  onHoverPoint = null,
+  theme = 'white'
 }) {
+  const isOLED = theme === 'oled';
   const [hoverIndex, setHoverIndex] = useState(null);
   const containerRef = useRef(null);
 
@@ -159,14 +161,15 @@ export default function ElevationProfileChart({
   if (points.length < 2) {
     return (
       <div 
-        style={{ backgroundColor: '#FAF7F2', borderColor: '#E8DFD1' }}
-        className="p-6 rounded-2xl border text-center space-y-1.5"
+        className={`p-6 rounded-2xl border text-center space-y-1.5 font-sans ${
+          isOLED ? 'bg-black border-zinc-800' : 'bg-slate-50 border-slate-200'
+        }`}
       >
         <span className="text-2xl block">📈</span>
-        <strong style={{ color: '#2C231C' }} className="text-xs font-bold block">
+        <strong className={`text-xs font-bold block ${isOLED ? 'text-zinc-100' : 'text-slate-800'}`}>
           暫無足夠的高度剖面數據
         </strong>
-        <p style={{ color: '#8C7E72' }} className="text-[11px]">
+        <p className={`text-[11px] ${isOLED ? 'text-zinc-500' : 'text-slate-500'}`}>
           在切換為 ON 記錄一段路徑，或載入步道範本後，即可自動繪製高度變化曲線圖。
         </p>
       </div>
@@ -175,14 +178,15 @@ export default function ElevationProfileChart({
 
   return (
     <div 
-      style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-      className="p-3.5 sm:p-4 rounded-2xl border shadow-sm space-y-2.5"
+      className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs space-y-2.5 font-sans ${
+        isOLED ? 'bg-black border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
+      }`}
     >
       {/* Header bar */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
           <span className="text-sm">📈</span>
-          <strong style={{ color: '#2C231C' }} className="text-xs font-black">
+          <strong className={`text-xs font-black tracking-tight ${isOLED ? 'text-white' : 'text-slate-900'}`}>
             高度剖面圖 (Elevation Profile)
           </strong>
         </div>
@@ -190,20 +194,23 @@ export default function ElevationProfileChart({
         {/* Live Scrubber Badge or Peak/Valley Stat Badges */}
         {activePoint ? (
           <div 
-            style={{ backgroundColor: '#FEE2E2', borderColor: '#FCA5A5', color: '#991B1B' }}
-            className="px-2.5 py-0.5 rounded-lg border text-[11px] font-mono font-bold flex items-center gap-2 animate-in fade-in"
+            className={`px-2.5 py-0.5 rounded-lg border text-[11px] font-mono font-bold flex items-center gap-2 animate-in fade-in ${
+              isOLED 
+                ? 'bg-zinc-900 border-zinc-700 text-zinc-100 shadow-sm' 
+                : 'border-rose-200 bg-rose-50 text-rose-700'
+            }`}
           >
-            <span>📍 {activePoint.distKm} km</span>
-            <span>⛰️ {activePoint.ele} m</span>
-            {activePoint.speed > 0 && <span>⚡ {activePoint.speed} km/h</span>}
+            <span className={isOLED ? 'text-amber-400' : ''}>📍 {activePoint.distKm} km</span>
+            <span className={isOLED ? 'text-sky-400' : ''}>⛰️ {activePoint.ele} m</span>
+            {activePoint.speed > 0 && <span className={isOLED ? 'text-emerald-400' : ''}>⚡ {activePoint.speed} km/h</span>}
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-[10px] font-mono text-[#706254]">
-            <span className="text-rose-600 font-bold">▲ 最高 {maxElevationM || maxEle}m</span>
-            <span>·</span>
-            <span className="text-emerald-700 font-bold">▼ 最低 {minElevationM || minEle}m</span>
-            <span>·</span>
-            <span className="text-blue-600 font-bold">↗ 爬升 +{totalAscentM}m</span>
+          <div className="flex items-center gap-2 text-[10px] font-mono">
+            <span className={`${isOLED ? 'text-rose-400' : 'text-rose-600'} font-bold`}>▲ 最高 {maxElevationM || maxEle}m</span>
+            <span className={isOLED ? 'text-zinc-600' : 'text-slate-400'}>·</span>
+            <span className={`${isOLED ? 'text-emerald-400' : 'text-emerald-600'} font-bold`}>▼ 最低 {minElevationM || minEle}m</span>
+            <span className={isOLED ? 'text-zinc-600' : 'text-slate-400'}>·</span>
+            <span className={`${isOLED ? 'text-sky-400' : 'text-sky-600'} font-bold`}>↗ 爬升 +{totalAscentM}m</span>
           </div>
         )}
       </div>
@@ -225,9 +232,9 @@ export default function ElevationProfileChart({
           <defs>
             {/* Soft Coral/Red Gradient fill matching user's uploaded image */}
             <linearGradient id="elevationRedGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#F87171" stopOpacity="0.45" />
-              <stop offset="60%" stopColor="#FCA5A5" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#FEE2E2" stopOpacity="0.08" />
+              <stop offset="0%" stopColor={isOLED ? '#FB7185' : '#F87171'} stopOpacity={isOLED ? '0.45' : '0.45'} />
+              <stop offset="60%" stopColor={isOLED ? '#9F1239' : '#FCA5A5'} stopOpacity={isOLED ? '0.2' : '0.25'} />
+              <stop offset="100%" stopColor={isOLED ? '#000000' : '#FEE2E2'} stopOpacity={isOLED ? '0' : '0.08'} />
             </linearGradient>
           </defs>
 
@@ -241,14 +248,14 @@ export default function ElevationProfileChart({
                   y1={y}
                   x2={vbWidth - padRight}
                   y2={y}
-                  stroke="#E5E7EB"
+                  stroke={isOLED ? '#18181B' : '#E5E7EB'}
                   strokeWidth="1"
                 />
                 <text
                   x={padLeft - 8}
                   y={y + 4}
                   textAnchor="end"
-                  fill="#6B7280"
+                  fill={isOLED ? '#71717A' : '#6B7280'}
                   fontSize="12"
                   fontFamily="monospace"
                   fontWeight="600"
@@ -269,14 +276,14 @@ export default function ElevationProfileChart({
                   y1={padTop}
                   x2={x}
                   y2={padTop + plotH}
-                  stroke="#E5E7EB"
+                  stroke={isOLED ? '#18181B' : '#E5E7EB'}
                   strokeWidth="1"
                 />
                 <text
                   x={x}
                   y={padTop + plotH + 18}
                   textAnchor="middle"
-                  fill="#6B7280"
+                  fill={isOLED ? '#71717A' : '#6B7280'}
                   fontSize="12"
                   fontFamily="monospace"
                   fontWeight="600"
@@ -293,7 +300,7 @@ export default function ElevationProfileChart({
             y1={padTop + plotH}
             x2={vbWidth - padRight}
             y2={padTop + plotH}
-            stroke="#D1D5DB"
+            stroke={isOLED ? '#27272A' : '#D1D5DB'}
             strokeWidth="1.2"
           />
 
@@ -307,7 +314,7 @@ export default function ElevationProfileChart({
           <path
             d={pathD}
             fill="none"
-            stroke="#EF4444"
+            stroke={isOLED ? '#FB7185' : '#EF4444'}
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -321,7 +328,7 @@ export default function ElevationProfileChart({
                 y1={padTop}
                 x2={getX(activePoint.distKm)}
                 y2={padTop + plotH}
-                stroke="#DC2626"
+                stroke={isOLED ? '#F43F5E' : '#DC2626'}
                 strokeWidth="1.5"
                 strokeDasharray="3 3"
               />
@@ -329,8 +336,8 @@ export default function ElevationProfileChart({
                 cx={getX(activePoint.distKm)}
                 cy={getY(activePoint.ele)}
                 r="4.5"
-                fill="#DC2626"
-                stroke="#FFFFFF"
+                fill={isOLED ? '#FB7185' : '#DC2626'}
+                stroke={isOLED ? '#000000' : '#FFFFFF'}
                 strokeWidth="2"
                 className="shadow-md"
               />
@@ -339,9 +346,11 @@ export default function ElevationProfileChart({
         </svg>
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-[#706254] font-mono pt-0.5 border-t border-[#F4EDE2]">
+      <div className={`flex items-center justify-between text-[10px] font-mono pt-1 border-t ${
+        isOLED ? 'border-zinc-800 text-zinc-500' : 'border-slate-100 text-slate-500'
+      }`}>
         <span>起點: 0km ({points[0]?.ele || minEle}m)</span>
-        <span className="text-[#8C532B] font-bold">滑動/觸控圖表可查看各點里程、高度與即時時速</span>
+        <span className={`${isOLED ? 'text-amber-400' : 'text-emerald-700'} font-bold`}>滑動/觸控圖表可查看各點里程、高度與即時時速</span>
         <span>終點: {totalDistanceKm}km ({points[points.length - 1]?.ele || minEle}m)</span>
       </div>
     </div>

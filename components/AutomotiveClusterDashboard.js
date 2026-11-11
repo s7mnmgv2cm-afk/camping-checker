@@ -43,12 +43,21 @@ export default function AutomotiveClusterDashboard({
   displayTitle = '',
   isManuallyResting = false,
   toggleManualRest = null,
-  scrubbedSpeed = null
+  scrubbedSpeed = null,
+  theme = null,
+  onThemeChange = null
 }) {
   const gradientId = useId();
-  // 預設為米色護眼模式 ('beige')，亦支援點擊切換為黑曜賽道 ('obsidian')
-  const [clusterTheme, setClusterTheme] = useState('beige');
+  // 支援三種主題：'white' (首頁純白) | 'oled' (OLED 極黑 0 耗電) | 'obsidian' (曜石賽道)
+  const [clusterTheme, setClusterTheme] = useState(theme || 'white');
   const [speedMode, setSpeedMode] = useState('auto'); // 'auto' | 'hike' | 'bike' | 'drive' | 'train' | 'plane'
+
+  // 同步外部傳入之 theme
+  React.useEffect(() => {
+    if (theme && (theme === 'white' || theme === 'oled' || theme === 'obsidian')) {
+      setClusterTheme(theme);
+    }
+  }, [theme]);
 
   // Interactive Speed Simulation & Self-check Needle Sweep
   const [testSpeed, setTestSpeed] = useState(null);
@@ -181,31 +190,62 @@ export default function AutomotiveClusterDashboard({
     return arr;
   })();
 
-  const isBeige = clusterTheme === 'beige';
+  const isWhite = clusterTheme === 'white';
+  const isOLED = clusterTheme === 'oled';
 
-  // Palette definitions
-  const themeStyles = isBeige ? {
-    // 🧭 米色護眼奢華經典風格 (Default)
-    wrapperBg: 'linear-gradient(165deg, #FAF7F2 0%, #F5ECE1 50%, #ECE0D0 100%)',
-    wrapperBorder: '#DECDB9',
-    wrapperShadow: '0 20px 40px -15px rgba(140, 83, 43, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
-    cardBg: '#FFFFFF',
-    cardBorder: '#E6D7C5',
-    cardShadow: '0 2px 6px rgba(107, 92, 79, 0.05)',
-    topBarBorder: '#DECDB9',
-    textColorPrimary: '#261E18',
-    textColorSecondary: '#706254',
-    textColorMuted: '#8C7E72',
-    accentColor: '#8C532B',
-    gaugeBezelOuter: '#D9C4AB',
-    gaugeBezelInner: '#FFFFFF',
-    gaugeDialFace: '#FBF8F3',
-    gaugeTrack: '#EADBC8',
-    gaugeTickMajor: '#4A3C30',
-    gaugeTickMinor: '#A89988',
-    gaugeTickText: '#261E18',
-    gaugeCenterCap: '#8C532B',
-    gaugeCenterCapBorder: '#DECDB9'
+  // Palette definitions: 與首頁同步之純白風格 (Default) ✕ OLED 極黑 (0 耗電) ✕ 曜石賽道
+  const themeStyles = isWhite ? {
+    // ⚪ 與首頁台灣露營地研究中心 100% 同步之雪白現代風格 (Default)
+    wrapperBg: '#FFFFFF',
+    wrapperBorder: '#E2E8F0',
+    wrapperShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1)',
+    cardBg: '#F8FAFC',
+    cardBorder: '#E2E8F0',
+    cardShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+    topBarBorder: '#F1F5F9',
+    textColorPrimary: '#0F172A',
+    textColorSecondary: '#475569',
+    textColorMuted: '#64748B',
+    accentColor: '#059669',
+    gaugeBezelOuter: '#E2E8F0',
+    gaugeBezelInner: '#F8FAFC',
+    gaugeDialFace: '#FFFFFF',
+    gaugeTrack: '#E2E8F0',
+    gaugeTickMajor: '#0F172A',
+    gaugeTickMinor: '#94A3B8',
+    gaugeTickText: '#0F172A',
+    gaugeCenterCap: '#059669',
+    gaugeCenterCapBorder: '#CBD5E1',
+    speedColor: '#0F172A',
+    chronoColor: '#0F172A',
+    distanceColor: '#059669',
+    altitudeColor: '#1E3A8A'
+  } : isOLED ? {
+    // 🌙 OLED 極黑 0 耗電色彩編碼高對比方案 (True OLED #000000 Pixel-Off)
+    wrapperBg: '#000000',
+    wrapperBorder: '#27272A',
+    wrapperShadow: '0 0 0 1px #18181B',
+    cardBg: '#000000',
+    cardBorder: '#27272A',
+    cardShadow: 'none',
+    topBarBorder: '#18181B',
+    textColorPrimary: '#F4F4F5',
+    textColorSecondary: '#A1A1AA',
+    textColorMuted: '#71717A',
+    accentColor: '#10B981',
+    gaugeBezelOuter: '#18181B',
+    gaugeBezelInner: '#000000',
+    gaugeDialFace: '#000000',
+    gaugeTrack: '#27272A',
+    gaugeTickMajor: '#F4F4F5',
+    gaugeTickMinor: '#52525B',
+    gaugeTickText: '#A1A1AA',
+    gaugeCenterCap: '#10B981',
+    gaugeCenterCapBorder: '#059669',
+    speedColor: '#10B981',        // ⚡ 鮮明翡翠綠
+    chronoColor: '#FFFFFF',       // ⏱️ 高對比冷白
+    distanceColor: '#F59E0B',     // 📏 活力琥珀橘
+    altitudeColor: '#38BDF8'      // ⛰️ 冰川天藍
   } : {
     // 🏎️ 曜石賽道夜間模式
     wrapperBg: 'radial-gradient(ellipse at 50% 0%, #172033 0%, #0A0E17 65%, #05070B 100%)',
@@ -227,7 +267,11 @@ export default function AutomotiveClusterDashboard({
     gaugeTickMinor: 'rgba(255, 255, 255, 0.35)',
     gaugeTickText: 'rgba(255, 255, 255, 0.85)',
     gaugeCenterCap: '#1E293B',
-    gaugeCenterCapBorder: '#EF4444'
+    gaugeCenterCapBorder: '#EF4444',
+    speedColor: '#FFFFFF',
+    chronoColor: '#FFFFFF',
+    distanceColor: '#F59E0B',
+    altitudeColor: '#60A5FA'
   };
 
   return (
@@ -248,14 +292,14 @@ export default function AutomotiveClusterDashboard({
           {/* Active Status Beacon */}
           <div 
             style={{ 
-              backgroundColor: isBeige ? '#EFE7DC' : 'rgba(0,0,0,0.6)',
-              borderColor: isBeige ? '#DECDB9' : 'rgba(255,255,255,0.1)'
+              backgroundColor: isWhite ? (isRecording ? '#FEF2F2' : '#F0FDF4') : 'rgba(0,0,0,0.6)',
+              borderColor: isWhite ? (isRecording ? '#FECACA' : '#BBF7D0') : 'rgba(255,255,255,0.1)'
             }}
             className="flex items-center gap-1.5 px-3 py-1 rounded-full border shadow-xs"
           >
             <span className={`w-2.5 h-2.5 rounded-full ${isRecording ? 'bg-red-600 animate-ping' : 'bg-emerald-600'}`} />
             <span 
-              style={{ color: themeStyles.textColorPrimary }}
+              style={{ color: isWhite ? (isRecording ? '#DC2626' : '#15803D') : themeStyles.textColorPrimary }}
               className="font-mono font-black text-xs tracking-wider uppercase"
             >
               {isRecording ? 'GPS 記錄中 (REC)' : '儀表待機中 (READY)'}
@@ -275,16 +319,20 @@ export default function AutomotiveClusterDashboard({
         {/* Theme Switcher Button */}
         <button
           type="button"
-          onClick={() => setClusterTheme(prev => prev === 'beige' ? 'obsidian' : 'beige')}
+          onClick={() => {
+            const next = clusterTheme === 'white' ? 'oled' : clusterTheme === 'oled' ? 'obsidian' : 'white';
+            setClusterTheme(next);
+            if (typeof onThemeChange === 'function') onThemeChange(next);
+          }}
           style={{
-            backgroundColor: isBeige ? '#FFFFFF' : 'rgba(255,255,255,0.1)',
-            borderColor: isBeige ? '#D4C0A8' : 'rgba(255,255,255,0.15)',
-            color: themeStyles.textColorPrimary
+            backgroundColor: isWhite ? '#FFFFFF' : isOLED ? '#18181B' : 'rgba(255,255,255,0.1)',
+            borderColor: isWhite ? '#CBD5E1' : isOLED ? '#3F3F46' : 'rgba(255,255,255,0.15)',
+            color: isOLED ? '#34D399' : themeStyles.textColorPrimary
           }}
           className="px-3 py-1 rounded-xl text-xs font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-          title="切換儀表配色"
+          title="切換儀表配色：首頁純白 ⇄ OLED 極黑 (0 耗電) ⇄ 曜石賽道"
         >
-          <span>{isBeige ? '🧭 米色護眼 (預設)' : '🏎️ 黑曜賽道'}</span>
+          <span>{isWhite ? '⚪ 首頁純白' : isOLED ? '🌙 OLED 極黑 (0 耗電)' : '🏎️ 曜石賽道'}</span>
           <span className="text-[10px] opacity-70">切換 ↗</span>
         </button>
       </div>
@@ -292,8 +340,8 @@ export default function AutomotiveClusterDashboard({
       {/* 🚀 速度情境量程快速切換 (支援徒步、單車、開車、高鐵、飛機 1000 km/h) */}
       <div 
         style={{
-          backgroundColor: isBeige ? '#FAF7F2' : 'rgba(255,255,255,0.04)',
-          borderColor: isBeige ? '#E2D5C3' : 'rgba(255,255,255,0.08)'
+          backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#09090B' : 'rgba(255,255,255,0.04)',
+          borderColor: isWhite ? '#E2E8F0' : isOLED ? '#18181B' : 'rgba(255,255,255,0.08)'
         }}
         className="p-2 rounded-2xl border flex items-center justify-between gap-1 overflow-x-auto text-xs"
       >
@@ -317,14 +365,14 @@ export default function AutomotiveClusterDashboard({
                 }}
                 style={{
                   backgroundColor: isSelected 
-                    ? (isBeige ? '#8C532B' : '#F59E0B') 
-                    : (isBeige ? '#FFFFFF' : 'transparent'),
+                    ? (isWhite ? '#059669' : '#F59E0B') 
+                    : (isWhite ? '#FFFFFF' : 'transparent'),
                   color: isSelected 
                     ? '#FFFFFF' 
-                    : (isBeige ? '#4A3C30' : '#94A3B8'),
+                    : (isWhite ? '#334155' : '#94A3B8'),
                   borderColor: isSelected 
-                    ? (isBeige ? '#8C532B' : '#F59E0B') 
-                    : (isBeige ? '#DECDB9' : 'rgba(255,255,255,0.1)')
+                    ? (isWhite ? '#059669' : '#F59E0B') 
+                    : (isWhite ? '#E2E8F0' : 'rgba(255,255,255,0.1)')
                 }}
                 className="px-2.5 py-1 rounded-xl font-bold border text-[11px] sm:text-xs transition-all active:scale-95 flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
               >
@@ -339,8 +387,8 @@ export default function AutomotiveClusterDashboard({
       {/* ⚡ 指針動態自檢與速度模擬試跑列 (點擊看紅針滑動旋轉) */}
       <div 
         style={{
-          backgroundColor: isBeige ? '#FAF7F2' : 'rgba(255,255,255,0.04)',
-          borderColor: isBeige ? '#DECDB9' : 'rgba(255,255,255,0.08)'
+          backgroundColor: isWhite ? '#F8FAFC' : 'rgba(255,255,255,0.04)',
+          borderColor: isWhite ? '#E2E8F0' : 'rgba(255,255,255,0.08)'
         }}
         className="px-2.5 py-1.5 rounded-2xl border flex items-center justify-between gap-1 overflow-x-auto text-xs"
       >
@@ -379,8 +427,8 @@ export default function AutomotiveClusterDashboard({
                 else if (sim.speed > 15 && speedMode === 'hike') setSpeedMode('bike');
               }}
               style={{
-                backgroundColor: testSpeed === sim.speed ? '#8C532B' : (isBeige ? '#FFFFFF' : 'rgba(255,255,255,0.08)'),
-                borderColor: testSpeed === sim.speed ? '#8C532B' : (isBeige ? '#DECDB9' : 'rgba(255,255,255,0.15)'),
+                backgroundColor: testSpeed === sim.speed ? '#059669' : (isWhite ? '#FFFFFF' : 'rgba(255,255,255,0.08)'),
+                borderColor: testSpeed === sim.speed ? '#059669' : (isWhite ? '#CBD5E1' : 'rgba(255,255,255,0.15)'),
                 color: testSpeed === sim.speed ? '#FFFFFF' : themeStyles.textColorPrimary
               }}
               className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border transition-all active:scale-95 cursor-pointer shrink-0"
@@ -393,8 +441,8 @@ export default function AutomotiveClusterDashboard({
             <button
               type="button"
               onClick={() => setTestSpeed(null)}
-              style={{ backgroundColor: '#E5E7EB', color: '#1F2937' }}
-              className="px-2 py-0.5 rounded-lg text-[10px] font-bold hover:bg-gray-300 transition-all cursor-pointer shrink-0"
+              style={{ backgroundColor: '#E2E8F0', color: '#1E293B' }}
+              className="px-2 py-0.5 rounded-lg text-[10px] font-bold hover:bg-slate-300 transition-all cursor-pointer shrink-0"
               title="清除模擬速度，回歸 GPS 實測"
             >
               ✕ 恢復 GPS
@@ -413,7 +461,7 @@ export default function AutomotiveClusterDashboard({
         className="rounded-2xl border p-3 flex flex-col items-center justify-center relative"
       >
         {/* Dynamic Mode Annunciator Banner */}
-        <div className="flex items-center justify-between w-full px-2 pb-1 border-b border-[#F4EDE2] text-xs">
+        <div className="flex items-center justify-between w-full px-2 pb-1 border-b border-slate-100 text-xs">
           <span style={{ color: themeStyles.accentColor }} className="font-bold flex items-center gap-1">
             <span>{modeInfo.title}</span>
           </span>
@@ -435,13 +483,13 @@ export default function AutomotiveClusterDashboard({
 
               {/* Dial Face Inner Shadow / Glow */}
               <radialGradient id={`${gradientId}-dial-glow`} cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor={isBeige ? 'rgba(255, 255, 255, 0.95)' : 'rgba(245, 158, 11, 0.15)'} />
-                <stop offset="75%" stopColor={isBeige ? '#F4EDE2' : 'rgba(15, 23, 42, 0.5)'} />
-                <stop offset="100%" stopColor={isBeige ? '#EBE0D0' : '#0B0F17'} />
+                <stop offset="0%" stopColor={isWhite ? '#FFFFFF' : 'rgba(245, 158, 11, 0.15)'} />
+                <stop offset="75%" stopColor={isWhite ? '#F8FAFC' : 'rgba(15, 23, 42, 0.5)'} />
+                <stop offset="100%" stopColor={isWhite ? '#F1F5F9' : '#0B0F17'} />
               </radialGradient>
 
               <filter id={`${gradientId}-needle-shadow`} x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.25)" />
+                <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.18)" />
               </filter>
             </defs>
 
@@ -518,7 +566,7 @@ export default function AutomotiveClusterDashboard({
               x={cx} 
               y={cy - 14} 
               textAnchor="middle" 
-              fill={themeStyles.textColorPrimary} 
+              fill={isOLED ? '#10B981' : themeStyles.textColorPrimary} 
               fontSize={effectiveSpeed >= 100 ? "38" : "44"} 
               fontFamily="monospace" 
               fontWeight="900" 
@@ -529,7 +577,7 @@ export default function AutomotiveClusterDashboard({
               x={cx} 
               y={cy + 26} 
               textAnchor="middle" 
-              fill={themeStyles.textColorSecondary} 
+              fill={isOLED ? '#34D399' : themeStyles.textColorSecondary} 
               fontSize="12" 
               fontFamily="monospace" 
               fontWeight="900" 
@@ -541,7 +589,7 @@ export default function AutomotiveClusterDashboard({
               x={cx} 
               y={cy + 42} 
               textAnchor="middle" 
-              fill={themeStyles.accentColor} 
+              fill={isOLED ? '#F59E0B' : themeStyles.accentColor} 
               fontSize="11" 
               fontFamily="sans-serif" 
               fontWeight="900" 
@@ -582,11 +630,11 @@ export default function AutomotiveClusterDashboard({
         {/* Speed Peak & Average Summary Banner */}
         <div 
           style={{ color: themeStyles.textColorSecondary }}
-          className="text-xs sm:text-sm font-mono font-bold flex items-center justify-center gap-3 pt-1.5 border-t border-[#EFE7DC] w-full"
+          className={`text-xs sm:text-sm font-mono font-bold flex items-center justify-center gap-3 pt-1.5 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'} w-full`}
         >
-          <span>衝刺極速: <strong className="text-rose-600 text-sm sm:text-base font-black">{displayStats?.maxSpeedKmh || '0.0'}</strong> km/h</span>
+          <span>衝刺極速: <strong className={`${isOLED ? 'text-rose-400' : 'text-rose-600'} text-sm sm:text-base font-black`}>{displayStats?.maxSpeedKmh || '0.0'}</strong> km/h</span>
           <span className="opacity-40">|</span>
-          <span>全程均速: <strong className="text-emerald-700 text-sm sm:text-base font-black">{displayStats?.avgSpeedKmh || '0.0'}</strong> km/h</span>
+          <span>全程均速: <strong className={`${isOLED ? 'text-emerald-400' : 'text-emerald-700'} text-sm sm:text-base font-black`}>{displayStats?.avgSpeedKmh || '0.0'}</strong> km/h</span>
         </div>
       </div>
 
@@ -608,14 +656,14 @@ export default function AutomotiveClusterDashboard({
                 <span className="text-base">⏱️</span>
                 <span>活動總耗時</span>
               </span>
-              <span style={{ color: themeStyles.accentColor }} className="font-mono text-[11px] font-bold">
+              <span style={{ color: isOLED ? '#F4F4F5' : themeStyles.accentColor }} className="font-mono text-[11px] font-bold">
                 CHRONO
               </span>
             </div>
             
             {/* GIANT DURATION DISPLAY (人眼秒看) */}
             <div 
-              style={{ color: themeStyles.textColorPrimary }}
+              style={{ color: isOLED ? '#FFFFFF' : themeStyles.textColorPrimary }}
               className="text-3xl sm:text-4xl font-mono font-black tracking-tight leading-none my-1"
             >
               {displayStats?.durationFormatted || '00:00:00'}
@@ -623,16 +671,24 @@ export default function AutomotiveClusterDashboard({
           </div>
 
           {/* Moving & Rest Breakdowns */}
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#EFE7DC]">
+          <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'}`}>
             <div 
               style={{
-                backgroundColor: isBeige ? (isRecording && !displayStats?.isStationary ? '#DCFCE7' : '#ECFDF5') : 'rgba(6, 78, 59, 0.4)',
-                borderColor: isBeige ? (isRecording && !displayStats?.isStationary ? '#22C55E' : '#A7F3D0') : 'rgba(16, 185, 129, 0.3)'
+                backgroundColor: isWhite 
+                  ? (isRecording && !displayStats?.isStationary ? '#DCFCE7' : '#F0FDF4') 
+                  : isOLED 
+                    ? '#022C22' 
+                    : 'rgba(6, 78, 59, 0.4)',
+                borderColor: isWhite 
+                  ? (isRecording && !displayStats?.isStationary ? '#22C55E' : '#BBF7D0') 
+                  : isOLED 
+                    ? '#065F46' 
+                    : 'rgba(16, 185, 129, 0.3)'
               }}
               className="border rounded-xl p-2 text-center transition-all"
             >
               <div className="flex items-center justify-center gap-1.5 mb-0.5">
-                <span className="text-xs text-emerald-800 font-bold">🟢 移動時間</span>
+                <span className={`text-xs font-bold ${isOLED ? 'text-emerald-300' : 'text-emerald-800'}`}>🟢 移動時間</span>
                 {isRecording && !displayStats?.isStationary && (
                   <span className="px-1.5 py-0.5 bg-emerald-600 text-white text-[10px] font-mono rounded font-black animate-pulse flex items-center gap-1 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -640,20 +696,28 @@ export default function AutomotiveClusterDashboard({
                   </span>
                 )}
               </div>
-              <strong className="text-sm sm:text-base font-mono font-black text-emerald-900 block truncate">
+              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-emerald-400' : 'text-emerald-900'}`}>
                 {displayStats?.movingTimeFormatted || '00:00:00'}
               </strong>
             </div>
 
             <div 
               style={{ 
-                backgroundColor: isBeige ? (isRecording && displayStats?.isStationary ? '#FEF3C7' : '#FFFBEB') : 'rgba(120, 53, 15, 0.4)', 
-                borderColor: isBeige ? (isRecording && displayStats?.isStationary ? '#F59E0B' : '#FDE68A') : 'rgba(245, 158, 11, 0.3)' 
+                backgroundColor: isWhite 
+                  ? (isRecording && displayStats?.isStationary ? '#FEF3C7' : '#FFFBEB') 
+                  : isOLED 
+                    ? '#451A03' 
+                    : 'rgba(120, 53, 15, 0.4)', 
+                borderColor: isWhite 
+                  ? (isRecording && displayStats?.isStationary ? '#F59E0B' : '#FDE68A') 
+                  : isOLED 
+                    ? '#92400E' 
+                    : 'rgba(245, 158, 11, 0.3)' 
               }}
               className="border rounded-xl p-2 text-center transition-all shadow-sm"
             >
               <div className="flex items-center justify-center gap-1.5 mb-0.5">
-                <span className="text-xs text-amber-800 font-bold">⏸️ 休息停頓</span>
+                <span className={`text-xs font-bold ${isOLED ? 'text-amber-300' : 'text-amber-800'}`}>⏸️ 休息停頓</span>
                 {isRecording && displayStats?.isStationary && (
                   <span className="px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-mono rounded font-black animate-pulse flex items-center gap-1 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -661,7 +725,7 @@ export default function AutomotiveClusterDashboard({
                   </span>
                 )}
               </div>
-              <strong className="text-sm sm:text-base font-mono font-black text-amber-900 block truncate">
+              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-amber-400' : 'text-amber-900'}`}>
                 {displayStats?.stoppedTimeFormatted || '00:00:00'}
               </strong>
             </div>
@@ -670,7 +734,7 @@ export default function AutomotiveClusterDashboard({
           {/* Live Motion/Rest Status Banner & Manual Rest Switch */}
           {isRecording && (
             <div 
-              style={{ backgroundColor: isBeige ? '#F4EDE2' : 'rgba(255,255,255,0.05)', borderColor: isBeige ? '#E7DFD3' : 'rgba(255,255,255,0.1)' }}
+              style={{ backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#09090B' : 'rgba(255,255,255,0.05)', borderColor: isWhite ? '#E2E8F0' : isOLED ? '#27272A' : 'rgba(255,255,255,0.1)' }}
               className="px-2.5 py-1.5 rounded-xl border flex items-center justify-between gap-2"
             >
               <div className="flex items-center gap-1.5 min-w-0">
@@ -684,9 +748,9 @@ export default function AutomotiveClusterDashboard({
                   type="button"
                   onClick={toggleManualRest}
                   style={{
-                    backgroundColor: displayStats?.isManuallyResting ? '#B45309' : '#FFFFFF',
-                    borderColor: displayStats?.isManuallyResting ? '#78350F' : '#DECDB9',
-                    color: displayStats?.isManuallyResting ? '#FFFFFF' : '#8C532B'
+                    backgroundColor: displayStats?.isManuallyResting ? '#059669' : isOLED ? '#18181B' : '#FFFFFF',
+                    borderColor: displayStats?.isManuallyResting ? '#047857' : isOLED ? '#3F3F46' : '#CBD5E1',
+                    color: displayStats?.isManuallyResting ? '#FFFFFF' : isOLED ? '#F4F4F5' : '#334155'
                   }}
                   className="px-2 py-0.5 rounded-lg border text-[10px] font-bold shadow-sm transition-all active:scale-95 shrink-0 cursor-pointer"
                 >
@@ -697,15 +761,15 @@ export default function AutomotiveClusterDashboard({
           )}
 
           {/* Trip Odometer */}
-          <div className="pt-2 border-t border-[#EFE7DC] flex items-baseline justify-between">
+          <div className={`pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'} flex items-baseline justify-between`}>
             <span style={{ color: themeStyles.textColorSecondary }} className="text-xs font-bold">
               📏 累計路徑里程
             </span>
             <div className="flex items-baseline gap-1 font-mono">
-              <span style={{ color: themeStyles.accentColor }} className="text-2xl sm:text-3xl font-black tracking-tight">
+              <span style={{ color: isOLED ? '#F59E0B' : themeStyles.accentColor }} className="text-2xl sm:text-3xl font-black tracking-tight">
                 {displayStats?.totalDistanceKm || '0.00'}
               </span>
-              <span style={{ color: themeStyles.accentColor }} className="text-sm font-black">KM</span>
+              <span style={{ color: isOLED ? '#F59E0B' : themeStyles.accentColor }} className="text-sm font-black">KM</span>
             </div>
           </div>
         </div>
@@ -725,46 +789,52 @@ export default function AutomotiveClusterDashboard({
                 <span className="text-base">⛰️</span>
                 <span>當前海拔高度</span>
               </span>
-              <span style={{ color: '#1D4ED8' }} className="font-mono text-[11px] font-bold">
+              <span style={{ color: isOLED ? '#38BDF8' : '#1D4ED8' }} className="font-mono text-[11px] font-bold">
                 ALTIMETER
               </span>
             </div>
 
             {/* GIANT ALTITUDE DISPLAY (人眼秒看 - 支援飛機萬米高空) */}
-            <div className="text-3xl sm:text-4xl font-mono font-black tracking-tight leading-none text-blue-900 my-1 flex items-baseline gap-1">
+            <div className={`text-3xl sm:text-4xl font-mono font-black tracking-tight leading-none ${isOLED ? 'text-sky-400' : 'text-blue-900'} my-1 flex items-baseline gap-1`}>
               <span>{displayStats?.currentElevation !== null ? Number(displayStats.currentElevation).toLocaleString() : '--'}</span>
               <span style={{ color: themeStyles.textColorSecondary }} className="text-base font-bold font-mono">公尺 (m)</span>
             </div>
           </div>
 
           {/* Vertical Gain & Loss Telemetry */}
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#EFE7DC]">
+          <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'}`}>
             <div 
-              style={{ backgroundColor: isBeige ? '#EFF6FF' : 'rgba(30, 58, 138, 0.4)', borderColor: isBeige ? '#BFDBFE' : 'rgba(59, 130, 246, 0.3)' }}
+              style={{ 
+                backgroundColor: isWhite ? '#EFF6FF' : isOLED ? '#1E1B4B' : 'rgba(30, 58, 138, 0.4)', 
+                borderColor: isWhite ? '#BFDBFE' : isOLED ? '#3730A3' : 'rgba(59, 130, 246, 0.3)' 
+              }}
               className="border rounded-xl p-2 text-center"
             >
-              <span className="text-xs text-blue-800 font-bold block mb-0.5">▲ 總爬升</span>
-              <strong className="text-sm sm:text-base font-mono font-black text-blue-900 block truncate">
+              <span className={`text-xs font-bold block mb-0.5 ${isOLED ? 'text-indigo-300' : 'text-blue-800'}`}>▲ 總爬升</span>
+              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-indigo-200' : 'text-blue-900'}`}>
                 +{Number(displayStats?.totalAscentM || 0).toLocaleString()} m
               </strong>
             </div>
 
             <div 
-              style={{ backgroundColor: isBeige ? '#F8FAFC' : 'rgba(30, 41, 59, 0.4)', borderColor: isBeige ? '#E2E8F0' : 'rgba(148, 163, 184, 0.3)' }}
+              style={{ 
+                backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#064E3B' : 'rgba(30, 41, 59, 0.4)', 
+                borderColor: isWhite ? '#E2E8F0' : isOLED ? '#065F46' : 'rgba(148, 163, 184, 0.3)' 
+              }}
               className="border rounded-xl p-2 text-center"
             >
-              <span className="text-xs text-slate-700 font-bold block mb-0.5">▼ 總下降</span>
-              <strong className="text-sm sm:text-base font-mono font-black text-slate-900 block truncate">
+              <span className={`text-xs font-bold block mb-0.5 ${isOLED ? 'text-emerald-300' : 'text-slate-700'}`}>▼ 總下降</span>
+              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-emerald-200' : 'text-slate-900'}`}>
                 -{Number(displayStats?.totalDescentM || 0).toLocaleString()} m
               </strong>
             </div>
           </div>
 
           {/* Min / Max Elevation Range */}
-          <div className="pt-2 border-t border-[#EFE7DC] flex items-center justify-between text-xs font-mono">
+          <div className={`pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'} flex items-center justify-between text-xs font-mono`}>
             <span style={{ color: themeStyles.textColorSecondary }} className="font-bold">峰谷跨距:</span>
             <span style={{ color: themeStyles.textColorPrimary }} className="font-bold">
-              最低 <strong className="text-blue-700">{displayStats?.minElevationM ? `${Number(displayStats.minElevationM).toLocaleString()}m` : '--'}</strong> ~ 最高 <strong className="text-rose-700">{displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : '--'}</strong>
+              最低 <strong className={isOLED ? 'text-sky-400 font-bold' : 'text-blue-700'}>{displayStats?.minElevationM ? `${Number(displayStats.minElevationM).toLocaleString()}m` : '--'}</strong> ~ 最高 <strong className={isOLED ? 'text-rose-400 font-bold' : 'text-rose-700'}>{displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : '--'}</strong>
             </span>
           </div>
         </div>
@@ -793,14 +863,17 @@ export default function AutomotiveClusterDashboard({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {/* Gauge 1: 平均時速 (Average Speed) */}
           <div 
-            style={{ backgroundColor: isBeige ? '#FAF7F2' : 'rgba(255,255,255,0.06)', borderColor: isBeige ? '#E8DFD1' : 'rgba(255,255,255,0.1)' }}
+            style={{ 
+              backgroundColor: isWhite ? '#FFFFFF' : isOLED ? '#000000' : 'rgba(255,255,255,0.06)', 
+              borderColor: isWhite ? '#E2E8F0' : isOLED ? '#27272A' : 'rgba(255,255,255,0.1)' 
+            }}
             className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           >
             <span style={{ color: themeStyles.textColorSecondary }} className="text-xs font-bold block mb-1">
               平均時速
             </span>
             <div 
-              style={{ color: themeStyles.textColorPrimary }}
+              style={{ color: isOLED ? '#F4F4F5' : themeStyles.textColorPrimary }}
               className="text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1"
             >
               {displayStats?.avgSpeedKmh || '0.0'}
@@ -812,48 +885,57 @@ export default function AutomotiveClusterDashboard({
 
           {/* Gauge 2: 移動均速 (Moving Average) */}
           <div 
-            style={{ backgroundColor: isBeige ? '#ECFDF5' : 'rgba(6, 78, 59, 0.4)', borderColor: isBeige ? '#A7F3D0' : 'rgba(16, 185, 129, 0.3)' }}
+            style={{ 
+              backgroundColor: isWhite ? '#F0FDF4' : isOLED ? '#022C22' : 'rgba(6, 78, 59, 0.4)', 
+              borderColor: isWhite ? '#BBF7D0' : isOLED ? '#065F46' : 'rgba(16, 185, 129, 0.3)' 
+            }}
             className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           >
-            <span className="text-xs text-emerald-800 font-bold block mb-1">
+            <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-emerald-300' : 'text-emerald-800'}`}>
               移動均速
             </span>
-            <div className="text-2xl sm:text-3xl font-mono font-black text-emerald-700 tracking-tight leading-none my-1">
+            <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-emerald-400' : 'text-emerald-700'}`}>
               {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
             </div>
-            <span className="text-[11px] text-emerald-600 font-mono font-bold block">
+            <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-emerald-500' : 'text-emerald-600'}`}>
               km/h (巡航)
             </span>
           </div>
 
           {/* Gauge 3: 最高時速 (Max Peak Speed) */}
           <div 
-            style={{ backgroundColor: isBeige ? '#FFF1F2' : 'rgba(136, 19, 55, 0.4)', borderColor: isBeige ? '#FECDD3' : 'rgba(244, 63, 94, 0.3)' }}
+            style={{ 
+              backgroundColor: isWhite ? '#FFF1F2' : isOLED ? '#4C0519' : 'rgba(136, 19, 55, 0.4)', 
+              borderColor: isWhite ? '#FECDD3' : isOLED ? '#9F1239' : 'rgba(244, 63, 94, 0.3)' 
+            }}
             className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           >
-            <span className="text-xs text-rose-800 font-bold block mb-1">
+            <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-rose-300' : 'text-rose-800'}`}>
               最高時速
             </span>
-            <div className="text-2xl sm:text-3xl font-mono font-black text-rose-600 tracking-tight leading-none my-1">
+            <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-rose-400' : 'text-rose-600'}`}>
               {displayStats?.maxSpeedKmh || '0.0'}
             </div>
-            <span className="text-[11px] text-rose-500 font-mono font-bold block">
+            <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-rose-500' : 'text-rose-500'}`}>
               km/h (極速)
             </span>
           </div>
 
           {/* Gauge 4: 最低時速 (Min Climb Pace) */}
           <div 
-            style={{ backgroundColor: isBeige ? '#EFF6FF' : 'rgba(30, 58, 138, 0.4)', borderColor: isBeige ? '#BFDBFE' : 'rgba(59, 130, 246, 0.3)' }}
+            style={{ 
+              backgroundColor: isWhite ? '#EFF6FF' : isOLED ? '#082F49' : 'rgba(30, 58, 138, 0.4)', 
+              borderColor: isWhite ? '#BFDBFE' : isOLED ? '#075985' : 'rgba(59, 130, 246, 0.3)' 
+            }}
             className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           >
-            <span className="text-xs text-blue-800 font-bold block mb-1">
+            <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-sky-300' : 'text-blue-800'}`}>
               最低時速
             </span>
-            <div className="text-2xl sm:text-3xl font-mono font-black text-blue-600 tracking-tight leading-none my-1">
+            <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-sky-400' : 'text-blue-600'}`}>
               {displayStats?.minSpeedKmh || '0.0'}
             </div>
-            <span className="text-[11px] text-blue-500 font-mono font-bold block">
+            <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-sky-500' : 'text-blue-500'}`}>
               km/h (爬坡)
             </span>
           </div>
