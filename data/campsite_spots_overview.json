@@ -5,39 +5,9 @@
     "region": "苗栗縣",
     "location": "泰安鄉",
     "source": "google_overview_playwright",
-    "overview_summary": "布耶特景觀營地 周邊依據 Google 實境探勘，鄰近 布耶特景觀營地 · 雲海夕陽觀景台 等真實步道與自然景點。",
+    "overview_summary": "布耶特景觀營地 周邊依據 Google 實境探勘，鄰近 三連潭古圳道 等真實步道與自然景點。",
     "scraped_at": "2026-11-10T05:24:10.973Z",
     "spots": [
-      {
-        "id": "local_view_布耶特景觀營地",
-        "name": "布耶特景觀營地 · 雲海夕陽觀景台",
-        "type": "viewpoint",
-        "icon": "🌅",
-        "latitude": 24.4243781,
-        "longitude": 120.92678599999999,
-        "elevation": 1040,
-        "distance_km": 0.4,
-        "travel_time": "營區步道步行約 5~8 分鐘",
-        "travel_mode": "walk",
-        "difficulty": "平緩好走 (適合全員散步)",
-        "highlights": "布耶特景觀營地 制高點全景展望，欣賞山谷雲瀑與金色晚霞絕佳點位",
-        "safety_warning": "清晨與傍晚草露濕滑，穿著防滑休閒鞋尤佳"
-      },
-      {
-        "id": "local_trail_布耶特景觀營地",
-        "name": "布耶特景觀營地 · 森林野溪秘境小徑",
-        "type": "trail",
-        "icon": "🥾",
-        "latitude": 24.4166781,
-        "longitude": 120.927086,
-        "elevation": 965,
-        "distance_km": 0.8,
-        "travel_time": "營區旁步行約 12 分鐘",
-        "travel_mode": "walk",
-        "difficulty": "輕鬆健行 (林蔭土石路)",
-        "highlights": "穿梭高聳杉木竹林與清涼小溪，芬多精與負離子充沛",
-        "safety_warning": "山林潮濕路面偶有青苔，注意下坡步伐"
-      },
       {
         "id": "google_pw_4_",
         "name": "三連潭古圳道",
@@ -154,7 +124,7 @@
     "region": "新竹縣",
     "location": "五峰鄉",
     "source": "google_overview",
-    "overview_summary": "布魯的家座落於新竹五峰白蘭部落，海拔約1000公尺，坐擁雪霸國家公園外圍層疊山巒。周邊清泉溫泉、八仙瀑布與鳥嘴山登山步道環繞，春季櫻花盛開，秋天雲瀑壯觀。",
+    "overview_summary": "布魯的家 周邊依據 Google 實境探勘，鄰近 大鹿林道八仙瀑布 等真實步道與自然景點。",
     "spots": [
       {
         "id": "spot_baxian_bl",
@@ -209,7 +179,7 @@
     "region": "新竹縣",
     "location": "五峰鄉",
     "source": "google_overview",
-    "overview_summary": "阿貴營地位於五峰白蘭部落頂端，海拔高達1200公尺，視野開闊俯瞰群山。鄰近鳥嘴山登山口與大隘部落，是觀星看日出的絕佳高點。",
+    "overview_summary": "阿貴營地 周邊依據 Google 實境探勘，鄰近 鳥嘴山頂峰展望 等真實步道與自然景點。",
     "spots": [
       {
         "id": "spot_niaozui_ag",
@@ -249,7 +219,7 @@
     "region": "嘉義縣",
     "location": "阿里山鄉",
     "source": "google_overview",
-    "overview_summary": "阿里山迷糊露營區坐落於阿里山樂野村，海拔約1300公尺，緊鄰著名的米洋溪與迷糊步道。沿途竹林茂密、溪水潺潺，深具鄒族文化底蘊。",
+    "overview_summary": "阿里山 迷糊露營區 周邊依據 Google 實境探勘，鄰近 迷糊步道 (米洋溪步道) 等真實步道與自然景點。",
     "spots": [
       {
         "id": "spot_mihu_trail",
@@ -304,7 +274,7 @@
     "region": "新竹縣",
     "location": "尖石鄉",
     "source": "google_overview",
-    "overview_summary": "愛喜露營區位於新竹尖石那羅部落，海拔約710公尺。緊鄰青蛙石天空步道、北角吊橋與錦屏野溪溫泉，交通便利，兼具水岸景觀與山林健行體驗。",
+    "overview_summary": "愛喜露營區 周邊依據 Google 實境探勘，鄰近 青蛙石天空步道 等真實步道與自然景點。",
     "spots": [
       {
         "id": "spot_qingwa_as",
