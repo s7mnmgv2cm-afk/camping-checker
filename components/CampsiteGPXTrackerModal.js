@@ -255,7 +255,8 @@ export default function CampsiteGPXTrackerModal({
     
     if (!isLocalhost && typeof window !== 'undefined') {
       const shareUrl = `${window.location.origin}/api/gpx/share/${presetId}.gpx`;
-      const url = `https://gpx.studio/?state=${encodeURIComponent(JSON.stringify({ urls: [shareUrl] }))}`;
+      // 依據 gpx.studio 官方 Integration 規範：使用 ?files=["..."] 達成 0 秒全自動載入
+      const url = `https://gpx.studio/app?files=${encodeURIComponent(JSON.stringify([shareUrl]))}`;
       window.open(url, '_blank');
       setSaveSuccessMsg(`🚀 已在 gpx.studio 自動載入【${presetId}】官方航跡！`);
     } else {
@@ -263,7 +264,7 @@ export default function CampsiteGPXTrackerModal({
       const trail = PRESET_HIKING_TRAILS.find(t => t.id === presetId);
       downloadGPXFile(`${trail?.name || presetId}.gpx`, xml);
       if (typeof window !== 'undefined') {
-        window.open('https://gpx.studio/', '_blank');
+        window.open('https://gpx.studio/app', '_blank');
       }
       setSaveSuccessMsg(`✨ 已下載【${trail?.name || presetId}】GPX 並開啟 gpx.studio，直接拖入即可 0 秒預覽！`);
     }
