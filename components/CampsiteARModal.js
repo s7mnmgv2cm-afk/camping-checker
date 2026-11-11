@@ -2289,16 +2289,6 @@ export default function CampsiteARModal({
                     ? 'border-cyan-400 bg-cyan-400/60 scale-125 shadow-[0_0_15px_#06b6d4]'
                     : 'border-cyan-300/60'
                 }`}></div>
-
-                {/* Target Locked Floating Card */}
-                {lockedPoi && (
-                  <div className="absolute -top-12 px-3.5 py-1 bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 font-black text-xs rounded-full shadow-xl animate-bounce flex items-center gap-1.5 whitespace-nowrap">
-                    <span>{lockedPoi.icon} 已鎖定：{lockedPoi.name}</span>
-                    <span className="bg-slate-950 text-cyan-300 px-1.5 py-0.2 rounded-full text-xs font-mono">
-                      {lockedPoi.distanceKm} km · {lockedPoi.travelTime}
-                    </span>
-                  </div>
-                )}
               </div>
             ) : (
               <div className={`relative w-44 h-44 sm:w-56 sm:h-56 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
