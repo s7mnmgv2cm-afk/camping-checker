@@ -20,6 +20,11 @@ export default function CampsiteGPXTrackerModal({
     addWaypoint,
     trackName,
     setTrackName,
+    elapsedSec,
+    movingSec,
+    stoppedSec,
+    isManuallyResting,
+    toggleManualRest,
     currentStats,
     lastFinishedTrack,
     downloadGPX,
@@ -49,6 +54,7 @@ export default function CampsiteGPXTrackerModal({
   const [expandedHistoryTrackId, setExpandedHistoryTrackId] = useState(null);
   const [editingTrack, setEditingTrack] = useState(null); // { id, name } for inline renaming
   const [editTrackNameInput, setEditTrackNameInput] = useState('');
+  const [scrubbedPoint, setScrubbedPoint] = useState(null); // 聯動高度圖與時速表紅針
 
   const fileInputRef = useRef(null);
 
@@ -353,6 +359,9 @@ export default function CampsiteGPXTrackerModal({
                   isRecording={isRecording}
                   displayPointsCount={displayPointsCount}
                   displayTitle={displayTitle}
+                  isManuallyResting={isManuallyResting}
+                  toggleManualRest={toggleManualRest}
+                  scrubbedSpeed={scrubbedPoint?.speed ?? null}
                 />
 
                 {/* 📈 高度剖面圖 (Elevation Profile Chart) - 完全對齊使用者上傳的圖表 */}
@@ -363,6 +372,7 @@ export default function CampsiteGPXTrackerModal({
                   minElevationM={displayStats?.minElevationM}
                   totalAscentM={displayStats?.totalAscentM || 0}
                   totalDescentM={displayStats?.totalDescentM || 0}
+                  onHoverPoint={setScrubbedPoint}
                 />
 
                 {/* 📍 Waypoints Tagging Section */}

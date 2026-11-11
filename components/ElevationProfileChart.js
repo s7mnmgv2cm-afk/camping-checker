@@ -16,7 +16,8 @@ export default function ElevationProfileChart({
   maxElevationM = null,
   minElevationM = null,
   totalAscentM = 0,
-  totalDescentM = 0
+  totalDescentM = 0,
+  onHoverPoint = null
 }) {
   const [hoverIndex, setHoverIndex] = useState(null);
   const containerRef = useRef(null);
@@ -141,10 +142,16 @@ export default function ElevationProfileChart({
       }
     }
     setHoverIndex(closestIdx);
+    if (typeof onHoverPoint === 'function' && points[closestIdx]) {
+      onHoverPoint(points[closestIdx]);
+    }
   };
 
   const handlePointerLeave = () => {
     setHoverIndex(null);
+    if (typeof onHoverPoint === 'function') {
+      onHoverPoint(null);
+    }
   };
 
   const activePoint = hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : null;

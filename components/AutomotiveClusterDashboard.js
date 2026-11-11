@@ -40,15 +40,58 @@ export default function AutomotiveClusterDashboard({
   displayStats,
   isRecording = false,
   displayPointsCount = 0,
-  displayTitle = ''
+  displayTitle = '',
+  isManuallyResting = false,
+  toggleManualRest = null,
+  scrubbedSpeed = null
 }) {
   const gradientId = useId();
   // 預設為米色護眼模式 ('beige')，亦支援點擊切換為黑曜賽道 ('obsidian')
   const [clusterTheme, setClusterTheme] = useState('beige');
   const [speedMode, setSpeedMode] = useState('auto'); // 'auto' | 'hike' | 'bike' | 'drive' | 'train' | 'plane'
 
+  // Interactive Speed Simulation & Self-check Needle Sweep
+  const [testSpeed, setTestSpeed] = useState(null);
+  const [isSweeping, setIsSweeping] = useState(false);
+  const [sweepAngle, setSweepAngle] = useState(null);
+
+  // Trigger Gauge Sweep (超跑發動指針自檢全幅掃描 0 -> MAX -> Settle)
+  const triggerNeedleSweep = () => {
+    if (isSweeping) return;
+    setIsSweeping(true);
+    setSweepAngle(120); // Sweep to max scale (+120 deg)
+    setTimeout(() => {
+      setSweepAngle(-120); // Sweep back to zero (-120 deg)
+      setTimeout(() => {
+        setSweepAngle(null); // Settle smoothly at actual speed
+        setIsSweeping(false);
+      }, 550);
+    }, 600);
+  };
+
+  // Run ignition sweep once upon opening/mounting so needle moves immediately
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      triggerNeedleSweep();
+    }, 400);
+    return () => clearTimeout(t);
+  }, []);
+
   // Current speed & telemetry metrics
-  const currentSpeed = parseFloat(displayStats?.currentSpeedKmh || 0);
+  const baseCurrentSpeed = parseFloat(displayStats?.currentSpeedKmh || 0);
+  const effectiveSpeed = (() => {
+    if (testSpeed !== null) return testSpeed;
+    if (scrubbedSpeed !== null && scrubbedSpeed !== undefined && scrubbedSpeed >= 0) return scrubbedSpeed;
+    if (isRecording) return baseCurrentSpeed;
+    // When reviewing past tracks/presets, show cruising moving average speed rather than sitting frozen at 0
+    if (baseCurrentSpeed > 0) return baseCurrentSpeed;
+    const mAvg = parseFloat(displayStats?.movingAvgSpeedKmh || 0);
+    if (mAvg > 0) return mAvg;
+    const avg = parseFloat(displayStats?.avgSpeedKmh || 0);
+    if (avg > 0) return avg;
+    return 0;
+  })();
+
   const avgSpeed = parseFloat(displayStats?.avgSpeedKmh || 0);
   const movingAvgSpeed = parseFloat(displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || 0);
   const maxSpeed = parseFloat(displayStats?.maxSpeedKmh || 0);
@@ -56,15 +99,16 @@ export default function AutomotiveClusterDashboard({
 
   // Dynamic dial scale based on selected mode or automatic detection
   const selectedConfig = SPEED_MODES.find(m => m.id === speedMode);
-  const dialMax = selectedConfig?.max || getAutoDialMax(currentSpeed, maxSpeed);
+  const dialMax = selectedConfig?.max || getAutoDialMax(effectiveSpeed, maxSpeed);
   const modeInfo = getModeTitle(dialMax);
 
-  const speedRatio = Math.min(1, Math.max(0, currentSpeed / dialMax));
+  const speedRatio = Math.min(1, Math.max(0, effectiveSpeed / dialMax));
   
   // Needle & Arc geometry: 240-degree sweep from -120 deg (0) to +120 deg (max)
   const startAngleDeg = -120;
   const sweepAngleDeg = 240;
-  const currentAngleDeg = startAngleDeg + (speedRatio * sweepAngleDeg);
+  const targetAngleDeg = startAngleDeg + (speedRatio * sweepAngleDeg);
+  const currentAngleDeg = sweepAngle !== null ? sweepAngle : targetAngleDeg;
 
   // Center (cx, cy) and radius for larger 240x240 SVG gauge
   const cx = 120;
@@ -256,7 +300,10 @@ export default function AutomotiveClusterDashboard({
               <button
                 key={mode.id}
                 type="button"
-                onClick={() => setSpeedMode(mode.id)}
+                onClick={() => {
+                  setSpeedMode(mode.id);
+                  triggerNeedleSweep();
+                }}
                 style={{
                   backgroundColor: isSelected 
                     ? (isBeige ? '#8C532B' : '#F59E0B') 
@@ -275,6 +322,73 @@ export default function AutomotiveClusterDashboard({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* ⚡ 指針動態自檢與速度模擬試跑列 (點擊看紅針滑動旋轉) */}
+      <div 
+        style={{
+          backgroundColor: isBeige ? '#FAF7F2' : 'rgba(255,255,255,0.04)',
+          borderColor: isBeige ? '#DECDB9' : 'rgba(255,255,255,0.08)'
+        }}
+        className="px-2.5 py-1.5 rounded-2xl border flex items-center justify-between gap-1 overflow-x-auto text-xs"
+      >
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={triggerNeedleSweep}
+            disabled={isSweeping}
+            style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+            className="px-2.5 py-1 rounded-xl text-[11px] font-black shadow-sm hover:bg-red-700 active:scale-95 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+            title="像超跑啟動一樣指針全幅掃描自檢"
+          >
+            <span>🏎️</span>
+            <span>指針自檢 (Sweep)</span>
+          </button>
+          <span style={{ color: themeStyles.textColorSecondary }} className="text-[11px] font-bold hidden sm:inline">
+            快速試跑：
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {[
+            { label: '🚶 3.8', speed: 3.8 },
+            { label: '🏃 10.5', speed: 10.5 },
+            { label: '🚴 28', speed: 28 },
+            { label: '🚗 95', speed: 95 },
+            { label: '✈️ 850', speed: 850 }
+          ].map((sim) => (
+            <button
+              key={sim.speed}
+              type="button"
+              onClick={() => {
+                setTestSpeed(sim.speed);
+                if (sim.speed > 500 && speedMode !== 'plane') setSpeedMode('plane');
+                else if (sim.speed > 80 && speedMode === 'hike') setSpeedMode('drive');
+                else if (sim.speed > 15 && speedMode === 'hike') setSpeedMode('bike');
+              }}
+              style={{
+                backgroundColor: testSpeed === sim.speed ? '#8C532B' : (isBeige ? '#FFFFFF' : 'rgba(255,255,255,0.08)'),
+                borderColor: testSpeed === sim.speed ? '#8C532B' : (isBeige ? '#DECDB9' : 'rgba(255,255,255,0.15)'),
+                color: testSpeed === sim.speed ? '#FFFFFF' : themeStyles.textColorPrimary
+              }}
+              className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border transition-all active:scale-95 cursor-pointer shrink-0"
+            >
+              {sim.label}
+            </button>
+          ))}
+
+          {testSpeed !== null && (
+            <button
+              type="button"
+              onClick={() => setTestSpeed(null)}
+              style={{ backgroundColor: '#E5E7EB', color: '#1F2937' }}
+              className="px-2 py-0.5 rounded-lg text-[10px] font-bold hover:bg-gray-300 transition-all cursor-pointer shrink-0"
+              title="清除模擬速度，回歸 GPS 實測"
+            >
+              ✕ 恢復 GPS
+            </button>
+          )}
         </div>
       </div>
 
@@ -388,7 +502,7 @@ export default function AutomotiveClusterDashboard({
               </g>
             ))}
 
-            {/* Speed Digital Readout (Clean layout: label at y=46, big speed at y=88, KM/H at y=156) */}
+            {/* Speed Digital Readout (Clean layout: label at y=cy-48, big speed at y=cy-12, KM/H at y=cy+28) */}
             <text 
               x={cx} 
               y={cy - 48} 
@@ -399,18 +513,18 @@ export default function AutomotiveClusterDashboard({
               fontWeight="900" 
               letterSpacing="1"
             >
-              即時時速
+              {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 步道巡航均速' : '即時行走速度'))}
             </text>
             <text 
               x={cx} 
               y={cy - 12} 
               textAnchor="middle" 
               fill={themeStyles.textColorPrimary} 
-              fontSize={currentSpeed >= 100 ? "38" : "44"} 
+              fontSize={effectiveSpeed >= 100 ? "38" : "44"} 
               fontFamily="monospace" 
               fontWeight="900" 
             >
-              {displayStats?.currentSpeedKmh || '0.0'}
+              {effectiveSpeed.toFixed(1)}
             </text>
             <text 
               x={cx} 
@@ -425,14 +539,28 @@ export default function AutomotiveClusterDashboard({
               KM / H
             </text>
 
-            {/* Speed Needle Pointer (Classic Rally Red) */}
-            <g transform={`rotate(${currentAngleDeg} ${cx} ${cy})`} filter={`url(#${gradientId}-needle-shadow)`}>
+            {/* Speed Needle Pointer (Classic Rally Red with CSS 60fps Hardware Smooth Transition & Counterweight Tail) */}
+            <g 
+              style={{
+                transform: `rotate(${currentAngleDeg}deg)`,
+                transformOrigin: `${cx}px ${cy}px`,
+                transition: isSweeping 
+                  ? 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)' 
+                  : 'transform 0.42s cubic-bezier(0.34, 1.35, 0.64, 1)'
+              }}
+              filter={`url(#${gradientId}-needle-shadow)`}
+            >
               {/* Needle Blade */}
               <polygon
                 points={`${cx - 2.5},${cy} ${cx},42 ${cx + 2.5},${cy}`}
                 fill="#DC2626"
               />
-              <line x1={cx} y1={cy} x2={cx} y2={40} stroke="#EF4444" strokeWidth="2" strokeLinecap="round" />
+              <line x1={cx} y1={cy} x2={cx} y2={40} stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" />
+              {/* Counterweight Tail */}
+              <polygon
+                points={`${cx - 2},${cy} ${cx},${cy + 16} ${cx + 2},${cy}`}
+                fill="#991B1B"
+              />
               {/* Center Pivot Cap */}
               <circle cx={cx} cy={cy} r="10" fill={themeStyles.gaugeCenterCap} stroke={themeStyles.gaugeCenterCapBorder} strokeWidth="2" />
               <circle cx={cx} cy={cy} r="3.5" fill="#FFFFFF" />
@@ -486,25 +614,76 @@ export default function AutomotiveClusterDashboard({
           {/* Moving & Rest Breakdowns */}
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#EFE7DC]">
             <div 
-              style={{ backgroundColor: isBeige ? '#ECFDF5' : 'rgba(6, 78, 59, 0.4)', borderColor: isBeige ? '#A7F3D0' : 'rgba(16, 185, 129, 0.3)' }}
-              className="border rounded-xl p-2 text-center"
+              style={{
+                backgroundColor: isBeige ? (isRecording && !displayStats?.isStationary ? '#DCFCE7' : '#ECFDF5') : 'rgba(6, 78, 59, 0.4)',
+                borderColor: isBeige ? (isRecording && !displayStats?.isStationary ? '#22C55E' : '#A7F3D0') : 'rgba(16, 185, 129, 0.3)'
+              }}
+              className="border rounded-xl p-2 text-center transition-all"
             >
-              <span className="text-xs text-emerald-800 font-bold block mb-0.5">🟢 移動時間</span>
+              <div className="flex items-center justify-center gap-1.5 mb-0.5">
+                <span className="text-xs text-emerald-800 font-bold">🟢 移動時間</span>
+                {isRecording && !displayStats?.isStationary && (
+                  <span className="px-1.5 py-0.5 bg-emerald-600 text-white text-[10px] font-mono rounded font-black animate-pulse flex items-center gap-1 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                    <span>計秒中</span>
+                  </span>
+                )}
+              </div>
               <strong className="text-sm sm:text-base font-mono font-black text-emerald-900 block truncate">
-                {displayStats?.movingTimeFormatted || '--'}
+                {displayStats?.movingTimeFormatted || '00:00:00'}
               </strong>
             </div>
 
             <div 
-              style={{ backgroundColor: isBeige ? '#FFFBEB' : 'rgba(120, 53, 15, 0.4)', borderColor: isBeige ? '#FDE68A' : 'rgba(245, 158, 11, 0.3)' }}
-              className="border rounded-xl p-2 text-center"
+              style={{ 
+                backgroundColor: isBeige ? (isRecording && displayStats?.isStationary ? '#FEF3C7' : '#FFFBEB') : 'rgba(120, 53, 15, 0.4)', 
+                borderColor: isBeige ? (isRecording && displayStats?.isStationary ? '#F59E0B' : '#FDE68A') : 'rgba(245, 158, 11, 0.3)' 
+              }}
+              className="border rounded-xl p-2 text-center transition-all shadow-sm"
             >
-              <span className="text-xs text-amber-800 font-bold block mb-0.5">⏸️ 休息停頓</span>
+              <div className="flex items-center justify-center gap-1.5 mb-0.5">
+                <span className="text-xs text-amber-800 font-bold">⏸️ 休息停頓</span>
+                {isRecording && displayStats?.isStationary && (
+                  <span className="px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-mono rounded font-black animate-pulse flex items-center gap-1 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                    <span>計秒中</span>
+                  </span>
+                )}
+              </div>
               <strong className="text-sm sm:text-base font-mono font-black text-amber-900 block truncate">
-                {displayStats?.stoppedTimeFormatted || '--'}
+                {displayStats?.stoppedTimeFormatted || '00:00:00'}
               </strong>
             </div>
           </div>
+
+          {/* Live Motion/Rest Status Banner & Manual Rest Switch */}
+          {isRecording && (
+            <div 
+              style={{ backgroundColor: isBeige ? '#F4EDE2' : 'rgba(255,255,255,0.05)', borderColor: isBeige ? '#E7DFD3' : 'rgba(255,255,255,0.1)' }}
+              className="px-2.5 py-1.5 rounded-xl border flex items-center justify-between gap-2"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${displayStats?.isStationary ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 animate-pulse'}`} />
+                <span style={{ color: themeStyles.textColorPrimary }} className="text-[11px] font-bold truncate">
+                  {displayStats?.isStationary ? '休息停頓計秒中 (時速 ≤ 0.8)' : '健行移動計秒中'}
+                </span>
+              </div>
+              {typeof toggleManualRest === 'function' && (
+                <button
+                  type="button"
+                  onClick={toggleManualRest}
+                  style={{
+                    backgroundColor: displayStats?.isManuallyResting ? '#B45309' : '#FFFFFF',
+                    borderColor: displayStats?.isManuallyResting ? '#78350F' : '#DECDB9',
+                    color: displayStats?.isManuallyResting ? '#FFFFFF' : '#8C532B'
+                  }}
+                  className="px-2 py-0.5 rounded-lg border text-[10px] font-bold shadow-sm transition-all active:scale-95 shrink-0 cursor-pointer"
+                >
+                  {displayStats?.isManuallyResting ? '🚶 結束手動休息' : '☕ 坐下休息打卡'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Trip Odometer */}
           <div className="pt-2 border-t border-[#EFE7DC] flex items-baseline justify-between">
