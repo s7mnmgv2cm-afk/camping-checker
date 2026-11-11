@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { PRESET_HIKING_TRAILS } from '../lib/gpx';
 import ElevationProfileChart from './ElevationProfileChart';
+import AutomotiveClusterDashboard from './AutomotiveClusterDashboard';
 
 export default function CampsiteGPXTrackerModal({
   campsite,
@@ -28,6 +29,7 @@ export default function CampsiteGPXTrackerModal({
     savedTracks = [],
     saveTrackToHistory,
     deleteSavedTrack,
+    renameSavedTrack,
     activeRoute,
     loadTrackAsActiveRoute,
     clearActiveRoute,
@@ -45,6 +47,8 @@ export default function CampsiteGPXTrackerModal({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(null);
   const [importError, setImportError] = useState(null);
   const [expandedHistoryTrackId, setExpandedHistoryTrackId] = useState(null);
+  const [editingTrack, setEditingTrack] = useState(null); // { id, name } for inline renaming
+  const [editTrackNameInput, setEditTrackNameInput] = useState('');
 
   const fileInputRef = useRef(null);
 
@@ -322,133 +326,34 @@ export default function CampsiteGPXTrackerModal({
                   </div>
 
                   {/* Track Name Customization */}
-                  <div className="mt-3 pt-3 border-t border-[#EFE7DC] flex items-center gap-2">
-                    <span style={{ color: '#6B5C4F', fontSize: '11px', fontWeight: 'bold' }} className="shrink-0">
-                      🏷️ 航跡標題：
-                    </span>
-                    <input
-                      type="text"
-                      value={trackName}
-                      onChange={(e) => setTrackName(e.target.value)}
-                      placeholder="例如: 微光露營區_蝙蝠洞步道健行"
-                      style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
-                      className="flex-1 px-2.5 py-1 text-xs font-bold rounded-lg border focus:outline-none focus:border-[#8C532B]"
-                    />
+                  <div className="mt-3 pt-3 border-t border-[#EFE7DC] space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span style={{ color: '#6B5C4F', fontSize: '11px', fontWeight: 'bold' }} className="shrink-0">
+                        🏷️ 航跡標題：
+                      </span>
+                      <input
+                        type="text"
+                        value={trackName}
+                        onChange={(e) => setTrackName(e.target.value)}
+                        placeholder="例如: 微光露營區_蝙蝠洞步道健行"
+                        style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
+                        className="flex-1 px-2.5 py-1 text-xs font-bold rounded-lg border focus:outline-none focus:border-[#8C532B]"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-[#706254]">
+                      <span>💡</span>
+                      <span>存檔於手機本機離線空間；若標題重複將自動編為「<strong>{trackName ? `${trackName.replace(/\s*\(第\s*\d+\s*段\)$/, '')} (第 2 段)` : '同名 (第 2 段)'}</strong>」，絕不覆蓋舊檔案！</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* 📊 Live Statistics Dashboard for the ON/OFF path */}
-                <div 
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-                  className="p-4 rounded-2xl border shadow-sm space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span style={{ color: '#6B5C4F', fontSize: '11px', fontWeight: 'bold' }}>
-                        {isRecording ? '📊 本次 ON 區間即時數據' : `📊 ${displayTitle || '路徑統計摘要'}`}
-                      </span>
-                      <p style={{ color: '#8C7E72', fontSize: '10px' }} className="font-mono">
-                        包含花費時間、平均/最高/最低時速、爬升與當前海拔
-                      </p>
-                    </div>
-                    <span style={{ color: '#8C532B', fontSize: '11px', fontWeight: 'bold' }} className="font-mono shrink-0">
-                      {displayPointsCount} 個經緯點位
-                    </span>
-                  </div>
-
-                  {/* 4 Primary Stat Badges Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
-                      <span style={{ color: '#706254', fontSize: '10px' }} className="block">累積里程</span>
-                      <strong style={{ color: '#8C532B', fontSize: '16px' }} className="font-mono font-black">
-                        {displayStats?.totalDistanceKm || '0.00'} <span className="text-[10px]">km</span>
-                      </strong>
-                    </div>
-
-                    <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
-                      <span style={{ color: '#706254', fontSize: '10px' }} className="block">花費總時間</span>
-                      <strong style={{ color: '#261E18', fontSize: '15px' }} className="font-mono font-black block">
-                        {displayStats?.durationFormatted || '00:00:00'}
-                      </strong>
-                      <span style={{ color: '#706254', fontSize: '9px' }} className="block font-mono">
-                        移動 {displayStats?.movingTimeFormatted || '--'}
-                      </span>
-                    </div>
-
-                    <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
-                      <span style={{ color: '#706254', fontSize: '10px' }} className="block">爬升 / 下降</span>
-                      <strong style={{ color: '#2563EB', fontSize: '14px' }} className="font-mono font-bold">
-                        +{displayStats?.totalAscentM || 0} / -{displayStats?.totalDescentM || 0}m
-                      </strong>
-                      <span style={{ color: '#706254', fontSize: '9px' }} className="block font-mono">
-                        最高 {displayStats?.maxElevationM || '--'}m
-                      </span>
-                    </div>
-
-                    <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
-                      <span style={{ color: '#706254', fontSize: '10px' }} className="block">當前海拔</span>
-                      <strong style={{ color: '#059669', fontSize: '15px' }} className="font-mono font-black">
-                        {displayStats?.currentElevation !== null ? `${displayStats.currentElevation}m` : '--'}
-                      </strong>
-                      <span style={{ color: '#706254', fontSize: '9px' }} className="block font-mono">
-                        最低 {displayStats?.minElevationM || '--'}m
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* ⚡ 速度深度分析儀表 (Average / Max / Min Speed) */}
-                  <div 
-                    style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }}
-                    className="p-3 rounded-xl border space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <strong style={{ color: '#2C231C' }} className="font-bold flex items-center gap-1">
-                        <span>⚡</span>
-                        <span>速度分析 Telemetry</span>
-                      </strong>
-                      <span style={{ color: '#706254', fontSize: '10px' }} className="font-mono">
-                        即時時速: <span className="font-bold text-[#8C532B]">{displayStats?.currentSpeedKmh || '0.0'} km/h</span>
-                      </span>
-                    </div>
-
-                    <div 
-                      style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
-                      className="gap-1.5 text-center"
-                    >
-                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
-                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">平均時速</span>
-                        <strong style={{ color: '#261E18', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
-                          {displayStats?.avgSpeedKmh || '0.0'}
-                        </strong>
-                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
-                      </div>
-
-                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
-                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">移動均速</span>
-                        <strong style={{ color: '#166534', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
-                          {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
-                        </strong>
-                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
-                      </div>
-
-                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
-                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">最高速度</span>
-                        <strong style={{ color: '#DC2626', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
-                          {displayStats?.maxSpeedKmh || '0.0'}
-                        </strong>
-                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
-                      </div>
-
-                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
-                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">最低速度</span>
-                        <strong style={{ color: '#2563EB', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
-                          {displayStats?.minSpeedKmh || '0.0'}
-                        </strong>
-                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {/* 🏎️ 頂級車廠數位儀表板 (Automotive Virtual Cockpit Cluster HUD) */}
+                <AutomotiveClusterDashboard
+                  displayStats={displayStats}
+                  isRecording={isRecording}
+                  displayPointsCount={displayPointsCount}
+                  displayTitle={displayTitle}
+                />
 
                 {/* 📈 高度剖面圖 (Elevation Profile Chart) - 完全對齊使用者上傳的圖表 */}
                 <ElevationProfileChart
@@ -596,11 +501,32 @@ export default function CampsiteGPXTrackerModal({
                       type="button"
                       onClick={() => handleSaveToPhone(trackName)}
                       style={{ backgroundColor: '#10B981', color: '#FFFFFF' }}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm shrink-0"
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm shrink-0 cursor-pointer active:scale-95 transition-all"
                     >
                       ＋ 儲存目前航跡
                     </button>
                   )}
+                </div>
+
+                {/* 📍 手機存檔庫位置與防覆蓋說明 Banner */}
+                <div 
+                  style={{ backgroundColor: '#FBF5EC', borderColor: '#E5D6C5' }}
+                  className="p-3 rounded-xl border text-xs space-y-1.5 shadow-xs"
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-[#4A3B32]">
+                    <span>📍 航跡存放在哪裡？與防覆蓋機制：</span>
+                  </div>
+                  <div className="space-y-1 text-[11px] text-[#6B5C4F] leading-relaxed">
+                    <p>
+                      • <strong>儲存位置</strong>：航跡保存在您手機的<strong>本機離線安全空間</strong>（LocalStorage 鍵值：<code className="text-[10px] bg-white px-1 py-0.5 rounded border border-[#E5D6C5] font-mono">camping_checker_saved_tracks_v1</code>）。在深山開啟飛航模式、無網路訊號、或是把 App 完全關閉重啟、手機重開機，資料都 100% 完整保留！
+                    </p>
+                    <p>
+                      • <strong>實體檔案</strong>：點擊「📥 下載 GPX」，標準 GPX 檔案將直接下載至手機的「檔案 / 下載」資料夾，隨時可匯入至 Google 我的地圖、健行筆記或 Garmin。
+                    </p>
+                    <p>
+                      • <strong>防覆蓋機制</strong>：若存過「A」，下次重開 App 再記錄「A」時，系統會<strong>自動編為「A (第 2 段)」</strong>獨立儲存，舊的「A」絕對不會被覆蓋！亦可隨時點擊「✏️ 改名」自訂名稱。
+                    </p>
+                  </div>
                 </div>
 
                 {savedTracks.length > 0 ? (
@@ -611,38 +537,75 @@ export default function CampsiteGPXTrackerModal({
                         style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
                         className="p-3.5 rounded-2xl border shadow-sm space-y-2"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <strong style={{ color: '#2C231C' }} className="text-xs font-black block truncate">
-                              {item.name}
-                            </strong>
-                            <div className="flex items-center gap-2 text-[10px] font-mono text-[#706254] mt-0.5 flex-wrap">
-                              <span>📅 {new Date(item.finishedAt || Date.now()).toLocaleDateString('zh-TW')}</span>
-                              <span>·</span>
-                              <span className="text-[#8C532B] font-bold">📏 {item.stats?.totalDistanceKm || '0'} km</span>
-                              <span>·</span>
-                              <span className="text-[#2563EB]">⛰️ +{item.stats?.totalAscentM || 0}m</span>
-                              <span>·</span>
-                              <span>⏱️ {item.stats?.durationFormatted || '--'}</span>
-                              {item.source === 'imported' && (
-                                <span className="px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-bold">外部匯入</span>
-                              )}
-                              {item.source === 'preset' && (
-                                <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">官方範本</span>
-                              )}
-                            </div>
+                        {/* Inline Renaming or Track Header */}
+                        {editingTrack?.id === item.id ? (
+                          <div className="flex items-center gap-1.5 py-1 bg-[#FAF7F2] p-2 rounded-xl border border-[#8C532B]">
+                            <span className="text-xs shrink-0">🏷️</span>
+                            <input
+                              type="text"
+                              value={editTrackNameInput}
+                              onChange={(e) => setEditTrackNameInput(e.target.value)}
+                              placeholder="輸入新名稱"
+                              style={{ backgroundColor: '#FFFFFF', borderColor: '#DECDB9', color: '#2D241E' }}
+                              className="flex-1 px-2.5 py-1 text-xs font-bold rounded-lg border focus:outline-none focus:border-[#8C532B]"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (editTrackNameInput.trim()) {
+                                  renameSavedTrack(item.id, editTrackNameInput.trim());
+                                  setSaveSuccessMsg(`✅ 已成功將航跡更名為【${editTrackNameInput.trim()}】！`);
+                                  setTimeout(() => setSaveSuccessMsg(null), 3000);
+                                }
+                                setEditingTrack(null);
+                              }}
+                              className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold shrink-0 hover:bg-emerald-700"
+                            >
+                              確定
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingTrack(null)}
+                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold shrink-0 hover:bg-gray-300"
+                            >
+                              取消
+                            </button>
                           </div>
+                        ) : (
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <strong style={{ color: '#2C231C' }} className="text-sm font-black block truncate">
+                                {item.name}
+                              </strong>
+                              <div className="flex items-center gap-2 text-[10px] font-mono text-[#706254] mt-0.5 flex-wrap">
+                                <span>📅 {new Date(item.finishedAt || Date.now()).toLocaleDateString('zh-TW')}</span>
+                                <span>·</span>
+                                <span className="text-[#8C532B] font-bold">📏 {item.stats?.totalDistanceKm || '0'} km</span>
+                                <span>·</span>
+                                <span className="text-[#2563EB]">⛰️ +{item.stats?.totalAscentM || 0}m</span>
+                                <span>·</span>
+                                <span>⏱️ {item.stats?.durationFormatted || '--'}</span>
+                                {item.source === 'imported' && (
+                                  <span className="px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-bold">外部匯入</span>
+                                )}
+                                {item.source === 'preset' && (
+                                  <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">官方範本</span>
+                                )}
+                              </div>
+                            </div>
 
-                          <button
-                            type="button"
-                            onClick={() => deleteSavedTrack(item.id)}
-                            style={{ color: '#9CA3AF' }}
-                            className="p-1 hover:text-rose-600 text-xs shrink-0"
-                            title="從本機刪除此航跡"
-                          >
-                            ✕
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => deleteSavedTrack(item.id)}
+                              style={{ color: '#9CA3AF' }}
+                              className="p-1 hover:text-rose-600 text-xs shrink-0 cursor-pointer"
+                              title="從本機刪除此航跡"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
 
                         {/* Actions for this saved track */}
                         <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-[#F4EDE2]">
@@ -659,7 +622,7 @@ export default function CampsiteGPXTrackerModal({
                               color: activeRoute?.id === item.id ? '#FFFFFF' : '#2C231C',
                               borderColor: activeRoute?.id === item.id ? '#10B981' : '#DECDB9'
                             }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1 cursor-pointer"
                           >
                             <span>🧭</span>
                             <span>{activeRoute?.id === item.id ? '導航中 (防走錯)' : '設為導航航線'}</span>
@@ -669,17 +632,32 @@ export default function CampsiteGPXTrackerModal({
                             type="button"
                             onClick={() => setExpandedHistoryTrackId(prev => prev === item.id ? null : item.id)}
                             style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <span>📈</span>
                             <span>{expandedHistoryTrackId === item.id ? '收合圖表' : '速度與高度圖'}</span>
+                          </button>
+
+                          {/* ✏️ Inline Rename Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTrack({ id: item.id, name: item.name });
+                              setEditTrackNameInput(item.name);
+                            }}
+                            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
+                            className="px-2 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1 cursor-pointer"
+                            title="重新命名此航跡"
+                          >
+                            <span>✏️</span>
+                            <span>改名</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => downloadGPX(item)}
                             style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <span>📥</span>
                             <span>下載 GPX</span>
@@ -692,7 +670,7 @@ export default function CampsiteGPXTrackerModal({
                               setShowGoogleGuide(true);
                             }}
                             style={{ backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', color: '#1D4ED8' }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-blue-100 transition-colors flex items-center gap-1 ml-auto"
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-blue-100 transition-colors flex items-center gap-1 ml-auto cursor-pointer"
                           >
                             <span>🗺️</span>
                             <span>匯入地圖</span>
@@ -701,26 +679,14 @@ export default function CampsiteGPXTrackerModal({
 
                         {/* Inline Expandable Elevation Profile & Speed Telemetry for this Saved Track */}
                         {expandedHistoryTrackId === item.id && (
-                          <div className="pt-2 space-y-2 animate-in fade-in">
-                            {/* Speeds */}
-                            <div className="grid grid-cols-4 gap-1.5 text-center text-xs bg-[#FAF7F2] p-2 rounded-xl border border-[#DECDB9]">
-                              <div>
-                                <span className="text-[9px] text-[#706254] block">平均時速</span>
-                                <strong className="font-mono text-[#261E18] text-xs">{item.stats?.avgSpeedKmh || '0.0'} km/h</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-[#706254] block">移動均速</span>
-                                <strong className="font-mono text-[#166534] text-xs">{item.stats?.movingAvgSpeedKmh || item.stats?.avgSpeedKmh || '0.0'} km/h</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-[#706254] block">最高時速</span>
-                                <strong className="font-mono text-[#DC2626] text-xs">{item.stats?.maxSpeedKmh || '0.0'} km/h</strong>
-                              </div>
-                              <div>
-                                <span className="text-[9px] text-[#706254] block">最低時速</span>
-                                <strong className="font-mono text-[#2563EB] text-xs">{item.stats?.minSpeedKmh || '0.0'} km/h</strong>
-                              </div>
-                            </div>
+                          <div className="pt-2 space-y-3 animate-in fade-in">
+                            {/* Automotive Virtual Cockpit Cluster */}
+                            <AutomotiveClusterDashboard
+                              displayStats={item.stats}
+                              isRecording={false}
+                              displayPointsCount={item.points?.length || 0}
+                              displayTitle={item.name}
+                            />
 
                             {/* Chart */}
                             <ElevationProfileChart
