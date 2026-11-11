@@ -18,6 +18,8 @@ import CampsiteNoteModal from '../components/CampsiteNoteModal';
 import CampsiteWeatherModal from '../components/CampsiteWeatherModal';
 import CampsiteSafeRouteModal from '../components/CampsiteSafeRouteModal';
 import CampsiteARModal from '../components/CampsiteARModal';
+import CampsiteGPXTrackerModal from '../components/CampsiteGPXTrackerModal';
+import { useGPXTracker } from '../lib/useGPXTracker';
 
 const MapWithNoSSR = dynamic(() => import('../components/CampsiteMap'), {
   ssr: false,
@@ -237,6 +239,10 @@ export default function Home() {
   const [arModalInitialMode, setArModalInitialMode] = useState('campsite');
   const [showArGuideModal, setShowArGuideModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  // 🧭 GPX 戶外路徑記錄器 & 離線防迷導航 State
+  const gpxTracker = useGPXTracker();
+  const [showGpxModal, setShowGpxModal] = useState(false);
 
   // 📋 快速對照表展開／收合與過濾狀態 (手機版預設收合，避免過長)
   const [isTableExpanded, setIsTableExpanded] = useState(false);
@@ -849,23 +855,37 @@ export default function Home() {
               <span>立即體驗 AR 實境</span>
             </button>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={handleGenerateAIPrompt}
-                className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs sm:text-sm border border-white/20 hover:border-white/30 backdrop-blur-md transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                className="px-2.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/20 hover:border-white/30 backdrop-blur-md transition-all flex items-center justify-center gap-1 shadow-sm"
               >
                 <span>🤖</span>
-                <span>AI 推薦顧問</span>
+                <span>AI 顧問</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowGpxModal(true)}
+                className={`px-2.5 py-2.5 rounded-xl font-bold text-xs backdrop-blur-md transition-all flex items-center justify-center gap-1 shadow-sm border ${
+                  gpxTracker.isRecording
+                    ? 'bg-rose-500/25 text-rose-200 border-rose-400/50 animate-pulse ring-1 ring-rose-400/50'
+                    : 'bg-white/10 hover:bg-white/15 text-white border-white/20'
+                }`}
+                title="記錄健行 GPX 航跡、離線手機存檔、匯入別人的紀錄防走錯"
+              >
+                <span>{gpxTracker.isRecording ? '🔴' : '🧭'}</span>
+                <span>{gpxTracker.isRecording ? `${gpxTracker.currentStats.totalDistanceKm}km` : 'GPX 軌跡'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowArGuideModal(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs sm:text-sm border border-white/15 hover:border-white/25 backdrop-blur-md transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                className="px-2.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs border border-white/15 hover:border-white/25 backdrop-blur-md transition-all flex items-center justify-center gap-1 shadow-sm"
               >
                 <span>📖</span>
-                <span>實戰指南</span>
+                <span>指南</span>
               </button>
             </div>
           </div>
@@ -1981,7 +2001,73 @@ export default function Home() {
         windDir={arModalWind?.windDir}
         windSpeed={arModalWind?.windSpeed}
         initialLocationMode={arModalInitialMode}
+        gpxTracker={gpxTracker}
+        onOpenGpxTracker={() => setShowGpxModal(true)}
       />
+
+      {/* 🧭 GPX 戶外路徑記錄器 & 離線防迷導航 Modal */}
+      <CampsiteGPXTrackerModal
+        campsite={arModalCamp}
+        isOpen={showGpxModal}
+        onClose={() => setShowGpxModal(false)}
+        gpxTracker={gpxTracker}
+      />
+
+      {/* 🔴 GPX 背景記錄 / 離線導航懸浮膠囊 (在關閉 AR 後持續顯示於主頁底端) */}
+      {(gpxTracker.isRecording || gpxTracker.activeRoute) && !arModalCamp && (
+        <div 
+          style={{ 
+            bottom: 'max(16px, env(safe-area-inset-bottom))', 
+            zIndex: 45 
+          }}
+          className="fixed left-0 right-0 mx-auto px-2.5 w-fit max-w-[96vw] animate-in slide-in-from-bottom duration-200 pointer-events-auto"
+        >
+          <div 
+            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
+            className="px-4 py-2.5 rounded-full border shadow-2xl flex items-center gap-2.5 text-xs backdrop-blur-md"
+          >
+            <div 
+              onClick={() => setShowGpxModal(true)} 
+              className="flex items-center gap-2 cursor-pointer hover:opacity-85"
+            >
+              <span className={`w-2.5 h-2.5 rounded-full ${gpxTracker.isRecording ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
+              <span className="font-black text-[#261E18]">
+                {gpxTracker.isRecording ? 'GPX 記錄中' : '導航跟隨中'}
+              </span>
+              <span className="text-[#8C532B] font-mono font-bold">
+                {gpxTracker.isRecording 
+                  ? `${gpxTracker.currentStats.totalDistanceKm}km · ${gpxTracker.currentStats.durationFormatted}`
+                  : (gpxTracker.routeAdherence ? `距航線 ${gpxTracker.routeAdherence.distanceToRouteM}m` : (gpxTracker.activeRoute?.name || '參考航線'))}
+              </span>
+              {gpxTracker.routeAdherence?.isOffTrack && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold">
+                  ⚠️ 偏離航線
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 border-l border-[#DECDB9] pl-2">
+              {gpxTracker.isRecording && (
+                <button
+                  type="button"
+                  onClick={() => gpxTracker.addWaypoint('隨手打卡')}
+                  className="px-2 py-1 rounded-lg bg-[#EFE7DC] hover:bg-[#E2D5C3] text-[#4A3C30] font-bold text-[11px] active:scale-95 cursor-pointer"
+                  title="在此處記錄一個打卡點"
+                >
+                  📍 打卡
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowGpxModal(true)}
+                className="px-2.5 py-1 rounded-lg bg-[#8C532B] text-white font-bold text-[11px] shadow-sm active:scale-95 cursor-pointer"
+              >
+                {gpxTracker.isRecording ? '儀表板 / OFF' : '儀表板'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✨ 獨家黑科技：AR 實境搭帳圖文解說 Modal (點擊按鈕彈出) */}
       {showArGuideModal && (
