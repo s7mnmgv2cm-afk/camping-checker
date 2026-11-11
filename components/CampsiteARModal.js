@@ -474,6 +474,28 @@ export default function CampsiteARModal({
           setLiveWind({ windDir, windSpeed });
           setLoadingWind(false);
 
+          const weeklyForecast = (data.daily?.time || []).map((dateStr, idx) => {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const dateObj = new Date(y, m - 1, d);
+            const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+            const dayLabel = idx === 0 ? '今天' : dayNames[dateObj.getDay()];
+            const formattedDate = `${m}/${d}`;
+            const code = data.daily?.weather_code?.[idx];
+            const info = WMO_WEATHER_MAP[code] || { label: '晴時多雲', icon: '⛅' };
+            return {
+              date: dateStr,
+              dayLabel,
+              formattedDate,
+              weatherCode: code,
+              weatherLabel: info.label,
+              icon: info.icon,
+              maxTemp: Math.round(data.daily?.temperature_2m_max?.[idx] ?? 0),
+              minTemp: Math.round(data.daily?.temperature_2m_min?.[idx] ?? 0),
+              rainProb: data.daily?.precipitation_probability_max?.[idx] ?? 0,
+              windMax: Math.round(data.daily?.wind_speed_10m_max?.[idx] ?? 0),
+            };
+          });
+
           setLiveWeather({
             temp: data.current.temperature_2m,
             apparentTemp: data.current.apparent_temperature,
@@ -492,6 +514,7 @@ export default function CampsiteARModal({
             moonrise: data.daily?.moonrise?.[0] ? data.daily.moonrise[0].split('T')[1] : null,
             moonset: data.daily?.moonset?.[0] ? data.daily.moonset[0].split('T')[1] : null,
             moonPhase: data.daily?.moon_phase?.[0] ?? null,
+            weeklyForecast,
             updatedAt: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
           });
           setLoadingWeather(false);
@@ -3585,26 +3608,35 @@ export default function CampsiteARModal({
           </div>
         )}
 
-        {/* ⛅ Live Weather & Ephemeris Dashboard Modal */}
+        {/* ⛅ Live Weather & 7-Day Forecast Dashboard Modal (米色護眼風格 · 高密度無冗餘) */}
         {showWeatherModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-lg animate-in fade-in duration-150">
-            <div className="relative w-full max-w-2xl bg-slate-900 border border-sky-400/40 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-white">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
+            <div 
+              style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
+              className="relative w-full max-w-2xl max-h-[92vh] border rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            >
               
               {/* Modal Header */}
-              <div className="px-5 py-4 border-b border-white/10 bg-slate-900/95 flex justify-between items-center flex-wrap gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
+              <div 
+                style={{ backgroundColor: '#F4EDE2', borderColor: '#E7DFD3' }}
+                className="px-4 sm:px-5 py-3 border-b flex items-start justify-between gap-2"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   <span className="text-2xl sm:text-3xl shrink-0">{liveWeather?.weatherInfo?.icon || '⛅'}</span>
-                  <div className="min-w-0">
-                    <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2 flex-wrap">
-                      <span>當前位置即時天候與日月星象</span>
+                  <div className="min-w-0 flex-1">
+                    <h3 style={{ color: '#2C231C' }} className="text-base sm:text-lg font-black flex items-center gap-2 flex-wrap leading-tight">
+                      <span>當前位置天候速查與一週預報</span>
                       {liveWeather?.updatedAt && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-normal">
+                        <span 
+                          style={{ backgroundColor: '#EAE0D2', color: '#695B4E' }}
+                          className="text-[10px] px-2 py-0.5 rounded-full font-medium font-mono"
+                        >
                           {liveWeather.updatedAt} 更新
                         </span>
                       )}
                     </h3>
-                    <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap font-mono">
-                      <span className="text-sky-300 font-bold">
+                    <div style={{ color: '#706254' }} className="text-xs mt-0.5 flex items-center gap-2 flex-wrap font-mono">
+                      <span style={{ color: '#8C532B' }} className="font-bold">
                         {locationMode === 'current' ? '📍 GPS 當前位置' : locationMode === 'custom' ? `✏️ 自訂 · ${customCoords?.name || '自訂點'}` : `🏕️ ${campsite?.name || '露營區'}`}
                       </span>
                       <span>·</span>
@@ -3618,28 +3650,43 @@ export default function CampsiteARModal({
                   type="button"
                   data-testid="close-weather-modal-btn"
                   onClick={() => setShowWeatherModal(false)}
-                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center font-bold text-sm transition-colors shrink-0"
+                  style={{ backgroundColor: '#EAE0D2', color: '#4A3C30' }}
+                  className="w-8 h-8 rounded-full hover:opacity-80 flex items-center justify-center font-bold text-sm transition-opacity shrink-0 cursor-pointer mt-0.5"
                 >
                   ✕
                 </button>
               </div>
 
               {/* Location Switcher Toolbar inside modal */}
-              <div className="px-5 py-2.5 bg-slate-950/70 border-b border-white/5 flex items-center justify-between gap-2 flex-wrap text-xs">
+              <div 
+                style={{ backgroundColor: '#EFE6D8', borderColor: '#E3D7C5' }}
+                className="px-4 sm:px-5 py-2 border-b flex items-center justify-between gap-2 flex-wrap text-xs"
+              >
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 font-bold">切換觀測點：</span>
-                  <div className="inline-flex items-center bg-slate-900 p-0.5 rounded-lg border border-white/10">
+                  <span style={{ color: '#6B5C4F' }} className="font-bold">切換觀測點：</span>
+                  <div 
+                    style={{ backgroundColor: '#E5D9C7', borderColor: '#D9CCB8' }}
+                    className="inline-flex items-center p-0.5 rounded-xl border"
+                  >
                     <button
                       type="button"
                       onClick={() => setLocationMode('campsite')}
-                      className={`px-2.5 py-1 rounded-md font-bold transition-all ${locationMode === 'campsite' ? 'bg-emerald-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                      style={{
+                        backgroundColor: locationMode === 'campsite' ? '#3F634E' : 'transparent',
+                        color: locationMode === 'campsite' ? '#ffffff' : '#5C4F43'
+                      }}
+                      className="px-2.5 py-1 rounded-lg font-bold transition-all shadow-sm"
                     >
                       🏕️ 營地
                     </button>
                     <button
                       type="button"
                       onClick={handleSwitchToGPS}
-                      className={`px-2.5 py-1 rounded-md font-bold transition-all ${locationMode === 'current' ? 'bg-sky-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                      style={{
+                        backgroundColor: locationMode === 'current' ? '#2E5E80' : 'transparent',
+                        color: locationMode === 'current' ? '#ffffff' : '#5C4F43'
+                      }}
+                      className="px-2.5 py-1 rounded-lg font-bold transition-all shadow-sm"
                     >
                       📍 GPS
                     </button>
@@ -3652,7 +3699,11 @@ export default function CampsiteARModal({
                           setShowCustomCoordsModal(true);
                         }
                       }}
-                      className={`px-2.5 py-1 rounded-md font-bold transition-all ${locationMode === 'custom' ? 'bg-amber-400 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                      style={{
+                        backgroundColor: locationMode === 'custom' ? '#8F5526' : 'transparent',
+                        color: locationMode === 'custom' ? '#ffffff' : '#5C4F43'
+                      }}
+                      className="px-2.5 py-1 rounded-lg font-bold transition-all shadow-sm"
                     >
                       ✏️ {customCoords ? (customCoords.name.length > 5 ? customCoords.name.slice(0, 5) + '..' : customCoords.name) : '自訂GPS'}
                     </button>
@@ -3662,152 +3713,314 @@ export default function CampsiteARModal({
                 <button
                   type="button"
                   onClick={() => setShowCustomCoordsModal(true)}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-400/30 rounded-lg font-bold transition-all flex items-center gap-1"
+                  style={{ backgroundColor: '#F5EDE1', color: '#824C1E', borderColor: '#DECDBC' }}
+                  className="px-2.5 py-1 border rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer hover:opacity-80"
                 >
                   <span>✏️ 編輯自訂座標</span>
                 </button>
               </div>
 
-              {/* Modal Body: 4 Key Meteorological & Astronomical Panels */}
-              <div className="p-5 space-y-3.5 overflow-y-auto max-h-[70vh]">
+              {/* Modal Body: Compact, High-Density & Beige Eye-Care Theme */}
+              <div 
+                style={{ backgroundColor: '#FAF7F2' }}
+                className="p-3.5 sm:p-4 space-y-2.5 overflow-y-auto max-h-[70vh]"
+              >
                 {loadingWeather && !liveWeather ? (
-                  <div className="py-12 text-center text-slate-400 space-y-2">
+                  <div style={{ color: '#78695C' }} className="py-12 text-center space-y-2">
                     <div className="animate-spin text-3xl">⏳</div>
                     <p className="text-sm font-bold">即時連線氣象衛星與天文數據庫中...</p>
                   </div>
                 ) : (
                   <>
-                    {/* Panel 1: 即時氣溫與降雨機率 */}
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-950/90 border border-sky-400/30 flex items-center justify-between gap-4 flex-wrap">
-                      <div className="flex items-center gap-3.5">
-                        <span className="text-4xl sm:text-5xl">{liveWeather?.weatherInfo?.icon || '☀️'}</span>
-                        <div>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-3xl sm:text-4xl font-black text-white font-mono">
-                              {liveWeather?.temp !== undefined ? `${Math.round(liveWeather.temp)}°C` : '--'}
-                            </span>
-                            <span className="text-xs text-slate-400">
-                              體感 {liveWeather?.apparentTemp !== undefined ? `${Math.round(liveWeather.apparentTemp)}°C` : '--'}
-                            </span>
+                    {/* Card 1: 今日即時天候與抗風防護 (緊湊排版，消除多餘留白) */}
+                    <div 
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1', color: '#261E18' }}
+                      className="p-3.5 rounded-2xl border shadow-sm"
+                    >
+                      {/* Top: Temp + Weather Label + Feel & Range */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-3xl sm:text-4xl shrink-0">{liveWeather?.weatherInfo?.icon || '☀️'}</span>
+                          <div>
+                            <div className="flex items-baseline gap-2">
+                              <span style={{ color: '#261E18' }} className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+                                {liveWeather?.temp !== undefined ? `${Math.round(liveWeather.temp)}°C` : '--'}
+                              </span>
+                              <span style={{ color: '#8A4F1D' }} className="text-xs sm:text-sm font-bold">
+                                {liveWeather?.weatherInfo?.label || '晴朗'}
+                              </span>
+                            </div>
+                            <div style={{ color: '#756658' }} className="text-[11px] mt-0.5 flex items-center gap-1.5 font-mono">
+                              <span>體感 {liveWeather?.apparentTemp !== undefined ? `${Math.round(liveWeather.apparentTemp)}°C` : '--'}</span>
+                              {liveWeather?.tempMax !== null && (
+                                <>
+                                  <span>·</span>
+                                  <span>溫差 <strong style={{ color: '#8F4819' }}>{liveWeather?.tempMax}°</strong> / <strong style={{ color: '#2F6182' }}>{liveWeather?.tempMin}°</strong></span>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-sm font-bold text-sky-300 mt-0.5">
-                            {liveWeather?.weatherInfo?.label || '晴朗'}
-                          </p>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span 
+                            style={{ backgroundColor: '#FAF2E6', color: '#8A4F1D', borderColor: '#EAD9C2' }}
+                            className="px-2 py-1 rounded-lg border text-[11px] font-bold font-mono inline-block"
+                          >
+                            💨 {liveWeather?.windSpeed || 0} km/h
+                          </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 flex-wrap">
+                      {/* Middle: 4 High-Density Stat Badges in full width */}
+                      <div 
+                        style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', marginTop: '10px' }}
+                      >
                         {/* 降雨機率 */}
-                        <div className={`px-3 py-2 rounded-xl border text-center ${
-                          (liveWeather?.rainProb || 0) > 50
-                            ? 'bg-rose-950/80 border-rose-400/40 text-rose-200'
-                            : (liveWeather?.rainProb || 0) > 20
-                            ? 'bg-amber-950/80 border-amber-400/40 text-amber-200'
-                            : 'bg-emerald-950/80 border-emerald-400/40 text-emerald-200'
-                        }`}>
-                          <div className="text-[10px] font-bold text-slate-300">🌧️ 降雨機率</div>
-                          <div className="text-lg font-black font-mono">{liveWeather?.rainProb ?? 0}%</div>
+                        <div 
+                          style={{
+                            backgroundColor: (liveWeather?.rainProb || 0) > 50 ? '#FFEBEB' : (liveWeather?.rainProb || 0) > 20 ? '#FFF7ED' : '#F0FDF4',
+                            borderColor: (liveWeather?.rainProb || 0) > 50 ? '#FECACA' : (liveWeather?.rainProb || 0) > 20 ? '#FED7AA' : '#BBF7D0',
+                            color: (liveWeather?.rainProb || 0) > 50 ? '#991B1B' : (liveWeather?.rainProb || 0) > 20 ? '#9A3412' : '#166534',
+                            borderWidth: '1px',
+                            borderRadius: '12px',
+                            padding: '6px 4px',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <div style={{ fontSize: '10px', fontWeight: 'bold', opacity: 0.85, whiteSpace: 'nowrap' }}>🌧️ 降雨率</div>
+                          <div style={{ fontSize: '14px', fontWeight: '900', fontFamily: 'monospace' }}>{liveWeather?.rainProb ?? 0}%</div>
                         </div>
 
                         {/* 濕度 */}
-                        <div className="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-center">
-                          <div className="text-[10px] font-bold text-slate-400">💧 相對濕度</div>
-                          <div className="text-lg font-black text-sky-300 font-mono">{liveWeather?.humidity ?? '--'}%</div>
+                        <div 
+                          style={{
+                            backgroundColor: '#F0F9FF',
+                            borderColor: '#BAE6FD',
+                            color: '#0369A1',
+                            borderWidth: '1px',
+                            borderRadius: '12px',
+                            padding: '6px 4px',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <div style={{ fontSize: '10px', fontWeight: 'bold', opacity: 0.85, whiteSpace: 'nowrap' }}>💧 濕度</div>
+                          <div style={{ fontSize: '14px', fontWeight: '900', fontFamily: 'monospace' }}>{liveWeather?.humidity ?? '--'}%</div>
                         </div>
 
-                        {/* 溫差 */}
-                        {liveWeather?.tempMax !== null && (
-                          <div className="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-center">
-                            <div className="text-[10px] font-bold text-slate-400">🌡️ 當日溫差</div>
-                            <div className="text-xs font-bold text-slate-200 font-mono mt-1">
-                              <span className="text-amber-400">{liveWeather?.tempMax}°</span> / <span className="text-sky-400">{liveWeather?.tempMin}°</span>
+                        {/* 風向 */}
+                        <div 
+                          style={{
+                            backgroundColor: '#FFFBEB',
+                            borderColor: '#FDE68A',
+                            color: '#92400E',
+                            borderWidth: '1px',
+                            borderRadius: '12px',
+                            padding: '6px 4px',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <div style={{ fontSize: '10px', fontWeight: 'bold', opacity: 0.85, whiteSpace: 'nowrap' }}>🧭 風向</div>
+                          <div style={{ fontSize: '12px', fontWeight: '900', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {liveWeather?.windDirName || `${liveWeather?.windDir}°`}
+                          </div>
+                        </div>
+
+                        {/* 風力安全 */}
+                        <div 
+                          style={{
+                            backgroundColor: '#FEF3C7',
+                            borderColor: '#FCD34D',
+                            color: '#78350F',
+                            borderWidth: '1px',
+                            borderRadius: '12px',
+                            padding: '6px 4px',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <div style={{ fontSize: '10px', fontWeight: 'bold', opacity: 0.85, whiteSpace: 'nowrap' }}>🛡️ 風級</div>
+                          <div style={{ fontSize: '12px', fontWeight: '900', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {liveWeather?.windSafety?.levelName?.split(' ')[0] || `${liveWeather?.windSpeed || 0}k`}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Integrated Camping Structural Safety Bar */}
+                      <div 
+                        style={{ borderColor: '#EFE7DC', color: '#524436' }}
+                        className="mt-2.5 pt-2 border-t flex items-start gap-1.5 text-xs leading-relaxed"
+                      >
+                        <span className="text-sm shrink-0">🏕️</span>
+                        <div>
+                          <strong style={{ color: '#30261E' }}>搭帳安全指南：</strong>
+                          <span>{liveWeather?.windSafety?.gearAdvice || '正常搭帳，視日照方向調整天幕迎風面。'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card 2: 📅 一週天氣趨勢預報 (7-Day Forecast) */}
+                    <div 
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1', color: '#30261E' }}
+                      className="p-3.5 rounded-2xl border shadow-sm space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span style={{ color: '#30261E' }} className="text-xs font-black flex items-center gap-1.5">
+                          <span>📅</span>
+                          <span>一週天氣趨勢預報 (7-Day Forecast)</span>
+                        </span>
+                        <span style={{ color: '#7A6B5C' }} className="text-[10px]">
+                          可左右滑動查看
+                        </span>
+                      </div>
+
+                      {/* 7-Day Horizontal Smooth Scroll */}
+                      <div 
+                        style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px', paddingTop: '2px' }}
+                      >
+                        {(liveWeather?.weeklyForecast || []).map((day, idx) => (
+                          <div
+                            key={day.date}
+                            style={{
+                              backgroundColor: idx === 0 ? '#FEF3C7' : '#FAF7F2',
+                              borderColor: idx === 0 ? '#F59E0B' : '#E8E0D2',
+                              minWidth: '78px',
+                              flexShrink: 0,
+                              borderWidth: '1px',
+                              borderRadius: '12px',
+                              padding: '8px 4px',
+                              textAlign: 'center',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between'
+                            }}
+                          >
+                            {/* Day & Date */}
+                            <div>
+                              <div 
+                                style={{ color: idx === 0 ? '#92400E' : '#30261E', fontSize: '11px', fontWeight: '900', lineHeight: 1.2 }}
+                              >
+                                {day.dayLabel}
+                              </div>
+                              <div style={{ color: '#7E7063', fontSize: '9px', fontFamily: 'monospace', marginTop: '2px' }}>
+                                {day.formattedDate}
+                              </div>
+                            </div>
+
+                            {/* Weather Icon & Label */}
+                            <div style={{ margin: '6px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <span style={{ fontSize: '20px', lineHeight: 1 }}>{day.icon}</span>
+                              <span style={{ color: '#54463A', fontSize: '10px', marginTop: '4px', fontWeight: '500', maxWidth: '72px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {day.weatherLabel}
+                              </span>
+                            </div>
+
+                            {/* Rain Prob */}
+                            <div 
+                              style={{
+                                backgroundColor: day.rainProb > 50 ? '#FEE2E2' : day.rainProb > 20 ? '#FFEDD5' : '#E0F2FE',
+                                color: day.rainProb > 50 ? '#991B1B' : day.rainProb > 20 ? '#9A3412' : '#0369A1',
+                                width: '100%',
+                                padding: '2px 0',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                                fontFamily: 'monospace',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              💧{day.rainProb}%
+                            </div>
+
+                            {/* High / Low Temp */}
+                            <div style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', marginTop: '4px' }}>
+                              <span style={{ color: '#9A3412' }}>{day.maxTemp}°</span>
+                              <span style={{ color: '#75685B', fontSize: '9px', margin: '0 2px' }}>/</span>
+                              <span style={{ color: '#0284C7' }}>{day.minTemp}°</span>
                             </div>
                           </div>
-                        )}
+                        ))}
                       </div>
                     </div>
 
-                    {/* Panel 2: 風向風速與搭帳抗風安全 */}
-                    <div className="p-4 rounded-2xl bg-slate-800/70 border border-amber-400/30 space-y-2">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">💨</span>
-                          <span className="text-sm font-black text-white">即時風向與抗風搭帳安全</span>
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black">
-                            {liveWeather?.windSafety?.levelName || `${liveWeather?.windSpeed || 0} km/h`}
-                          </span>
-                        </div>
-                        <div className="text-xs font-mono text-amber-300 font-bold">
-                          來風方位：{liveWeather?.windDir}° ({liveWeather?.windDirName})
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-200 leading-relaxed">
-                        🏕️ <strong>搭帳建議：</strong>{liveWeather?.windSafety?.gearAdvice || '正常搭帳，視日照方向調整天幕迎風面。'}
-                      </p>
-                    </div>
-
-                    {/* Panel 3: 日月天文時刻 (日出日落 / 月出月落) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Card 3: 日月出沒與天文觀星時刻 (Sun & Moon Ephemeris) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {/* 太陽時刻 */}
-                      <div className="p-4 rounded-2xl bg-slate-800/70 border border-white/10 space-y-2">
+                      <div 
+                        style={{ backgroundColor: '#FFFFFF', borderColor: '#EBDDC8' }}
+                        className="p-3 rounded-2xl border shadow-sm space-y-1.5"
+                      >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-black text-amber-300 flex items-center gap-1.5">
+                          <span style={{ color: '#854D1B' }} className="text-xs font-black flex items-center gap-1">
                             <span>☀️</span>
                             <span>太陽日照時刻</span>
                           </span>
-                          <span className="text-[11px] text-slate-400 font-mono">
-                            現在方位 {calculateSolarPosition(new Date(), lat, lng).azimuth}°
+                          <span style={{ color: '#7A6B5C' }} className="text-[10px] font-mono">
+                            現位 {calculateSolarPosition(new Date(), lat, lng).azimuth}°
                           </span>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
-                            <span className="text-xl">🌅</span>
+                        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                          <div 
+                            style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }}
+                            className="p-2 rounded-xl border flex items-center gap-2"
+                          >
+                            <span className="text-lg">🌅</span>
                             <div>
-                              <div className="text-[10px] text-slate-400 font-bold">今日日出</div>
-                              <div className="text-sm font-black text-amber-300 font-mono">{liveWeather?.sunrise || '--:--'}</div>
+                              <div style={{ color: '#756658' }} className="text-[9px] font-bold">今日日出</div>
+                              <div style={{ color: '#8A4F1D' }} className="text-xs font-black font-mono">{liveWeather?.sunrise || '--:--'}</div>
                             </div>
                           </div>
-                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
-                            <span className="text-xl">🌇</span>
+                          <div 
+                            style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }}
+                            className="p-2 rounded-xl border flex items-center gap-2"
+                          >
+                            <span className="text-lg">🌇</span>
                             <div>
-                              <div className="text-[10px] text-slate-400 font-bold">今日日落</div>
-                              <div className="text-sm font-black text-amber-400 font-mono">{liveWeather?.sunset || '--:--'}</div>
+                              <div style={{ color: '#756658' }} className="text-[9px] font-bold">今日日落</div>
+                              <div style={{ color: '#8A4F1D' }} className="text-xs font-black font-mono">{liveWeather?.sunset || '--:--'}</div>
                             </div>
                           </div>
                         </div>
-                        <p className="text-[11px] text-slate-300 mt-1 leading-normal">
+                        <p style={{ color: '#54463A' }} className="text-[11px] leading-tight pt-0.5">
                           💡 帳門若朝向<strong>西南西 ({recommendedDoorAzimuth}°)</strong>，可享受夕陽並避開晨曬。
                         </p>
                       </div>
 
                       {/* 月亮時刻 & 觀星指數 */}
-                      <div className="p-4 rounded-2xl bg-slate-800/70 border border-indigo-400/30 space-y-2">
+                      <div 
+                        style={{ backgroundColor: '#FFFFFF', borderColor: '#DDD8EB' }}
+                        className="p-3 rounded-2xl border shadow-sm space-y-1.5"
+                      >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-black text-indigo-300 flex items-center gap-1.5">
+                          <span style={{ color: '#4338CA' }} className="text-xs font-black flex items-center gap-1">
                             <span>{moonInfo.icon}</span>
                             <span>月相與觀星時刻</span>
                           </span>
-                          <span className="text-[11px] text-indigo-200 font-mono">
+                          <span style={{ color: '#4338CA' }} className="text-[10px] font-mono font-bold">
                             光害 {moonInfo.illumination}%
                           </span>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
-                            <span className="text-xl">🌖</span>
+                        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                          <div 
+                            style={{ backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }}
+                            className="p-2 rounded-xl border flex items-center gap-2"
+                          >
+                            <span className="text-lg">🌖</span>
                             <div>
-                              <div className="text-[10px] text-slate-400 font-bold">今日月出</div>
-                              <div className="text-sm font-black text-indigo-300 font-mono">{liveWeather?.moonrise || '--:--'}</div>
+                              <div style={{ color: '#6366F1' }} className="text-[9px] font-bold">今日月出</div>
+                              <div style={{ color: '#3730A3' }} className="text-xs font-black font-mono">{liveWeather?.moonrise || '--:--'}</div>
                             </div>
                           </div>
-                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
-                            <span className="text-xl">🌘</span>
+                          <div 
+                            style={{ backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }}
+                            className="p-2 rounded-xl border flex items-center gap-2"
+                          >
+                            <span className="text-lg">🌘</span>
                             <div>
-                              <div className="text-[10px] text-slate-400 font-bold">今日月落</div>
-                              <div className="text-sm font-black text-indigo-300 font-mono">{liveWeather?.moonset || '--:--'}</div>
+                              <div style={{ color: '#6366F1' }} className="text-[9px] font-bold">今日月落</div>
+                              <div style={{ color: '#3730A3' }} className="text-xs font-black font-mono">{liveWeather?.moonset || '--:--'}</div>
                             </div>
                           </div>
                         </div>
-                        <p className="text-[11px] text-indigo-200/90 mt-1 leading-normal">
+                        <p style={{ color: '#4338CA' }} className="text-[11px] leading-tight pt-0.5">
                           🌌 <strong>觀星窗口：</strong>{liveWeather?.moonset ? `於 ${liveWeather.moonset} 月落後為純黑無光害銀河攝影窗口。` : moonInfo.advice}
                         </p>
                       </div>
@@ -3817,14 +4030,18 @@ export default function CampsiteARModal({
               </div>
 
               {/* Modal Footer */}
-              <div className="px-5 py-3 border-t border-white/10 bg-slate-900/95 flex justify-between items-center">
-                <span className="text-xs text-slate-400">
+              <div 
+                style={{ backgroundColor: '#F4EDE2', borderColor: '#E7DFD3' }}
+                className="px-4 sm:px-5 py-2.5 border-t flex justify-between items-center text-xs"
+              >
+                <span style={{ color: '#706254' }} className="text-[11px]">
                   數據來源：Open-Meteo 高解析度氣象衛星與即時天文星曆
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowWeatherModal(false)}
-                  className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-black shadow-md transition-all active:scale-95"
+                  style={{ backgroundColor: '#3F634E', color: '#ffffff' }}
+                  className="px-4 py-1.5 rounded-xl text-xs font-black shadow-sm transition-all active:scale-95 cursor-pointer hover:opacity-90"
                 >
                   完成關閉
                 </button>
