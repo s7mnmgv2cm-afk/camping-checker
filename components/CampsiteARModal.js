@@ -2724,20 +2724,20 @@ export default function CampsiteARModal({
               className={`z-30 transition-all animate-in slide-in-from-bottom duration-150 ${
                 effectiveLandscape && isBottomDeckCollapsed
                   ? 'absolute bottom-2.5 left-1/2 -translate-x-1/2 max-w-[92vw] pointer-events-auto'
-                  : 'px-3.5 py-2.5 bg-black/55 backdrop-blur-xl border-t border-cyan-500/40 text-xs shadow-2xl'
+                  : 'px-4 py-3 bg-slate-900/95 backdrop-blur-xl border-t border-sky-400/40 text-xs shadow-2xl'
               }`}
             >
               {isPoiDrawerCollapsed ? (
                 // Collapsed 1-line pill
                 <div className={`flex items-center justify-between gap-2 ${
                   effectiveLandscape && isBottomDeckCollapsed
-                    ? 'px-3.5 py-1.5 rounded-full bg-slate-950/90 backdrop-blur-md border border-cyan-400/30 shadow-2xl text-xs'
+                    ? 'px-3.5 py-1.5 rounded-full bg-slate-950/90 backdrop-blur-md border border-sky-400/30 shadow-2xl text-xs'
                     : ''
                 }`}>
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm shrink-0">{currentPoi.icon || '🌲'}</span>
                     <strong className="text-white font-bold truncate">{currentPoi.name}</strong>
-                    <span className="text-cyan-300 font-mono text-[11px] shrink-0">
+                    <span className="text-sky-300 font-mono text-[11px] shrink-0">
                       {currentPoi.type === 'waterfall' ? '💧 瀑布' : currentPoi.type === 'trail' ? '🥾 步道' : currentPoi.type === 'viewpoint' ? '🌅 展望' : '🌲 景點'}
                     </span>
                     <span className="text-amber-300 font-mono text-[11px] shrink-0">距此 {currentPoi.distanceKm}km</span>
@@ -2747,7 +2747,7 @@ export default function CampsiteARModal({
                     <button
                       type="button"
                       onClick={() => setIsPoiDrawerCollapsed(false)}
-                      className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-200 border border-cyan-400/30 text-[11px] font-bold transition-all hover:bg-cyan-500/30 active:scale-95"
+                      className="px-2 py-0.5 rounded-lg bg-sky-500/20 text-sky-200 border border-sky-400/30 text-[11px] font-bold transition-all hover:bg-sky-500/30 active:scale-95"
                     >
                       ▲ 展開詳情
                     </button>
@@ -2765,75 +2765,88 @@ export default function CampsiteARModal({
                   </div>
                 </div>
               ) : (
-                // Expanded full details with transparent glass
-                <div className={`flex items-start justify-between gap-2.5 ${
+                // Expanded full details - 100% symmetric to Mountain Drawer in Image 1
+                <div className={`space-y-1.5 ${
                   effectiveLandscape && isBottomDeckCollapsed
-                    ? 'p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-cyan-400/30 shadow-2xl max-w-xl'
+                    ? 'p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-sky-400/30 shadow-2xl max-w-xl'
                     : ''
                 }`}>
-                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600/80 to-blue-600/80 flex items-center justify-center text-xl shrink-0 shadow-md border border-cyan-300/40 mt-0.5">
-                      {currentPoi.icon || '🌲'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Top Row: Icon + Name + Badge + Distance on Left | [▼ 縮小] [✕ 隱藏] on Right */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-blue-600 flex items-center justify-center text-xl shrink-0 shadow-md border border-sky-300/40">
+                        {currentPoi.icon || '🌲'}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                         <strong className="text-sm font-black text-white">{currentPoi.name}</strong>
-                        <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-400/30 text-[11px]">
+                        <span className="px-2 py-0.2 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-400/30 text-[11px] whitespace-nowrap">
                           {currentPoi.type === 'waterfall' ? '💧 瀑布野溪' : currentPoi.type === 'trail' ? '🥾 健行步道' : currentPoi.type === 'viewpoint' ? '🌅 景觀展望' : '🌲 秘境景點'}
                         </span>
-                        <span className="text-amber-300 font-mono font-bold text-[11px]">
+                        <span className="text-amber-300 font-mono font-bold text-[11px] whitespace-nowrap">
                           距此 {currentPoi.distanceKm} km
                         </span>
-                        <span className="text-slate-200 font-mono text-[11px]">
-                          方位 {currentPoi.azimuth}° ({currentPoi.azimuthDir})
-                        </span>
-                        {currentPoi.travelTime && (
-                          <span className="px-1.5 py-0.2 rounded bg-slate-800 text-sky-300 font-semibold text-[10px]">
-                            {currentPoi.travelTime}
-                          </span>
-                        )}
                       </div>
-                      <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words opacity-95">
-                        {currentPoi.highlights}
-                      </p>
-                      {currentPoi.safetyWarning && (
-                        <p className="text-amber-300 text-[11px] mt-0.5 flex items-center gap-1">
-                          <span>⚠️ 安全提示：</span>
-                          <span>{currentPoi.safetyWarning}</span>
-                        </p>
-                      )}
+                    </div>
+
+                    {/* Symmetrical action buttons exactly matching Mountain Drawer */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsPoiDrawerCollapsed(true)}
+                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-bold transition-all"
+                        title="縮小為單行"
+                      >
+                        ▼ 縮小
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDismissedPoiId(currentPoi.id);
+                          setSelectedPoi(null);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                        title="隱藏目前景點字卡"
+                      >
+                        ✕ 隱藏
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+
+                  {/* Second Row: Direction, Travel Time & Google Maps Navigation Button */}
+                  <div className="flex items-center gap-2 text-[11px] flex-wrap pt-0.5">
+                    <span className="text-slate-300 font-mono">
+                      方位 {currentPoi.azimuth}° ({currentPoi.azimuthDir})
+                    </span>
+                    {currentPoi.travelTime && (
+                      <span className="px-1.5 py-0.2 rounded bg-slate-800 text-sky-300 font-semibold text-[10px]">
+                        {currentPoi.travelTime}
+                      </span>
+                    )}
                     <a
                       href={gmapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-2.5 py-1 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black rounded-lg shadow-md transition-all flex items-center gap-1 text-[11px]"
+                      className="ml-auto px-3 py-1 bg-sky-400 hover:bg-sky-300 text-slate-950 font-black rounded-lg shadow-md transition-all flex items-center gap-1 text-[11px] active:scale-95"
                     >
                       <span>🧭</span>
-                      <span>Google 導航</span>
+                      <span>Google 導航 ↗</span>
                     </a>
-                    <button
-                      type="button"
-                      onClick={() => setIsPoiDrawerCollapsed(true)}
-                      className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-bold transition-all"
-                      title="縮小為單行"
-                    >
-                      ▼ 縮小
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDismissedPoiId(currentPoi.id);
-                        setSelectedPoi(null);
-                      }}
-                      className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
-                      title="隱藏目前景點字卡"
-                    >
-                      ✕ 隱藏
-                    </button>
                   </div>
+
+                  {/* Third Row: Highlights / Trail details (Clamped to safe height with smooth scroll to preserve AR viewport) */}
+                  {currentPoi.highlights && (
+                    <div className="max-h-[64px] overflow-y-auto overscroll-contain pr-1 text-slate-200 text-xs leading-relaxed break-words opacity-95 pt-0.5">
+                      {currentPoi.highlights}
+                    </div>
+                  )}
+
+                  {/* Fourth Row: Safety Warning (FULL WIDTH) */}
+                  {currentPoi.safetyWarning && (
+                    <p className="text-amber-300 text-[11px] flex items-center gap-1 pt-0.5">
+                      <span className="shrink-0">⚠️ 安全提示：</span>
+                      <span>{currentPoi.safetyWarning}</span>
+                    </p>
+                  )}
                 </div>
               )}
             </div>
