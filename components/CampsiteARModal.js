@@ -132,6 +132,11 @@ export default function CampsiteARModal({
   const [isStarDrawerCollapsed, setIsStarDrawerCollapsed] = useState(true); // 📱 預設縮小/隱藏天體字卡
   const [isMoonCardDismissed, setIsMoonCardDismissed] = useState(true); // 📱 預設收合為極簡透明月相微膠囊，最大化星空視野
 
+  // Spots Mode State (Dismissible & Collapsible POI Drawers & Top Banner)
+  const [dismissedPoiId, setDismissedPoiId] = useState(null); // 📱 隱藏鎖定景點字卡
+  const [isPoiDrawerCollapsed, setIsPoiDrawerCollapsed] = useState(true); // 📱 預設縮小為單行透明膠囊
+  const [isSpotsBannerDismissed, setIsSpotsBannerDismissed] = useState(false); // 📱 隱藏頂部周邊景點橫幅以節省空間
+
   // 📐 Auto-detect native device orientation changes (Portrait 65° vs Landscape 105°)
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -247,6 +252,17 @@ export default function CampsiteARModal({
       setSelectedPeak(null);
       if (!selectedPeak) {
         setDismissedPeakId(lockedPeak?.id || null);
+      }
+    } else if (arViewMode === 'spots') {
+      if (effectiveLandscape) {
+        setIsHeaderCollapsed(true);
+        setIsPoiDrawerCollapsed(true);
+        setIsSpotsBannerDismissed(true);
+        setIsBottomDeckCollapsed(true);
+        setSelectedPoi(null);
+        if (!selectedPoi) {
+          setDismissedPoiId(lockedPoi?.id || null);
+        }
       }
     }
   }, [isOpen, arViewMode, effectiveLandscape]);
@@ -960,6 +976,21 @@ export default function CampsiteARModal({
     return null;
   }, [arViewMode, computedPOIs, heading, camElevation]);
 
+  // Reset dismissed POI when reticle locks onto another POI
+  useEffect(() => {
+    if (lockedPoi && lockedPoi.id !== dismissedPoiId) {
+      if (effectiveLandscape) {
+        setIsPoiDrawerCollapsed(true);
+        if (!selectedPoi) {
+          setDismissedPoiId(lockedPoi.id);
+        }
+      } else {
+        setDismissedPoiId(null);
+        setIsPoiDrawerCollapsed(false);
+      }
+    }
+  }, [lockedPoi?.id, effectiveLandscape, selectedPoi]);
+
   // Request Gyroscope & Camera Permissions on open
   useEffect(() => {
     if (!isOpen) return;
@@ -1587,32 +1618,42 @@ export default function CampsiteARModal({
                 )}
               </div>
             ) : arViewMode === 'spots' ? (
-              <div className="mt-2.5 px-3 py-1 rounded-full bg-black/35 border border-white/20 backdrop-blur-md text-center max-w-[92vw] shadow-xl flex items-center justify-center gap-2 flex-wrap">
-                <span className="text-cyan-300 font-bold text-xs flex items-center gap-1">
-                  <span>🧭</span>
-                  <span>周邊景點・步道瀑布</span>
-                  <span className="text-[10px] text-cyan-400 font-mono">({computedPOIs.filter(p => p.inView).length} 處在視野)</span>
-                </span>
-                {spotSource && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold">
-                    {spotSource.includes('google_places') ? '🌐 Google 實境' : '☁️ 雲端快取'}
+              !isSpotsBannerDismissed && !effectiveLandscape ? (
+                <div className="mt-1 px-2.5 py-0.5 rounded-full bg-slate-950/75 border border-cyan-500/30 backdrop-blur-md text-center max-w-[94vw] shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap animate-in fade-in duration-150">
+                  <span className="text-cyan-300 font-bold text-[11px] flex items-center gap-1">
+                    <span>🧭</span>
+                    <span>周邊景點</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">({computedPOIs.filter(p => p.inView).length} 處在視野)</span>
                   </span>
-                )}
-                <button
-                  type="button"
-                  onClick={handleRefreshSpots}
-                  disabled={loadingSpots}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all pointer-events-auto shadow-sm active:scale-95 border ${
-                    cooldownRemainingMin > 0
-                      ? 'bg-amber-950/80 hover:bg-amber-900 border-amber-400/40 text-amber-200'
-                      : 'bg-cyan-950/90 hover:bg-cyan-900 border-cyan-400/40 text-cyan-200'
-                  }`}
-                  title={cooldownRemainingMin > 0 ? `原地冷卻中（尚餘 ${cooldownRemainingMin} 分鐘，位移滿 500m 自動解除）` : '立即以目前座標向 Google 探勘最新周邊景點'}
-                >
-                  <span className={loadingSpots ? 'animate-spin' : ''}>🔄</span>
-                  <span>{loadingSpots ? 'Google 探勘中...' : cooldownRemainingMin > 0 ? `即時查詢 (${cooldownRemainingMin}m)` : '即時查詢'}</span>
-                </button>
-              </div>
+                  {spotSource && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[9px] font-bold">
+                      {spotSource.includes('google_places') ? '🌐 實境' : '☁️ 快取'}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleRefreshSpots}
+                    disabled={loadingSpots}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-0.5 transition-all pointer-events-auto shadow-sm active:scale-95 border ${
+                      cooldownRemainingMin > 0
+                        ? 'bg-amber-950/80 hover:bg-amber-900 border-amber-400/40 text-amber-200'
+                        : 'bg-cyan-950/90 hover:bg-cyan-900 border-cyan-400/40 text-cyan-200'
+                    }`}
+                    title={cooldownRemainingMin > 0 ? `原地冷卻中（尚餘 ${cooldownRemainingMin} 分鐘，位移滿 500m 自動解除）` : '立即以目前座標向 Google 探勘最新周邊景點'}
+                  >
+                    <span className={loadingSpots ? 'animate-spin' : ''}>🔄</span>
+                    <span>{loadingSpots ? '查詢中' : cooldownRemainingMin > 0 ? `${cooldownRemainingMin}m` : '即時查詢'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsSpotsBannerDismissed(true)}
+                    className="ml-0.5 text-slate-400 hover:text-white px-1.5 py-0.2 rounded-full hover:bg-white/20 text-[10px] font-bold transition-all pointer-events-auto"
+                    title="隱藏提示橫幅（下方工具列隨時可即時查詢）"
+                  >
+                    ✕ 隱藏
+                  </button>
+                </div>
+              ) : null
             ) : arViewMode === 'mountain' ? null : (
               skyAimGuidance ? (
                 <div 
@@ -2116,7 +2157,11 @@ export default function CampsiteARModal({
                     top: `${poi.screenY}%`,
                     transform: 'translate(-50%, -100%)'
                   }}
-                  onClick={() => setSelectedPoi(prev => (prev?.id === poi.id ? null : poi))}
+                  onClick={() => {
+                    setSelectedPoi(prev => (prev?.id === poi.id ? null : poi));
+                    setDismissedPoiId(null);
+                    setIsPoiDrawerCollapsed(false);
+                  }}
                   className={`absolute flex flex-col items-center pointer-events-auto cursor-pointer transition-all duration-200 z-20 ${
                     isFocus ? 'scale-115 z-30' : 'opacity-90 hover:opacity-100 hover:scale-105'
                   }`}
@@ -2154,7 +2199,11 @@ export default function CampsiteARModal({
               return (
                 <div
                   key={`edge-${poi.id}`}
-                  onClick={() => setSelectedPoi(poi)}
+                  onClick={() => {
+                    setSelectedPoi(poi);
+                    setDismissedPoiId(null);
+                    setIsPoiDrawerCollapsed(false);
+                  }}
                   style={{
                     top: '50%',
                     [poi.edgeIndicator === 'left' ? 'left' : 'right']: '10px',
@@ -2661,70 +2710,138 @@ export default function CampsiteARModal({
           );
         })()}
 
-        {/* Selected POI (Trail / Waterfall / Viewpoint) Drawer Overlay */}
-        {(selectedPoi || lockedPoi) && arViewMode === 'spots' && (
-          <div data-testid="poi-drawer" className="z-30 px-4 py-3 bg-slate-900/95 backdrop-blur-md border-t border-cyan-500/40 flex items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom duration-150">
-            {(() => {
-              const currentPoi = selectedPoi || lockedPoi;
-              const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${currentPoi.latitude},${currentPoi.longitude}`;
-              return (
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-2xl shrink-0 shadow-lg border border-cyan-300/40">
-                    {currentPoi.icon || '🌲'}
+        {/* Selected POI (Trail / Waterfall / Viewpoint) Drawer Overlay (Collapsible & Dismissible) */}
+        {arViewMode === 'spots' && (() => {
+          const currentPoi = effectiveLandscape ? selectedPoi : (selectedPoi || lockedPoi);
+          if (!currentPoi) return null;
+          if (currentPoi.id === dismissedPoiId) return null;
+
+          const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${currentPoi.latitude},${currentPoi.longitude}`;
+
+          return (
+            <div 
+              data-testid="poi-drawer" 
+              className={`z-30 transition-all animate-in slide-in-from-bottom duration-150 ${
+                effectiveLandscape && isBottomDeckCollapsed
+                  ? 'absolute bottom-2.5 left-1/2 -translate-x-1/2 max-w-[92vw] pointer-events-auto'
+                  : 'px-3.5 py-2.5 bg-black/55 backdrop-blur-xl border-t border-cyan-500/40 text-xs shadow-2xl'
+              }`}
+            >
+              {isPoiDrawerCollapsed ? (
+                // Collapsed 1-line pill
+                <div className={`flex items-center justify-between gap-2 ${
+                  effectiveLandscape && isBottomDeckCollapsed
+                    ? 'px-3.5 py-1.5 rounded-full bg-slate-950/90 backdrop-blur-md border border-cyan-400/30 shadow-2xl text-xs'
+                    : ''
+                }`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm shrink-0">{currentPoi.icon || '🌲'}</span>
+                    <strong className="text-white font-bold truncate">{currentPoi.name}</strong>
+                    <span className="text-cyan-300 font-mono text-[11px] shrink-0">
+                      {currentPoi.type === 'waterfall' ? '💧 瀑布' : currentPoi.type === 'trail' ? '🥾 步道' : currentPoi.type === 'viewpoint' ? '🌅 展望' : '🌲 景點'}
+                    </span>
+                    <span className="text-amber-300 font-mono text-[11px] shrink-0">距此 {currentPoi.distanceKm}km</span>
+                    <span className="text-slate-300 font-mono text-[11px] hidden sm:inline shrink-0">方位 {currentPoi.azimuth}°</span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <strong className="text-sm font-black text-white">{currentPoi.name}</strong>
-                      <span className="px-2 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-400/30">
-                        {currentPoi.type === 'waterfall' ? '💧 瀑布野溪' : currentPoi.type === 'trail' ? '🥾 健行步道' : currentPoi.type === 'viewpoint' ? '🌅 景觀展望' : '🌲 秘境景點'}
-                      </span>
-                      <span className="text-amber-300 font-mono font-bold">
-                        距此 {currentPoi.distanceKm} km
-                      </span>
-                      <span className="text-slate-300 font-mono">
-                        方位 {currentPoi.azimuth}° ({currentPoi.azimuthDir})
-                      </span>
-                      <span className="px-1.5 py-0.2 rounded bg-slate-800 text-sky-300 font-semibold text-[11px]">
-                        {currentPoi.travelTime}
-                      </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsPoiDrawerCollapsed(false)}
+                      className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-200 border border-cyan-400/30 text-[11px] font-bold transition-all hover:bg-cyan-500/30 active:scale-95"
+                    >
+                      ▲ 展開詳情
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDismissedPoiId(currentPoi.id);
+                        setSelectedPoi(null);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                      title="隱藏目前景點字卡"
+                    >
+                      ✕ 隱藏
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // Expanded full details with transparent glass
+                <div className={`flex items-start justify-between gap-2.5 ${
+                  effectiveLandscape && isBottomDeckCollapsed
+                    ? 'p-3 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-cyan-400/30 shadow-2xl max-w-xl'
+                    : ''
+                }`}>
+                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600/80 to-blue-600/80 flex items-center justify-center text-xl shrink-0 shadow-md border border-cyan-300/40 mt-0.5">
+                      {currentPoi.icon || '🌲'}
                     </div>
-                    <p className="text-slate-200 text-xs mt-1 leading-snug">
-                      {currentPoi.highlights}
-                    </p>
-                    {currentPoi.safetyWarning && (
-                      <p className="text-amber-300 text-[11px] mt-0.5 flex items-center gap-1">
-                        <span>⚠️ 安全提示：</span>
-                        <span>{currentPoi.safetyWarning}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <strong className="text-sm font-black text-white">{currentPoi.name}</strong>
+                        <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-400/30 text-[11px]">
+                          {currentPoi.type === 'waterfall' ? '💧 瀑布野溪' : currentPoi.type === 'trail' ? '🥾 健行步道' : currentPoi.type === 'viewpoint' ? '🌅 景觀展望' : '🌲 秘境景點'}
+                        </span>
+                        <span className="text-amber-300 font-mono font-bold text-[11px]">
+                          距此 {currentPoi.distanceKm} km
+                        </span>
+                        <span className="text-slate-200 font-mono text-[11px]">
+                          方位 {currentPoi.azimuth}° ({currentPoi.azimuthDir})
+                        </span>
+                        {currentPoi.travelTime && (
+                          <span className="px-1.5 py-0.2 rounded bg-slate-800 text-sky-300 font-semibold text-[10px]">
+                            {currentPoi.travelTime}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-200 text-xs mt-1 leading-relaxed break-words opacity-95">
+                        {currentPoi.highlights}
                       </p>
-                    )}
+                      {currentPoi.safetyWarning && (
+                        <p className="text-amber-300 text-[11px] mt-0.5 flex items-center gap-1">
+                          <span>⚠️ 安全提示：</span>
+                          <span>{currentPoi.safetyWarning}</span>
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
                     <a
                       href={gmapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black rounded-xl shadow-md transition-all flex items-center gap-1"
+                      className="px-2.5 py-1 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black rounded-lg shadow-md transition-all flex items-center gap-1 text-[11px]"
                     >
                       <span>🧭</span>
                       <span>Google 導航</span>
                     </a>
-                    {selectedPoi && (
-                      <button
-                        onClick={() => setSelectedPoi(null)}
-                        className="text-slate-400 hover:text-white px-2.5 py-1.5 rounded-xl bg-slate-800 font-bold"
-                      >
-                        ✕
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsPoiDrawerCollapsed(true)}
+                      className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-[11px] font-bold transition-all"
+                      title="縮小為單行"
+                    >
+                      ▼ 縮小
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDismissedPoiId(currentPoi.id);
+                        setSelectedPoi(null);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-bold transition-all text-[11px]"
+                      title="隱藏目前景點字卡"
+                    >
+                      ✕ 隱藏
+                    </button>
                   </div>
                 </div>
-              );
-            })()}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
 
-        {/* 📱 橫向遠山極致沉浸模式 或 星空沉浸模式：若工具列收合，僅在左下角保留微型展開膠囊 */}
-        {(((effectiveLandscape && arViewMode === 'mountain') || arViewMode === 'stars') && isBottomDeckCollapsed) ? (
+        {/* 📱 橫向遠山/景點極致沉浸模式 或 星空沉浸模式：若工具列收合，僅在左下角保留微型展開膠囊 */}
+        {(((effectiveLandscape && (arViewMode === 'mountain' || arViewMode === 'spots')) || arViewMode === 'stars') && isBottomDeckCollapsed) ? (
           <div 
             style={{ 
               bottom: 'max(12px, env(safe-area-inset-bottom))', 
@@ -2739,11 +2856,13 @@ export default function CampsiteARModal({
               className={`px-3 py-1.5 bg-slate-950/85 hover:bg-slate-900 backdrop-blur-md rounded-full text-xs font-bold shadow-xl flex items-center gap-1.5 transition-all active:scale-95 border ${
                 arViewMode === 'stars' 
                   ? 'text-indigo-300 border-indigo-400/40 hover:border-indigo-400' 
+                  : arViewMode === 'spots'
+                  ? 'text-cyan-300 border-cyan-400/40 hover:border-cyan-400'
                   : 'text-emerald-300 border-emerald-400/40 hover:border-emerald-400'
               }`}
-              title={arViewMode === 'stars' ? "展開觀星控制工具列 (時段推演、星座連線、觀星指南)" : "展開遠山控制工具列 (半徑、山稜天際線開關)"}
+              title={arViewMode === 'stars' ? "展開觀星控制工具列" : arViewMode === 'spots' ? "展開景點控制工具列" : "展開遠山控制工具列"}
             >
-              <span>{arViewMode === 'stars' ? '🌌 觀星工具列 ▲' : '⛰️ 工具列 ▲'}</span>
+              <span>{arViewMode === 'stars' ? '🌌 觀星工具列 ▲' : arViewMode === 'spots' ? '🧭 景點工具列 ▲' : '⛰️ 工具列 ▲'}</span>
             </button>
           </div>
         ) : (
@@ -2944,7 +3063,17 @@ export default function CampsiteARModal({
                 <span>📖 觀星指南</span>
               </button>
             )}
-            {((effectiveLandscape && arViewMode === 'mountain') || arViewMode === 'stars') && (
+            {arViewMode === 'spots' && isSpotsBannerDismissed && !effectiveLandscape && (
+              <button
+                type="button"
+                onClick={() => setIsSpotsBannerDismissed(false)}
+                className="px-2.5 py-1.5 border border-white/20 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1"
+                title="重新顯示頂部景點橫幅"
+              >
+                <span>🧭 顯示橫幅</span>
+              </button>
+            )}
+            {(((effectiveLandscape && (arViewMode === 'mountain' || arViewMode === 'spots')) || arViewMode === 'stars')) && (
               <button
                 type="button"
                 onClick={() => setIsBottomDeckCollapsed(true)}
