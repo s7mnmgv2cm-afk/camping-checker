@@ -135,27 +135,41 @@ export default function CampsiteARModal({
   // 📐 Auto-detect native device orientation changes (Portrait 65° vs Landscape 105°)
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const mql = window.matchMedia ? window.matchMedia('(orientation: landscape)') : null;
+
     const checkOrientation = () => {
-      // 1. Check window aspect ratio
+      // 1. Check CSS matchMedia (most reliable across iOS Safari and modern browsers)
+      const isMqlLandscape = mql ? mql.matches : false;
+      // 2. Check window aspect ratio
       const isAspectLandscape = window.innerWidth > window.innerHeight;
-      // 2. Check screen orientation API if available
+      // 3. Check visualViewport if available
+      const isVisualLandscape = window.visualViewport ? (window.visualViewport.width > window.visualViewport.height) : false;
+      // 4. Check screen orientation API if available
       const screenAngle = window.screen?.orientation?.angle;
       const isAngleLandscape = screenAngle === 90 || screenAngle === 270;
-      // 3. Check legacy window.orientation
-      const winOrient = typeof window.orientation !== 'undefined' ? Math.abs(window.orientation) === 90 : false;
+      const screenType = window.screen?.orientation?.type || '';
+      const isTypeLandscape = typeof screenType === 'string' && screenType.includes('landscape');
+      // 5. Check legacy window.orientation
+      const winOrient = typeof window.orientation !== 'undefined' ? (Math.abs(window.orientation) === 90 || Math.abs(window.orientation) === 270) : false;
 
-      const isLand = isAspectLandscape || isAngleLandscape || winOrient;
+      const isLand = isMqlLandscape || isAspectLandscape || isVisualLandscape || isAngleLandscape || isTypeLandscape || winOrient;
       setIsDeviceLandscape(!!isLand);
     };
     checkOrientation();
     window.addEventListener('resize', checkOrientation);
     window.addEventListener('orientationchange', checkOrientation);
+    if (mql && mql.addEventListener) {
+      mql.addEventListener('change', checkOrientation);
+    }
     if (window.screen?.orientation) {
       window.screen.orientation.addEventListener('change', checkOrientation);
     }
     return () => {
       window.removeEventListener('resize', checkOrientation);
       window.removeEventListener('orientationchange', checkOrientation);
+      if (mql && mql.removeEventListener) {
+        mql.removeEventListener('change', checkOrientation);
+      }
       if (window.screen?.orientation) {
         window.screen.orientation.removeEventListener('change', checkOrientation);
       }
@@ -1459,9 +1473,9 @@ export default function CampsiteARModal({
           {/* 2. Top Rolling Compass Ribbon & Guidance Banner (Unified Glassmorphic HUD) */}
           <div 
             style={{ 
-              top: effectiveLandscape 
-                ? (isHeaderCollapsed ? '8px' : '124px') 
-                : (isHeaderCollapsed ? '52px' : '136px'),
+              top: isHeaderCollapsed 
+                ? (effectiveLandscape ? '8px' : '52px') 
+                : '10px',
               zIndex: 35
             }}
             className="absolute left-0 right-0 flex flex-col items-center pointer-events-none px-3 transition-all duration-200"
