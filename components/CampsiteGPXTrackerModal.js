@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PRESET_HIKING_TRAILS, generatePresetGPX, downloadGPXFile } from '../lib/gpx';
 import ElevationProfileChart from './ElevationProfileChart';
 import AutomotiveClusterDashboard from './AutomotiveClusterDashboard';
@@ -57,6 +57,53 @@ export default function CampsiteGPXTrackerModal({
   const [editTrackNameInput, setEditTrackNameInput] = useState('');
   const [scrubbedPoint, setScrubbedPoint] = useState(null); // 聯動高度圖與時速表紅針
   const [isPocketMode, setIsPocketMode] = useState(false); // 🌙 OLED 口袋暗屏省電防休眠模式
+  const [isPocketAwake, setIsPocketAwake] = useState(false); // 輕碰喚醒 6 秒微光 HUD，其餘時間 100% 全黑熄屏 (0 像素發光)
+  const [pocketAlwaysDim, setPocketAlwaysDim] = useState(false); // 是否切換為常駐微光
+  const pocketAwakeTimeoutRef = useRef(null);
+
+  // 🌙 口袋省電黑化原生系統狀態列 (消滅 iOS Safari 頂部白條，鎖定 True OLED Black)
+  useEffect(() => {
+    if (!isPocketMode) return;
+    const origBodyBg = document.body.style.backgroundColor;
+    const origHtmlBg = document.documentElement.style.backgroundColor;
+    document.body.style.backgroundColor = '#000000';
+    document.documentElement.style.backgroundColor = '#000000';
+
+    let themeMeta = document.querySelector('meta[name="theme-color"]');
+    const prevTheme = themeMeta ? themeMeta.getAttribute('content') : null;
+    if (!themeMeta) {
+      themeMeta = document.createElement('meta');
+      themeMeta.name = 'theme-color';
+      document.head.appendChild(themeMeta);
+    }
+    themeMeta.setAttribute('content', '#000000');
+
+    let statusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    const prevStatusBarStyle = statusBarMeta ? statusBarMeta.getAttribute('content') : null;
+    if (!statusBarMeta) {
+      statusBarMeta = document.createElement('meta');
+      statusBarMeta.name = 'apple-mobile-web-app-status-bar-style';
+      statusBarMeta.content = 'black-translucent';
+      document.head.appendChild(statusBarMeta);
+    } else {
+      statusBarMeta.setAttribute('content', 'black-translucent');
+    }
+
+    // 剛進入口袋模式時短暫喚醒 3 秒讓使用者確認，隨後沉入 100% 全黑熄屏
+    setIsPocketAwake(true);
+    if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
+    pocketAwakeTimeoutRef.current = setTimeout(() => {
+      setIsPocketAwake(false);
+    }, 3000);
+
+    return () => {
+      document.body.style.backgroundColor = origBodyBg;
+      document.documentElement.style.backgroundColor = origHtmlBg;
+      if (prevTheme && themeMeta) themeMeta.setAttribute('content', prevTheme);
+      if (prevStatusBarStyle && statusBarMeta) statusBarMeta.setAttribute('content', prevStatusBarStyle);
+      if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
+    };
+  }, [isPocketMode]);
 
   // 🔒 口袋防誤觸雙重機制狀態 (滑軌滑動解鎖 + 2 秒長按緊急解鎖)
   const [sliderPosition, setSliderPosition] = useState(0);
@@ -71,6 +118,7 @@ export default function CampsiteGPXTrackerModal({
   const handleSliderPointerDown = (e) => {
     e.stopPropagation();
     setIsDraggingSlider(true);
+    if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
     try {
       e.target.setPointerCapture?.(e.pointerId);
     } catch (err) {}
@@ -98,11 +146,18 @@ export default function CampsiteGPXTrackerModal({
     if (!isDraggingSlider) return;
     setIsDraggingSlider(false);
     setSliderPosition(0); // 未拉滿則立即彈回原點
+    if (!pocketAlwaysDim) {
+      if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
+      pocketAwakeTimeoutRef.current = setTimeout(() => {
+        setIsPocketAwake(false);
+      }, 4000);
+    }
   };
 
   // 2. 長按 2 秒解鎖處理函式 (手套或雨中情境)
   const startLongPress = (e) => {
     e.stopPropagation();
+    if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
     const startTime = Date.now();
     const duration = 2000;
 
@@ -128,15 +183,29 @@ export default function CampsiteGPXTrackerModal({
       longPressIntervalRef.current = null;
     }
     setLongPressProgress(0);
+    if (!pocketAlwaysDim) {
+      if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
+      pocketAwakeTimeoutRef.current = setTimeout(() => {
+        setIsPocketAwake(false);
+      }, 4000);
+    }
   };
 
-  // 3. 口袋盲摸/腿部皮膚碰觸偵測（不解鎖，僅亮起淡雅防誤觸提示，保持暗屏極限省電）
+  // 3. 口袋碰觸偵測（喚出 6 秒微光 HUD 預覽時間與滑軌，隨後自動回歸 100% 全黑暗屏）
   const handlePocketScreenTap = () => {
+    setIsPocketAwake(true);
     setShowTouchHint(true);
     if (touchHintTimeoutRef.current) clearTimeout(touchHintTimeoutRef.current);
     touchHintTimeoutRef.current = setTimeout(() => {
       setShowTouchHint(false);
     }, 2500);
+
+    if (!pocketAlwaysDim) {
+      if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
+      pocketAwakeTimeoutRef.current = setTimeout(() => {
+        setIsPocketAwake(false);
+      }, 6000);
+    }
   };
 
   const fileInputRef = useRef(null);
@@ -1257,99 +1326,140 @@ export default function CampsiteGPXTrackerModal({
         </div>
       )}
 
-      {/* 🌙 OLED 口袋暗屏省電模式 (100% 保持前景 WakeLock + 0 耗電 + 滑軌/長按雙重防誤觸) */}
+      {/* 🌙 OLED 口袋暗屏極致省電模式 (消滅頂部白條 + 100% 熄屏 0 像素發光 + 觸碰喚出微光 HUD) */}
       {isPocketMode && isRecording && (
         <div 
           onClick={handlePocketScreenTap}
-          style={{ zIndex: 99999, backgroundColor: '#000000' }}
-          className="fixed inset-0 text-zinc-300 flex flex-col justify-between p-5 select-none overflow-hidden"
+          style={{ 
+            zIndex: 99999, 
+            backgroundColor: '#000000',
+            paddingTop: 'max(env(safe-area-inset-top), 24px)',
+            paddingBottom: 'max(env(safe-area-inset-bottom), 24px)'
+          }}
+          className="fixed inset-0 text-zinc-300 flex flex-col justify-between px-5 select-none overflow-hidden transition-all duration-300 cursor-pointer"
         >
-          {/* Top Status */}
-          <div className="flex items-center justify-between text-xs text-zinc-500 font-mono pt-3 border-b border-zinc-900 pb-3">
+          {/* Top Status (僅在喚醒時顯示，全黑熄屏時完全熄滅不發光) */}
+          <div className={`flex items-center justify-between text-xs text-zinc-600 font-mono border-b border-zinc-900 pb-3 transition-opacity duration-300 ${
+            !isPocketAwake && !pocketAlwaysDim ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-emerald-400 font-bold tracking-wider">🛰️ GPS 背景持續記錄中</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500/80 animate-pulse" />
+              <span className="text-emerald-500/90 font-bold tracking-wider">🛰️ GPS 背景航跡收錄中</span>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-500 text-[11px]">
-              <span>🔒 防誤觸鎖定中 · 0 耗電</span>
-            </div>
+            
+            {/* Mode Toggle: 自動純黑 (預設) vs 常駐微光 */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPocketAlwaysDim(v => !v);
+              }}
+              className="px-2.5 py-1 rounded-full border border-zinc-800 bg-zinc-950 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all cursor-pointer"
+            >
+              {pocketAlwaysDim ? '💡 常駐微光' : '🌙 自動純黑 (最省電)'}
+            </button>
           </div>
 
-          {/* Central Dim Odometer HUD (OLED 0 耗電黑底極簡顯示) */}
-          <div className="text-center space-y-4 my-auto">
-            {/* Accidental Touch Feedback Toast */}
-            {showTouchHint ? (
-              <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-amber-500/40 bg-amber-950/80 text-amber-300 text-xs font-mono shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-                <span>🔒</span>
-                <span>口袋防誤觸中：請向右滑動滑軌或長按 2 秒解鎖</span>
-              </div>
-            ) : (
-              <div className="inline-block px-3 py-1 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-500 text-xs font-mono">
-                🌙 口袋暗屏省電中 (OLED 黑色像素 0 耗電)
-              </div>
-            )}
-
-            {/* Giant Dim Time */}
-            <div className="text-5xl sm:text-6xl font-mono font-black text-zinc-200 tracking-tight">
-              {displayStats?.durationFormatted || '00:00:00'}
-            </div>
-
-            {/* Secondary Metrics */}
-            <div className="flex items-center justify-center gap-6 text-sm font-mono text-zinc-400 pt-1">
-              <div>
-                <span className="text-zinc-600 block text-xs">累計里程</span>
-                <span className="text-xl font-bold text-zinc-200">{displayStats?.totalDistanceKm || '0.00'} km</span>
-              </div>
-              <div className="w-px h-8 bg-zinc-800" />
-              <div>
-                <span className="text-zinc-600 block text-xs">即時時速</span>
-                <span className="text-xl font-bold text-emerald-400">{displayStats?.currentSpeedKmh || '0.0'} km/h</span>
-              </div>
-              <div className="w-px h-8 bg-zinc-800" />
-              <div>
-                <span className="text-zinc-600 block text-xs">當前海拔</span>
-                <span className="text-xl font-bold text-blue-400">{displayStats?.currentElevation !== null ? `${displayStats.currentElevation}m` : '--'}</span>
+          {/* Central Area: 100% 純黑極限熄屏 VS 微光 HUD */}
+          {!isPocketAwake && !pocketAlwaysDim ? (
+            /* 1. 深度全黑熄屏 (0 像素發光 · 0 nits · 頂部 status bar 與全屏 100% 純黑) */
+            <div className="my-auto text-center space-y-4 pointer-events-none select-none opacity-40">
+              <div className="w-1.5 h-1.5 mx-auto rounded-full bg-emerald-500/30 animate-pulse" />
+              <div className="text-[11px] font-mono text-zinc-800 tracking-wider">
+                🌙 100% 熄屏省電中 · 輕碰螢幕喚出資訊
               </div>
             </div>
+          ) : (
+            /* 2. 觸碰喚醒之微光 HUD (消除刺眼白字，採用低耗電深階琥珀微光) */
+            <div className="text-center space-y-4 my-auto animate-in fade-in duration-200">
+              {/* Status or Toast */}
+              {showTouchHint ? (
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-amber-500/40 bg-amber-950/80 text-amber-300 text-xs font-mono shadow-2xl">
+                  <span>🔒</span>
+                  <span>口袋防誤觸中：請向右滑動滑軌或長按 2 秒解鎖</span>
+                </div>
+              ) : (
+                <div className="inline-block px-3 py-1 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-500 text-xs font-mono">
+                  {pocketAlwaysDim ? '💡 常駐微光省電中' : '⏱️ 6 秒後自動沉入 100% 純黑熄屏'}
+                </div>
+              )}
 
-            <p className="text-xs text-zinc-600 max-w-xs mx-auto pt-2 leading-relaxed">
-              放入背包或口袋時，布料摩擦與皮膚碰觸絕不誤觸喚醒，維持 100% GPS 航跡！
-            </p>
-          </div>
+              {/* Giant Time: 採用深階暖色琥珀 (非刺眼高亮白字，OLED 功耗大減 70% 且保護夜間暗適應) */}
+              <div 
+                style={{ color: '#F59E0B' }}
+                className="text-5xl sm:text-6xl font-mono font-black tracking-tight drop-shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+              >
+                {displayStats?.durationFormatted || '00:00:00'}
+              </div>
+
+              {/* Secondary Metrics (低功耗深灰與微光) */}
+              <div className="flex items-center justify-center gap-6 text-sm font-mono pt-1">
+                <div>
+                  <span style={{ color: '#71717A' }} className="block text-xs">累計里程</span>
+                  <span style={{ color: '#D4D4D8' }} className="text-xl font-bold">{displayStats?.totalDistanceKm || '0.00'} km</span>
+                </div>
+                <div style={{ backgroundColor: '#27272A' }} className="w-px h-8" />
+                <div>
+                  <span style={{ color: '#71717A' }} className="block text-xs">即時時速</span>
+                  <span style={{ color: '#10B981' }} className="text-xl font-bold">{displayStats?.currentSpeedKmh || '0.0'} km/h</span>
+                </div>
+                <div style={{ backgroundColor: '#27272A' }} className="w-px h-8" />
+                <div>
+                  <span style={{ color: '#71717A' }} className="block text-xs">當前海拔</span>
+                  <span style={{ color: '#38BDF8' }} className="text-xl font-bold">{displayStats?.currentElevation !== null ? `${displayStats.currentElevation}m` : '--'}</span>
+                </div>
+              </div>
+
+              <p style={{ color: '#71717A' }} className="text-xs max-w-xs mx-auto pt-1 leading-relaxed">
+                放入背包或口袋時，布料摩擦絕不誤觸喚醒；無操作自動沉入純黑！
+              </p>
+            </div>
+          )}
 
           {/* Bottom Dual Anti-Touch Unlock Controls (向右滑軌 + 2 秒長按備援) */}
-          <div className="pb-4 w-full max-w-sm mx-auto space-y-2.5" onClick={(e) => e.stopPropagation()}>
-            
+          <div 
+            className={`pb-4 w-full max-w-sm mx-auto space-y-2.5 shrink-0 transition-opacity duration-200 ${
+              !isPocketAwake && !pocketAlwaysDim ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* 1. 滑動解鎖滑軌 (Swipe to Unlock Slider) */}
             <div 
               ref={sliderTrackRef}
               onPointerMove={handleSliderPointerMove}
               onPointerUp={handleSliderPointerUp}
               onPointerCancel={handleSliderPointerUp}
-              className="relative h-14 bg-zinc-900/90 border border-zinc-700/80 rounded-2xl flex items-center justify-center overflow-hidden touch-none select-none shadow-xl"
+              style={{ backgroundColor: '#18181B', borderColor: '#3F3F46', height: '56px' }}
+              className="relative border rounded-2xl flex items-center justify-center overflow-hidden touch-none select-none shadow-xl shrink-0"
             >
               {/* Animated Progress Fill Behind Thumb */}
               <div 
-                style={{ width: `${sliderPosition + 48}px` }} 
-                className="absolute left-0 top-0 bottom-0 bg-emerald-950/70 border-r border-emerald-500/40 pointer-events-none transition-all duration-75"
+                style={{ 
+                  width: `${sliderPosition + 48}px`,
+                  backgroundColor: 'rgba(6, 78, 59, 0.6)',
+                  borderColor: '#059669'
+                }} 
+                className="absolute left-0 top-0 bottom-0 border-r pointer-events-none transition-all duration-75"
               />
 
               {/* Background Guide Text */}
-              <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-zinc-400 pointer-events-none tracking-wider">
+              <div style={{ color: '#A1A1AA' }} className="flex items-center gap-1.5 text-xs font-mono font-bold pointer-events-none tracking-wider">
                 <span>向右滑動解鎖</span>
                 <span className="animate-pulse">❯❯❯</span>
-                <span className="text-emerald-400">🔓</span>
+                <span style={{ color: '#34D399' }}>🔓</span>
               </div>
 
               {/* Draggable Slider Thumb Handle */}
               <div 
                 style={{
                   transform: `translateX(${sliderPosition}px)`,
-                  transition: isDraggingSlider ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1)'
+                  transition: isDraggingSlider ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1)',
+                  backgroundColor: '#059669',
+                  color: '#FFFFFF'
                 }}
                 onPointerDown={handleSliderPointerDown}
                 data-testid="pocket-slider-thumb"
-                className="absolute left-1 top-1 bottom-1 w-12 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 text-white flex items-center justify-center font-bold text-lg shadow-lg cursor-grab active:cursor-grabbing active:scale-95"
+                className="absolute left-1 top-1 bottom-1 w-12 rounded-xl flex items-center justify-center font-bold text-lg shadow-lg cursor-grab active:cursor-grabbing active:scale-95"
               >
                 <span>➔</span>
               </div>
@@ -1363,12 +1473,17 @@ export default function CampsiteGPXTrackerModal({
               onPointerLeave={cancelLongPress}
               onPointerCancel={cancelLongPress}
               data-testid="pocket-long-press-unlock-btn"
-              className="relative w-full py-2.5 px-4 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-mono font-bold flex items-center justify-center gap-2 overflow-hidden active:scale-98 transition-all cursor-pointer"
+              style={{ backgroundColor: '#09090B', borderColor: '#27272A', color: '#A1A1AA', height: '42px' }}
+              className="relative w-full py-2 px-4 rounded-xl border text-xs font-mono font-bold flex items-center justify-center gap-2 overflow-hidden active:scale-98 transition-all cursor-pointer shrink-0"
             >
               {/* Fill Progress Bar */}
               <div 
-                style={{ width: `${longPressProgress}%` }}
-                className="absolute left-0 top-0 bottom-0 bg-emerald-600/30 border-r border-emerald-400 pointer-events-none transition-all duration-75"
+                style={{ 
+                  width: `${longPressProgress}%`,
+                  backgroundColor: 'rgba(5, 150, 105, 0.3)',
+                  borderColor: '#10B981'
+                }}
+                className="absolute left-0 top-0 bottom-0 border-r pointer-events-none transition-all duration-75"
               />
               <span className="relative z-10">⏱️</span>
               <span className="relative z-10">
