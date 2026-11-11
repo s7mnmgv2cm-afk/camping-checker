@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { PRESET_HIKING_TRAILS } from '../lib/gpx';
+import ElevationProfileChart from './ElevationProfileChart';
 
 export default function CampsiteGPXTrackerModal({
   campsite,
@@ -43,6 +44,7 @@ export default function CampsiteGPXTrackerModal({
   const [showAirplaneModeModal, setShowAirplaneModeModal] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(null);
   const [importError, setImportError] = useState(null);
+  const [expandedHistoryTrackId, setExpandedHistoryTrackId] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -97,9 +99,18 @@ export default function CampsiteGPXTrackerModal({
     }
   };
 
-  const displayStats = isRecording ? currentStats : (lastFinishedTrack?.stats || currentStats);
-  const displayPointsCount = isRecording ? trackPoints?.length : (lastFinishedTrack?.points?.length || trackPoints?.length || 0);
-  const displayWaypoints = isRecording ? waypoints : (lastFinishedTrack?.waypoints || waypoints || []);
+  const displaySource = isRecording 
+    ? { stats: currentStats, pointsCount: trackPoints?.length || 0, waypoints: waypoints || [], title: trackName || '本次健行航跡' }
+    : (lastFinishedTrack 
+      ? { stats: lastFinishedTrack.stats, pointsCount: lastFinishedTrack.points?.length || 0, waypoints: lastFinishedTrack.waypoints || [], title: lastFinishedTrack.name }
+      : (activeRoute 
+        ? { stats: activeRoute.stats, pointsCount: activeRoute.points?.length || 0, waypoints: activeRoute.waypoints || [], title: activeRoute.name }
+        : { stats: currentStats, pointsCount: 0, waypoints: [], title: trackName || '健行航跡' }));
+
+  const displayStats = displaySource.stats || currentStats;
+  const displayPointsCount = displaySource.pointsCount || 0;
+  const displayWaypoints = displaySource.waypoints || [];
+  const displayTitle = displaySource.title;
 
   if (!isOpen) return null;
 
@@ -329,18 +340,23 @@ export default function CampsiteGPXTrackerModal({
                 {/* 📊 Live Statistics Dashboard for the ON/OFF path */}
                 <div 
                   style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DFD1' }}
-                  className="p-4 rounded-2xl border shadow-sm"
+                  className="p-4 rounded-2xl border shadow-sm space-y-3"
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span style={{ color: '#6B5C4F', fontSize: '11px', fontWeight: 'bold' }}>
-                      {isRecording ? '📊 本次 ON 區間即時數據' : '📊 ON/OFF 路徑統計摘要'}
-                    </span>
-                    <span style={{ color: '#8C532B', fontSize: '11px', fontWeight: 'bold' }} className="font-mono">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span style={{ color: '#6B5C4F', fontSize: '11px', fontWeight: 'bold' }}>
+                        {isRecording ? '📊 本次 ON 區間即時數據' : `📊 ${displayTitle || '路徑統計摘要'}`}
+                      </span>
+                      <p style={{ color: '#8C7E72', fontSize: '10px' }} className="font-mono">
+                        包含花費時間、平均/最高/最低時速、爬升與當前海拔
+                      </p>
+                    </div>
+                    <span style={{ color: '#8C532B', fontSize: '11px', fontWeight: 'bold' }} className="font-mono shrink-0">
                       {displayPointsCount} 個經緯點位
                     </span>
                   </div>
 
-                  {/* 4 Stat Badges Grid */}
+                  {/* 4 Primary Stat Badges Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
                       <span style={{ color: '#706254', fontSize: '10px' }} className="block">累積里程</span>
@@ -350,10 +366,13 @@ export default function CampsiteGPXTrackerModal({
                     </div>
 
                     <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
-                      <span style={{ color: '#706254', fontSize: '10px' }} className="block">進行歷時</span>
-                      <strong style={{ color: '#261E18', fontSize: '15px' }} className="font-mono font-black">
+                      <span style={{ color: '#706254', fontSize: '10px' }} className="block">花費總時間</span>
+                      <strong style={{ color: '#261E18', fontSize: '15px' }} className="font-mono font-black block">
                         {displayStats?.durationFormatted || '00:00:00'}
                       </strong>
+                      <span style={{ color: '#706254', fontSize: '9px' }} className="block font-mono">
+                        移動 {displayStats?.movingTimeFormatted || '--'}
+                      </span>
                     </div>
 
                     <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
@@ -361,6 +380,9 @@ export default function CampsiteGPXTrackerModal({
                       <strong style={{ color: '#2563EB', fontSize: '14px' }} className="font-mono font-bold">
                         +{displayStats?.totalAscentM || 0} / -{displayStats?.totalDescentM || 0}m
                       </strong>
+                      <span style={{ color: '#706254', fontSize: '9px' }} className="block font-mono">
+                        最高 {displayStats?.maxElevationM || '--'}m
+                      </span>
                     </div>
 
                     <div style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }} className="p-2.5 rounded-xl border text-center">
@@ -368,9 +390,75 @@ export default function CampsiteGPXTrackerModal({
                       <strong style={{ color: '#059669', fontSize: '15px' }} className="font-mono font-black">
                         {displayStats?.currentElevation !== null ? `${displayStats.currentElevation}m` : '--'}
                       </strong>
+                      <span style={{ color: '#706254', fontSize: '9px' }} className="block font-mono">
+                        最低 {displayStats?.minElevationM || '--'}m
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ⚡ 速度深度分析儀表 (Average / Max / Min Speed) */}
+                  <div 
+                    style={{ backgroundColor: '#FAF7F2', borderColor: '#EFE7DC' }}
+                    className="p-3 rounded-xl border space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <strong style={{ color: '#2C231C' }} className="font-bold flex items-center gap-1">
+                        <span>⚡</span>
+                        <span>速度分析 Telemetry</span>
+                      </strong>
+                      <span style={{ color: '#706254', fontSize: '10px' }} className="font-mono">
+                        即時時速: <span className="font-bold text-[#8C532B]">{displayStats?.currentSpeedKmh || '0.0'} km/h</span>
+                      </span>
+                    </div>
+
+                    <div 
+                      style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+                      className="gap-1.5 text-center"
+                    >
+                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
+                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">平均時速</span>
+                        <strong style={{ color: '#261E18', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
+                          {displayStats?.avgSpeedKmh || '0.0'}
+                        </strong>
+                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
+                      </div>
+
+                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
+                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">移動均速</span>
+                        <strong style={{ color: '#166534', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
+                          {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
+                        </strong>
+                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
+                      </div>
+
+                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
+                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">最高速度</span>
+                        <strong style={{ color: '#DC2626', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
+                          {displayStats?.maxSpeedKmh || '0.0'}
+                        </strong>
+                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
+                      </div>
+
+                      <div className="bg-white/90 p-1.5 rounded-lg border border-[#E7DFD3] shadow-xs">
+                        <span style={{ color: '#706254', fontSize: '9px' }} className="block">最低速度</span>
+                        <strong style={{ color: '#2563EB', fontSize: '13px' }} className="font-mono font-black block mt-0.5">
+                          {displayStats?.minSpeedKmh || '0.0'}
+                        </strong>
+                        <span className="text-[9px] text-gray-400 block font-mono">km/h</span>
+                      </div>
                     </div>
                   </div>
                 </div>
+
+                {/* 📈 高度剖面圖 (Elevation Profile Chart) - 完全對齊使用者上傳的圖表 */}
+                <ElevationProfileChart
+                  elevationProfile={displayStats?.elevationProfile || []}
+                  totalDistanceKm={displayStats?.totalDistanceKm || '0.00'}
+                  maxElevationM={displayStats?.maxElevationM}
+                  minElevationM={displayStats?.minElevationM}
+                  totalAscentM={displayStats?.totalAscentM || 0}
+                  totalDescentM={displayStats?.totalDescentM || 0}
+                />
 
                 {/* 📍 Waypoints Tagging Section */}
                 <div 
@@ -579,6 +667,16 @@ export default function CampsiteGPXTrackerModal({
 
                           <button
                             type="button"
+                            onClick={() => setExpandedHistoryTrackId(prev => prev === item.id ? null : item.id)}
+                            style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1"
+                          >
+                            <span>📈</span>
+                            <span>{expandedHistoryTrackId === item.id ? '收合圖表' : '速度與高度圖'}</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => downloadGPX(item)}
                             style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2C231C' }}
                             className="px-2.5 py-1 rounded-lg text-[11px] font-bold border hover:bg-[#F4EDE2] transition-colors flex items-center gap-1"
@@ -600,6 +698,41 @@ export default function CampsiteGPXTrackerModal({
                             <span>匯入地圖</span>
                           </button>
                         </div>
+
+                        {/* Inline Expandable Elevation Profile & Speed Telemetry for this Saved Track */}
+                        {expandedHistoryTrackId === item.id && (
+                          <div className="pt-2 space-y-2 animate-in fade-in">
+                            {/* Speeds */}
+                            <div className="grid grid-cols-4 gap-1.5 text-center text-xs bg-[#FAF7F2] p-2 rounded-xl border border-[#DECDB9]">
+                              <div>
+                                <span className="text-[9px] text-[#706254] block">平均時速</span>
+                                <strong className="font-mono text-[#261E18] text-xs">{item.stats?.avgSpeedKmh || '0.0'} km/h</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-[#706254] block">移動均速</span>
+                                <strong className="font-mono text-[#166534] text-xs">{item.stats?.movingAvgSpeedKmh || item.stats?.avgSpeedKmh || '0.0'} km/h</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-[#706254] block">最高時速</span>
+                                <strong className="font-mono text-[#DC2626] text-xs">{item.stats?.maxSpeedKmh || '0.0'} km/h</strong>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-[#706254] block">最低時速</span>
+                                <strong className="font-mono text-[#2563EB] text-xs">{item.stats?.minSpeedKmh || '0.0'} km/h</strong>
+                              </div>
+                            </div>
+
+                            {/* Chart */}
+                            <ElevationProfileChart
+                              elevationProfile={item.stats?.elevationProfile || []}
+                              totalDistanceKm={item.stats?.totalDistanceKm || '0.00'}
+                              maxElevationM={item.stats?.maxElevationM}
+                              minElevationM={item.stats?.minElevationM}
+                              totalAscentM={item.stats?.totalAscentM || 0}
+                              totalDescentM={item.stats?.totalDescentM || 0}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
