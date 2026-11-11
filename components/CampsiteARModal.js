@@ -62,6 +62,46 @@ function getAngularSeparation(az1, el1, az2, el2) {
   return Math.acos(Math.max(-1, Math.min(1, cosDist))) / rad;
 }
 
+// WMO Weather interpretation code map
+const WMO_WEATHER_MAP = {
+  0: { label: '晴朗無雲', icon: '☀️', color: 'text-amber-400' },
+  1: { label: '晴時多雲', icon: '🌤️', color: 'text-amber-300' },
+  2: { label: '多雲', icon: '⛅', color: 'text-sky-300' },
+  3: { label: '陰天', icon: '☁️', color: 'text-slate-300' },
+  45: { label: '有霧 / 起霧', icon: '🌫️', color: 'text-slate-300' },
+  48: { label: '濃霧', icon: '🌫️', color: 'text-slate-400' },
+  51: { label: '微量小雨', icon: '🌦️', color: 'text-blue-300' },
+  53: { label: '小雨', icon: '🌧️', color: 'text-blue-400' },
+  55: { label: '持續小雨', icon: '🌧️', color: 'text-blue-400' },
+  61: { label: '短暫陣雨', icon: '🌧️', color: 'text-blue-400' },
+  63: { label: '中雨', icon: '🌧️', color: 'text-blue-500' },
+  65: { label: '大雨 / 暴雨', icon: '⛈️', color: 'text-indigo-400' },
+  80: { label: '局部陣雨', icon: '🌦️', color: 'text-blue-300' },
+  81: { label: '中度陣雨', icon: '🌧️', color: 'text-blue-400' },
+  82: { label: '強陣雨', icon: '⛈️', color: 'text-indigo-400' },
+  95: { label: '雷陣雨', icon: '⛈️', color: 'text-purple-400' },
+  96: { label: '雷雨伴隨冰雹', icon: '⛈️', color: 'text-purple-500' },
+  99: { label: '強烈雷暴', icon: '⚡', color: 'text-rose-400' }
+};
+
+// Convert degrees to 8-point cardinal direction in Chinese
+function getCardinalDirection(deg) {
+  if (deg === null || deg === undefined || isNaN(deg)) return '未知';
+  const directions = ['北風 (N)', '東北風 (NE)', '東風 (E)', '東南風 (SE)', '南風 (S)', '西南風 (SW)', '西風 (W)', '西北風 (NW)'];
+  const index = Math.round(deg / 45) % 8;
+  return directions[index];
+}
+
+// Custom GPS Quick Presets
+const CUSTOM_GPS_PRESETS = [
+  { name: '合歡山主峰', lat: 24.143, lng: 121.272, elevation: 3417, tag: '⛰️ 百岳' },
+  { name: '司馬庫斯部落', lat: 24.577, lng: 121.357, elevation: 1580, tag: '🌲 巨木群' },
+  { name: '阿里山祝山', lat: 23.511, lng: 120.803, elevation: 2216, tag: '🌄 日出觀景' },
+  { name: '武陵農場露營區', lat: 24.358, lng: 121.312, elevation: 1750, tag: '🏕️ 高山露營' },
+  { name: '墾丁鵝鑾鼻', lat: 21.902, lng: 120.852, elevation: 50, tag: '🌊 最南端' },
+  { name: '玉山北峰氣象站', lat: 23.487, lng: 120.959, elevation: 3858, tag: '🏔️ 最高峰' }
+];
+
 export default function CampsiteARModal({
   campsite,
   isOpen,
@@ -78,13 +118,27 @@ export default function CampsiteARModal({
   // AR View Mode: 'sun' (太陽搭帳導引) | 'stars' (夜間星空圖)
   const [arViewMode, setArViewMode] = useState('sun');
 
-  // Location Mode: 'campsite' (營地座標) | 'current' (目前所在地 GPS)
+  // Location Mode: 'campsite' (營地座標) | 'current' (目前所在地 GPS) | 'custom' (自訂座標)
   const [locationMode, setLocationMode] = useState(initialLocationMode);
   const [userCoords, setUserCoords] = useState(null);
   const [isLocating, setIsLocating] = useState(false);
   const [geoError, setGeoError] = useState(null);
 
-  // Realtime Live Wind State (auto-fetched for campsite or GPS coordinates)
+  // Custom GPS Location State (自由輸入任意經緯度與海拔)
+  const [customCoords, setCustomCoords] = useState(null); // { lat, lng, elevation, name }
+  const [showCustomCoordsModal, setShowCustomCoordsModal] = useState(false);
+  const [customLatInput, setCustomLatInput] = useState('');
+  const [customLngInput, setCustomLngInput] = useState('');
+  const [customElevationInput, setCustomElevationInput] = useState('1000');
+  const [customNameInput, setCustomNameInput] = useState('');
+  const [customPasteInput, setCustomPasteInput] = useState('');
+
+  // Live Weather & Ephemeris Dashboard State (for current active location)
+  const [liveWeather, setLiveWeather] = useState(null);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [showWeatherModal, setShowWeatherModal] = useState(false);
+
+  // Realtime Live Wind State (auto-fetched for campsite, GPS or custom coordinates)
   const [liveWind, setLiveWind] = useState(null);
   const [loadingWind, setLoadingWind] = useState(false);
 
@@ -279,10 +333,26 @@ export default function CampsiteARModal({
 
   const campLat = campsite?.latitude ? Number(campsite.latitude) : 24.1;
   const campLng = campsite?.longitude ? Number(campsite.longitude) : 121.0;
+  const campElevation = campsite?.altitude 
+    ? (parseFloat(String(campsite.altitude).replace(/[^0-9.]/g, '')) || 500)
+    : (campsite?.elevation ? (parseFloat(String(campsite.elevation).replace(/[^0-9.]/g, '')) || 500) : 500);
 
-  // Active coordinates based on selected locationMode
-  const lat = (locationMode === 'current' && userCoords) ? userCoords.lat : campLat;
-  const lng = (locationMode === 'current' && userCoords) ? userCoords.lng : campLng;
+  // Active coordinates & elevation based on selected locationMode ('campsite' | 'current' | 'custom')
+  const lat = locationMode === 'custom' && customCoords
+    ? customCoords.lat
+    : (locationMode === 'current' && userCoords)
+      ? userCoords.lat
+      : campLat;
+  const lng = locationMode === 'custom' && customCoords
+    ? customCoords.lng
+    : (locationMode === 'current' && userCoords)
+      ? userCoords.lng
+      : campLng;
+  const activeElevation = locationMode === 'custom' && customCoords?.elevation !== undefined
+    ? Number(customCoords.elevation)
+    : (locationMode === 'current' && userCoords?.altitude)
+      ? Number(userCoords.altitude)
+      : campElevation;
 
   // Handle GPS location request
   const handleSwitchToGPS = () => {
@@ -305,6 +375,7 @@ export default function CampsiteARModal({
         const coords = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
+          altitude: pos.coords.altitude || null,
           accuracy: pos.coords.accuracy
         };
         setUserCoords(coords);
@@ -325,6 +396,52 @@ export default function CampsiteARModal({
     );
   };
 
+  // Handle smart paste of Google Maps coordinates (e.g. "24.143, 121.272")
+  const handleParseGoogleCoords = (val) => {
+    setCustomPasteInput(val);
+    if (!val) return;
+    const cleaned = val.trim();
+    const parts = cleaned.split(/[\s,]+/);
+    if (parts.length >= 2) {
+      const pLat = parseFloat(parts[0]);
+      const pLng = parseFloat(parts[1]);
+      if (!isNaN(pLat) && !isNaN(pLng)) {
+        setCustomLatInput(pLat.toFixed(5));
+        setCustomLngInput(pLng.toFixed(5));
+      }
+    }
+  };
+
+  // Apply Custom GPS Coordinates
+  const handleApplyCustomCoords = () => {
+    const pLat = parseFloat(customLatInput);
+    const pLng = parseFloat(customLngInput);
+    const pElevation = parseFloat(customElevationInput) || 800;
+
+    if (isNaN(pLat) || pLat < -90 || pLat > 90) {
+      setGeoError('請輸入有效的緯度 (-90° ~ 90°)');
+      setTimeout(() => setGeoError(null), 3000);
+      return;
+    }
+    if (isNaN(pLng) || pLng < -180 || pLng > 180) {
+      setGeoError('請輸入有效的經度 (-180° ~ 180°)');
+      setTimeout(() => setGeoError(null), 3000);
+      return;
+    }
+
+    const name = customNameInput.trim() || '自訂位置';
+    setCustomCoords({
+      lat: pLat,
+      lng: pLng,
+      elevation: pElevation,
+      name
+    });
+    setLocationMode('custom');
+    setShowCustomCoordsModal(false);
+    setSpotToast(`📍 已切換至自訂座標：${name} (${pLat.toFixed(4)}°N, ${pLng.toFixed(4)}°E · 海拔 ${pElevation}m)`);
+    setTimeout(() => setSpotToast(null), 4000);
+  };
+
   // Sync initialLocationMode on modal open
   useEffect(() => {
     if (!isOpen) return;
@@ -335,46 +452,67 @@ export default function CampsiteARModal({
     }
   }, [isOpen, initialLocationMode]);
 
-  // Auto-fetch real-time live wind from Open-Meteo for active coordinates (campsite or GPS)
+  // Auto-fetch real-time live weather, ephemeris & wind from Open-Meteo for active coordinates (campsite, GPS, or custom)
   useEffect(() => {
     if (!isOpen) return;
 
-    if (locationMode === 'campsite' && propWindDir !== undefined && propWindSpeed !== undefined && propWindDir !== null) {
-      setLiveWind({ windDir: propWindDir, windSpeed: propWindSpeed });
-      return;
-    }
-
     let isMounted = true;
     setLoadingWind(true);
+    setLoadingWeather(true);
 
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m&timezone=Asia%2FTaipei`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,moonrise,moonset,moon_phase,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&timezone=Asia%2FTaipei`;
+
     fetch(url)
       .then(res => {
-        if (!res.ok) throw new Error('Wind fetch failed');
+        if (!res.ok) throw new Error('Weather fetch failed');
         return res.json();
       })
       .then(data => {
         if (isMounted && data?.current) {
-          setLiveWind({
-            windDir: Math.round(data.current.wind_direction_10m ?? 0),
-            windSpeed: Math.round(data.current.wind_speed_10m ?? 0)
-          });
+          const windDir = Math.round(data.current.wind_direction_10m ?? 0);
+          const windSpeed = Math.round(data.current.wind_speed_10m ?? 0);
+          setLiveWind({ windDir, windSpeed });
           setLoadingWind(false);
+
+          setLiveWeather({
+            temp: data.current.temperature_2m,
+            apparentTemp: data.current.apparent_temperature,
+            humidity: data.current.relative_humidity_2m,
+            weatherCode: data.current.weather_code,
+            weatherInfo: WMO_WEATHER_MAP[data.current.weather_code] || { label: '晴時多雲', icon: '⛅', color: 'text-sky-300' },
+            windSpeed,
+            windDir,
+            windDirName: getCardinalDirection(windDir),
+            windSafety: getBeaufortWindSafety(windSpeed),
+            rainProb: data.daily?.precipitation_probability_max?.[0] ?? 0,
+            tempMax: data.daily?.temperature_2m_max?.[0] ?? null,
+            tempMin: data.daily?.temperature_2m_min?.[0] ?? null,
+            sunrise: data.daily?.sunrise?.[0] ? data.daily.sunrise[0].split('T')[1] : null,
+            sunset: data.daily?.sunset?.[0] ? data.daily.sunset[0].split('T')[1] : null,
+            moonrise: data.daily?.moonrise?.[0] ? data.daily.moonrise[0].split('T')[1] : null,
+            moonset: data.daily?.moonset?.[0] ? data.daily.moonset[0].split('T')[1] : null,
+            moonPhase: data.daily?.moon_phase?.[0] ?? null,
+            updatedAt: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+          });
+          setLoadingWeather(false);
         }
       })
       .catch(err => {
-        console.warn('Realtime wind fetch notice:', err);
-        if (isMounted) setLoadingWind(false);
+        console.warn('Realtime weather/wind fetch notice:', err);
+        if (isMounted) {
+          setLoadingWind(false);
+          setLoadingWeather(false);
+        }
       });
 
     return () => {
       isMounted = false;
     };
-  }, [isOpen, lat, lng, locationMode, propWindDir, propWindSpeed]);
+  }, [isOpen, lat, lng, locationMode]);
 
   // Fetch Google AI Overview spots when modal opens, campsite changes, or locationMode changes
   useEffect(() => {
-    if (!isOpen || (!campsite && !userCoords)) return;
+    if (!isOpen || (!campsite && !userCoords && !customCoords)) return;
     let isMounted = true;
     setLoadingSpots(true);
 
@@ -399,7 +537,7 @@ export default function CampsiteARModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, campsite?.id, campsite?.name, locationMode, (locationMode === 'current' && userCoords ? `${userCoords.lat.toFixed(3)}_${userCoords.lng.toFixed(3)}` : null)]);
+  }, [isOpen, campsite?.id, campsite?.name, locationMode, (locationMode === 'current' && userCoords ? `${userCoords.lat.toFixed(3)}_${userCoords.lng.toFixed(3)}` : locationMode === 'custom' && customCoords ? `${customCoords.lat.toFixed(3)}_${customCoords.lng.toFixed(3)}` : null)]);
 
   // 景點即時查詢冷卻與位移保護常數 (冷卻十分鐘 + 500m 位移檢查)
   const SPOTS_REFRESH_COOLDOWN_MS = 10 * 60 * 1000; // 10 分鐘冷卻 (600,000 ms)
@@ -753,13 +891,9 @@ export default function CampsiteARModal({
   }, [lockedStar?.id, selectedStarTarget]);
 
   // 7. Compute PeakVisor Mountain Peaks & Ridge Lines from observer location
-  const campElevation = campsite?.altitude 
-    ? (parseFloat(String(campsite.altitude).replace(/[^0-9.]/g, '')) || 500)
-    : (campsite?.elevation ? (parseFloat(String(campsite.elevation).replace(/[^0-9.]/g, '')) || 500) : 500);
-
   const computedPeaks = useMemo(() => {
     if (arViewMode !== 'mountain') return [];
-    const peaks = computePeaksFromLocation(lat, lng, campElevation, peakMaxDistance);
+    const peaks = computePeaksFromLocation(lat, lng, activeElevation, peakMaxDistance);
     const fovH = effectiveLandscape ? 105 : 65; // Horizontal Field of View: 105° ultra-wide in landscape panorama
     const fovV = effectiveLandscape ? 40 : 55; // Vertical Field of View
 
@@ -823,7 +957,7 @@ export default function CampsiteARModal({
         isCompact: info.isCompact
       };
     });
-  }, [arViewMode, lat, lng, campElevation, peakMaxDistance, heading, camElevation, effectiveLandscape]);
+  }, [arViewMode, lat, lng, activeElevation, peakMaxDistance, heading, camElevation, effectiveLandscape]);
 
   // Compute Mountain Ridges connecting member peaks
   const computedRidges = useMemo(() => {
@@ -949,12 +1083,12 @@ export default function CampsiteARModal({
   // 8. Compute Google AI Overview POIs (Trails, Waterfalls, Viewpoints)
   const computedPOIs = useMemo(() => {
     if (arViewMode !== 'spots') return [];
-    const pois = computeNearbyPOIs(lat, lng, campElevation, poiMaxDistance, poiCategory, poiSpots);
+    const pois = computeNearbyPOIs(lat, lng, activeElevation, poiMaxDistance, poiCategory, poiSpots);
     return projectPOIsToScreen(pois, heading, camElevation, effectiveLandscape ? 105 : 65, effectiveLandscape ? 40 : 55).map(p => ({
       ...p,
       azimuthDir: getHeadingDirectionName(p.azimuth)
     }));
-  }, [arViewMode, lat, lng, campElevation, poiMaxDistance, poiCategory, poiSpots, heading, camElevation, effectiveLandscape]);
+  }, [arViewMode, lat, lng, activeElevation, poiMaxDistance, poiCategory, poiSpots, heading, camElevation, effectiveLandscape]);
 
   // Detect POI locked by Central Reticle
   const lockedPoi = useMemo(() => {
@@ -1270,25 +1404,78 @@ export default function CampsiteARModal({
               </button>
             </div>
 
-            {/* 第 3 列：次級設定欄（左側定位模式切換，右側模式專屬快捷按鈕） */}
+            {/* 第 3 列：次級設定欄（左側定位模式與氣象天文速查，右側模式專屬快捷按鈕） */}
             <div className="flex items-center justify-between gap-2 pt-0.5 text-xs">
-              {/* 左側：營地 vs 目前 GPS 切換膠囊 */}
-              <div className="inline-flex items-center bg-slate-900/90 p-0.5 rounded-lg border border-white/10 shadow-inner">
+              {/* 左側：營地 vs 目前 GPS vs 自訂座標 切換膠囊 ＋ ⛅ 天候星象速查按鈕 */}
+              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                <div className="inline-flex items-center bg-slate-900/90 p-0.5 rounded-lg border border-white/10 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setLocationMode('campsite')}
+                    className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${locationMode === 'campsite' ? 'bg-emerald-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                  >
+                    <span>🏕️</span>
+                    <span>{campsite?.name ? (campsite.name.length > 7 ? campsite.name.slice(0, 7) + '...' : campsite.name) : '營地'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSwitchToGPS}
+                    className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${locationMode === 'current' ? 'bg-sky-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                  >
+                    <span>📍 GPS</span>
+                    {isLocating && <span className="animate-spin text-xs">⏳</span>}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="custom-gps-btn"
+                    onClick={() => {
+                      if (customCoords) {
+                        setLocationMode('custom');
+                      } else {
+                        setShowCustomCoordsModal(true);
+                      }
+                    }}
+                    onDoubleClick={() => setShowCustomCoordsModal(true)}
+                    className={`px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${locationMode === 'custom' ? 'bg-amber-400 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                    title="點擊切換為自訂座標；雙擊可編輯經緯度"
+                  >
+                    <span>✏️</span>
+                    <span>{customCoords ? (customCoords.name.length > 5 ? customCoords.name.slice(0, 5) + '..' : customCoords.name) : '自訂'}</span>
+                  </button>
+                  {locationMode === 'custom' && (
+                    <button
+                      type="button"
+                      data-testid="edit-custom-gps-btn"
+                      onClick={() => setShowCustomCoordsModal(true)}
+                      className="px-1 py-1 text-slate-400 hover:text-amber-300 transition-colors"
+                      title="編輯自訂座標與海拔"
+                    >
+                      ⚙️
+                    </button>
+                  )}
+                </div>
+
+                {/* ⛅ 氣象天文儀表板捷徑按鈕 */}
                 <button
                   type="button"
-                  onClick={() => setLocationMode('campsite')}
-                  className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${locationMode === 'campsite' ? 'bg-emerald-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                  data-testid="weather-dashboard-btn"
+                  onClick={() => setShowWeatherModal(true)}
+                  className={`px-2 py-1 rounded-lg border font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${
+                    showWeatherModal
+                      ? 'bg-sky-500 text-slate-950 border-sky-400 font-black'
+                      : 'bg-slate-900/90 hover:bg-slate-800 text-sky-200 border-sky-400/40 hover:border-sky-400'
+                  }`}
+                  title="查詢當前座標之即時氣候、降雨機率、風向、日出日落與月出月落"
                 >
-                  <span>🏕️</span>
-                  <span>{campsite?.name ? (campsite.name.length > 8 ? campsite.name.slice(0, 8) + '...' : campsite.name) : '營地'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSwitchToGPS}
-                  className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${locationMode === 'current' ? 'bg-sky-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
-                >
-                  <span>📍 GPS</span>
-                  {isLocating && <span className="animate-spin text-xs">⏳</span>}
+                  <span>{liveWeather?.weatherInfo?.icon || '⛅'}</span>
+                  <span>{liveWeather ? `${Math.round(liveWeather.temp)}°` : '天候'}</span>
+                  {liveWeather?.rainProb !== undefined && (
+                    <span className={`px-1 py-0.2 rounded text-[10px] font-mono ${
+                      liveWeather.rainProb > 40 ? 'bg-blue-500/30 text-blue-200' : 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {liveWeather.rainProb}%雨
+                    </span>
+                  )}
                 </button>
               </div>
 
@@ -1361,19 +1548,32 @@ export default function CampsiteARModal({
             style={{ top: '10px', left: '12px', right: '12px', zIndex: 50 }}
             className="absolute flex items-center justify-between pointer-events-none animate-in fade-in duration-150"
           >
-            {/* 左側：模式狀態膠囊（點擊也可快速展開選單） */}
-            <button
-              type="button"
-              onClick={() => setIsHeaderCollapsed(false)}
-              className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-3 py-1.5 rounded-full border border-amber-400/50 shadow-2xl text-xs font-bold text-white active:scale-95 transition-all cursor-pointer group"
-              title="點擊展開完整模式與定位選單"
-            >
-              <span>{arViewMode === 'sun' ? '☀️' : arViewMode === 'mountain' ? '⛰️' : arViewMode === 'spots' ? '🧭' : '🌌'}</span>
-              <span className="text-amber-300 font-extrabold">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
-              <span className="text-slate-600">|</span>
-              <span className="text-sky-300 text-[11px]">{locationMode === 'current' ? 'GPS' : '營地'}</span>
-              <span className="text-[10px] text-amber-400 group-hover:translate-y-0.5 transition-transform">▼</span>
-            </button>
+            {/* 左側：模式狀態膠囊 ＋ ⛅ 天候微膠囊 */}
+            <div className="pointer-events-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsHeaderCollapsed(false)}
+                className="flex items-center gap-1.5 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-3 py-1.5 rounded-full border border-amber-400/50 shadow-2xl text-xs font-bold text-white active:scale-95 transition-all cursor-pointer group"
+                title="點擊展開完整模式與定位選單"
+              >
+                <span>{arViewMode === 'sun' ? '☀️' : arViewMode === 'mountain' ? '⛰️' : arViewMode === 'spots' ? '🧭' : '🌌'}</span>
+                <span className="text-amber-300 font-extrabold">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
+                <span className="text-slate-600">|</span>
+                <span className="text-sky-300 text-[11px]">{locationMode === 'current' ? 'GPS' : locationMode === 'custom' ? (customCoords?.name ? (customCoords.name.length > 4 ? customCoords.name.slice(0, 4) + '..' : customCoords.name) : '自訂') : '營地'}</span>
+                <span className="text-[10px] text-amber-400 group-hover:translate-y-0.5 transition-transform">▼</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="weather-dashboard-btn-collapsed"
+                onClick={() => setShowWeatherModal(true)}
+                className="flex items-center gap-1 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-sky-400/40 shadow-xl text-xs font-bold text-sky-200 active:scale-95 transition-all"
+                title="查看當前位置即時天氣與日月天文"
+              >
+                <span>{liveWeather?.weatherInfo?.icon || '⛅'}</span>
+                <span>{liveWeather ? `${Math.round(liveWeather.temp)}°` : '天候'}</span>
+              </button>
+            </div>
 
             {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
             <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5">
@@ -3224,6 +3424,411 @@ export default function CampsiteARModal({
                 </button>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* ✏️ Custom GPS Location Input Modal */}
+        {showCustomCoordsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-lg animate-in fade-in duration-150">
+            <div className="relative w-full max-w-lg bg-slate-900 border border-amber-400/40 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-white">
+              
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-white/10 bg-slate-900/95 flex justify-between items-center">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">✏️</span>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-white">
+                      自訂 GPS 座標與海拔 (AR 全境模擬)
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      輸入任意經緯度與高度，AR 將立即以該點重算山稜天際線、景點步道與天候星象
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-testid="close-custom-coords-modal-btn"
+                  onClick={() => setShowCustomCoordsModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center font-bold text-sm transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 space-y-4 overflow-y-auto max-h-[75vh]">
+                {/* Google Maps Smart Paste Input */}
+                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-400/30">
+                  <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5 mb-1.5">
+                    <span>📋</span>
+                    <span>從 Google 地圖快速貼上座標：</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={customPasteInput}
+                    onChange={(e) => handleParseGoogleCoords(e.target.value)}
+                    placeholder="例如: 24.1456, 121.2842 (貼上自動填入)"
+                    className="w-full px-3 py-2 bg-slate-950/90 border border-amber-400/40 rounded-xl text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-amber-400"
+                  />
+                  <p className="text-[11px] text-amber-200/80 mt-1">
+                    💡 在 Google 地圖任意地點點擊右鍵複製座標，直接貼在此處即可自動解析
+                  </p>
+                </div>
+
+                {/* Individual Coordinate Inputs */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">
+                      緯度 (Latitude N):
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={customLatInput}
+                      onChange={(e) => setCustomLatInput(e.target.value)}
+                      placeholder="例: 24.1430"
+                      className="w-full px-3 py-2 bg-slate-950 border border-white/20 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-sky-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">
+                      經度 (Longitude E):
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={customLngInput}
+                      onChange={(e) => setCustomLngInput(e.target.value)}
+                      placeholder="例: 121.2720"
+                      className="w-full px-3 py-2 bg-slate-950 border border-white/20 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-sky-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">
+                      海拔高度 (公尺 m):
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      value={customElevationInput}
+                      onChange={(e) => setCustomElevationInput(e.target.value)}
+                      placeholder="例: 1200"
+                      className="w-full px-3 py-2 bg-slate-950 border border-white/20 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-sky-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">
+                      自訂名稱標籤:
+                    </label>
+                    <input
+                      type="text"
+                      value={customNameInput}
+                      onChange={(e) => setCustomNameInput(e.target.value)}
+                      placeholder="例: 合歡山主峰、私房野營點"
+                      className="w-full px-3 py-2 bg-slate-950 border border-white/20 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div>
+                  <label className="text-xs font-bold text-slate-400 block mb-1.5">
+                    ⚡ 常用標竿景點快捷帶入：
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {CUSTOM_GPS_PRESETS.map((p) => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => {
+                          setCustomLatInput(p.lat.toString());
+                          setCustomLngInput(p.lng.toString());
+                          setCustomElevationInput(p.elevation.toString());
+                          setCustomNameInput(p.name);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-left text-xs transition-all flex items-center justify-between group"
+                      >
+                        <div className="truncate">
+                          <strong className="text-white group-hover:text-amber-300 block truncate">{p.name}</strong>
+                          <span className="text-[10px] text-slate-400 font-mono">{p.elevation}m</span>
+                        </div>
+                        <span className="text-[10px] px-1 rounded bg-slate-900 text-amber-300 shrink-0">{p.tag}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-5 py-3 border-t border-white/10 bg-slate-900/95 flex justify-end items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomCoordsModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  data-testid="apply-custom-coords-btn"
+                  onClick={handleApplyCustomCoords}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-black shadow-lg transition-all active:scale-95"
+                >
+                  確認套用此座標
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ⛅ Live Weather & Ephemeris Dashboard Modal */}
+        {showWeatherModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-lg animate-in fade-in duration-150">
+            <div className="relative w-full max-w-2xl bg-slate-900 border border-sky-400/40 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-white">
+              
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-white/10 bg-slate-900/95 flex justify-between items-center flex-wrap gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-2xl sm:text-3xl shrink-0">{liveWeather?.weatherInfo?.icon || '⛅'}</span>
+                  <div className="min-w-0">
+                    <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2 flex-wrap">
+                      <span>當前位置即時天候與日月星象</span>
+                      {liveWeather?.updatedAt && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-normal">
+                          {liveWeather.updatedAt} 更新
+                        </span>
+                      )}
+                    </h3>
+                    <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap font-mono">
+                      <span className="text-sky-300 font-bold">
+                        {locationMode === 'current' ? '📍 GPS 當前位置' : locationMode === 'custom' ? `✏️ 自訂 · ${customCoords?.name || '自訂點'}` : `🏕️ ${campsite?.name || '露營區'}`}
+                      </span>
+                      <span>·</span>
+                      <span>{lat.toFixed(4)}°N, {lng.toFixed(4)}°E</span>
+                      <span>·</span>
+                      <span>海拔 {activeElevation}m</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-testid="close-weather-modal-btn"
+                  onClick={() => setShowWeatherModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center font-bold text-sm transition-colors shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Location Switcher Toolbar inside modal */}
+              <div className="px-5 py-2.5 bg-slate-950/70 border-b border-white/5 flex items-center justify-between gap-2 flex-wrap text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 font-bold">切換觀測點：</span>
+                  <div className="inline-flex items-center bg-slate-900 p-0.5 rounded-lg border border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setLocationMode('campsite')}
+                      className={`px-2.5 py-1 rounded-md font-bold transition-all ${locationMode === 'campsite' ? 'bg-emerald-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                    >
+                      🏕️ 營地
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSwitchToGPS}
+                      className={`px-2.5 py-1 rounded-md font-bold transition-all ${locationMode === 'current' ? 'bg-sky-500 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                    >
+                      📍 GPS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customCoords) {
+                          setLocationMode('custom');
+                        } else {
+                          setShowCustomCoordsModal(true);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-md font-bold transition-all ${locationMode === 'custom' ? 'bg-amber-400 text-slate-950 shadow-sm font-black' : 'text-slate-300 hover:text-white'}`}
+                    >
+                      ✏️ {customCoords ? (customCoords.name.length > 5 ? customCoords.name.slice(0, 5) + '..' : customCoords.name) : '自訂GPS'}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCustomCoordsModal(true)}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-400/30 rounded-lg font-bold transition-all flex items-center gap-1"
+                >
+                  <span>✏️ 編輯自訂座標</span>
+                </button>
+              </div>
+
+              {/* Modal Body: 4 Key Meteorological & Astronomical Panels */}
+              <div className="p-5 space-y-3.5 overflow-y-auto max-h-[70vh]">
+                {loadingWeather && !liveWeather ? (
+                  <div className="py-12 text-center text-slate-400 space-y-2">
+                    <div className="animate-spin text-3xl">⏳</div>
+                    <p className="text-sm font-bold">即時連線氣象衛星與天文數據庫中...</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Panel 1: 即時氣溫與降雨機率 */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-950/90 border border-sky-400/30 flex items-center justify-between gap-4 flex-wrap">
+                      <div className="flex items-center gap-3.5">
+                        <span className="text-4xl sm:text-5xl">{liveWeather?.weatherInfo?.icon || '☀️'}</span>
+                        <div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-3xl sm:text-4xl font-black text-white font-mono">
+                              {liveWeather?.temp !== undefined ? `${Math.round(liveWeather.temp)}°C` : '--'}
+                            </span>
+                            <span className="text-xs text-slate-400">
+                              體感 {liveWeather?.apparentTemp !== undefined ? `${Math.round(liveWeather.apparentTemp)}°C` : '--'}
+                            </span>
+                          </div>
+                          <p className="text-sm font-bold text-sky-300 mt-0.5">
+                            {liveWeather?.weatherInfo?.label || '晴朗'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {/* 降雨機率 */}
+                        <div className={`px-3 py-2 rounded-xl border text-center ${
+                          (liveWeather?.rainProb || 0) > 50
+                            ? 'bg-rose-950/80 border-rose-400/40 text-rose-200'
+                            : (liveWeather?.rainProb || 0) > 20
+                            ? 'bg-amber-950/80 border-amber-400/40 text-amber-200'
+                            : 'bg-emerald-950/80 border-emerald-400/40 text-emerald-200'
+                        }`}>
+                          <div className="text-[10px] font-bold text-slate-300">🌧️ 降雨機率</div>
+                          <div className="text-lg font-black font-mono">{liveWeather?.rainProb ?? 0}%</div>
+                        </div>
+
+                        {/* 濕度 */}
+                        <div className="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-center">
+                          <div className="text-[10px] font-bold text-slate-400">💧 相對濕度</div>
+                          <div className="text-lg font-black text-sky-300 font-mono">{liveWeather?.humidity ?? '--'}%</div>
+                        </div>
+
+                        {/* 溫差 */}
+                        {liveWeather?.tempMax !== null && (
+                          <div className="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-center">
+                            <div className="text-[10px] font-bold text-slate-400">🌡️ 當日溫差</div>
+                            <div className="text-xs font-bold text-slate-200 font-mono mt-1">
+                              <span className="text-amber-400">{liveWeather?.tempMax}°</span> / <span className="text-sky-400">{liveWeather?.tempMin}°</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Panel 2: 風向風速與搭帳抗風安全 */}
+                    <div className="p-4 rounded-2xl bg-slate-800/70 border border-amber-400/30 space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">💨</span>
+                          <span className="text-sm font-black text-white">即時風向與抗風搭帳安全</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black">
+                            {liveWeather?.windSafety?.levelName || `${liveWeather?.windSpeed || 0} km/h`}
+                          </span>
+                        </div>
+                        <div className="text-xs font-mono text-amber-300 font-bold">
+                          來風方位：{liveWeather?.windDir}° ({liveWeather?.windDirName})
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-200 leading-relaxed">
+                        🏕️ <strong>搭帳建議：</strong>{liveWeather?.windSafety?.gearAdvice || '正常搭帳，視日照方向調整天幕迎風面。'}
+                      </p>
+                    </div>
+
+                    {/* Panel 3: 日月天文時刻 (日出日落 / 月出月落) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* 太陽時刻 */}
+                      <div className="p-4 rounded-2xl bg-slate-800/70 border border-white/10 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-black text-amber-300 flex items-center gap-1.5">
+                            <span>☀️</span>
+                            <span>太陽日照時刻</span>
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            現在方位 {calculateSolarPosition(new Date(), lat, lng).azimuth}°
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
+                            <span className="text-xl">🌅</span>
+                            <div>
+                              <div className="text-[10px] text-slate-400 font-bold">今日日出</div>
+                              <div className="text-sm font-black text-amber-300 font-mono">{liveWeather?.sunrise || '--:--'}</div>
+                            </div>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
+                            <span className="text-xl">🌇</span>
+                            <div>
+                              <div className="text-[10px] text-slate-400 font-bold">今日日落</div>
+                              <div className="text-sm font-black text-amber-400 font-mono">{liveWeather?.sunset || '--:--'}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-slate-300 mt-1 leading-normal">
+                          💡 帳門若朝向<strong>西南西 ({recommendedDoorAzimuth}°)</strong>，可享受夕陽並避開晨曬。
+                        </p>
+                      </div>
+
+                      {/* 月亮時刻 & 觀星指數 */}
+                      <div className="p-4 rounded-2xl bg-slate-800/70 border border-indigo-400/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-black text-indigo-300 flex items-center gap-1.5">
+                            <span>{moonInfo.icon}</span>
+                            <span>月相與觀星時刻</span>
+                          </span>
+                          <span className="text-[11px] text-indigo-200 font-mono">
+                            光害 {moonInfo.illumination}%
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
+                            <span className="text-xl">🌖</span>
+                            <div>
+                              <div className="text-[10px] text-slate-400 font-bold">今日月出</div>
+                              <div className="text-sm font-black text-indigo-300 font-mono">{liveWeather?.moonrise || '--:--'}</div>
+                            </div>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2">
+                            <span className="text-xl">🌘</span>
+                            <div>
+                              <div className="text-[10px] text-slate-400 font-bold">今日月落</div>
+                              <div className="text-sm font-black text-indigo-300 font-mono">{liveWeather?.moonset || '--:--'}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-indigo-200/90 mt-1 leading-normal">
+                          🌌 <strong>觀星窗口：</strong>{liveWeather?.moonset ? `於 ${liveWeather.moonset} 月落後為純黑無光害銀河攝影窗口。` : moonInfo.advice}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-5 py-3 border-t border-white/10 bg-slate-900/95 flex justify-between items-center">
+                <span className="text-xs text-slate-400">
+                  數據來源：Open-Meteo 高解析度氣象衛星與即時天文星曆
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowWeatherModal(false)}
+                  className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-black shadow-md transition-all active:scale-95"
+                >
+                  完成關閉
+                </button>
+              </div>
             </div>
           </div>
         )}
