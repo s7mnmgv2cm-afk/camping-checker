@@ -9,6 +9,54 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'campsite_spots_overview.json');
+const TRAILS_FILE = path.join(process.cwd(), 'data', 'hiking_biji_trails_master.json');
+let cachedTrailsDb = null;
+
+// Query verified Hiking Biji trails near a given coordinate
+function getNearbyHikingBijiTrails(lat, lng, maxKm = 20, limit = 6) {
+  try {
+    if (!cachedTrailsDb && fs.existsSync(TRAILS_FILE)) {
+      cachedTrailsDb = JSON.parse(fs.readFileSync(TRAILS_FILE, 'utf8'));
+    }
+    if (!cachedTrailsDb) return [];
+
+    const trailsArr = Object.values(cachedTrailsDb);
+    const nearby = [];
+
+    for (const t of trailsArr) {
+      if (!t.latitude || !t.longitude) continue;
+      const distKm = calculateDistanceKm(lat, lng, t.latitude, t.longitude);
+      if (distKm <= maxKm) {
+        nearby.push({
+          id: `biji_trail_${t.bijiId || t.id}`,
+          name: t.name,
+          type: 'trail',
+          icon: '🥾',
+          latitude: t.latitude,
+          longitude: t.longitude,
+          elevation: t.elevationDropM || 600,
+          distance_km: distKm,
+          travel_time: t.duration ? `步程約 ${t.duration}` : `車程約 ${Math.max(5, Math.round(distKm * 2.8))} 分鐘`,
+          travel_mode: distKm <= 1.5 ? 'walk' : 'drive',
+          difficulty: `難度 ${t.difficulty || '低'} · 全長 ${t.mileage || '步道'}`,
+          highlights: `《健行筆記》官方步道，全長 ${t.mileage || ''}，落差 ${t.elevationDrop || ''}，出發點：${t.trailhead || '登山口'}。`,
+          safety_warning: getSafetyWarning('trail'),
+          rating: t.rating || 4.5,
+          user_ratings_total: t.reviewCount || 100,
+          source: '健行筆記 (hiking.biji.co)',
+          trailhead: t.trailhead || '',
+          county: t.county || ''
+        });
+      }
+    }
+
+    nearby.sort((a, b) => a.distance_km - b.distance_km);
+    return nearby.slice(0, limit);
+  } catch (err) {
+    console.warn('Failed to load Hiking Biji trails:', err.message);
+    return [];
+  }
+}
 
 // Read locally cached Google Overview POI database if present
 function getLocalOverviewDatabase() {
@@ -273,14 +321,24 @@ export async function GET(request) {
 
   // 2. Try Google Overview + Playwright
   const pwSpots = await scrapeGoogleOverviewWithPlaywright(lat, lng, '', 600);
-  if (pwSpots && pwSpots.length > 0) {
+  const bijiTrails = getNearbyHikingBijiTrails(lat, lng, 20, 6);
+
+  if ((pwSpots && pwSpots.length > 0) || bijiTrails.length > 0) {
+    const combinedSpots = [...(pwSpots || [])];
+    const spotNames = new Set(combinedSpots.map(s => s.name));
+    for (const bt of bijiTrails) {
+      if (!spotNames.has(bt.name)) combinedSpots.push(bt);
+    }
+    combinedSpots.sort((a, b) => a.distance_km - b.distance_km);
+    const finalSpots = combinedSpots.slice(0, 10);
+
     if (supabase && campId) {
-      supabase.from('campsites').update({ spots: pwSpots }).eq('id', campId).then(() => {});
+      supabase.from('campsites').update({ spots: finalSpots }).eq('id', campId).then(() => {});
     }
     return NextResponse.json({
       success: true,
-      source: 'google_overview_playwright',
-      spots: pwSpots
+      source: pwSpots && pwSpots.length > 0 ? 'google_overview_and_biji' : 'hiking_biji_master',
+      spots: finalSpots
     });
   }
 
@@ -379,9 +437,19 @@ export async function POST(request) {
       }
     }
 
-    if (freshSpots && freshSpots.length > 0) {
-      // 100% 真實景點：僅保留官方實境探勘到的真實地標與步道，絕不灌入虛構假小徑或假觀景台
-      const finalSpots = freshSpots;
+    // 2C. 雙軌融合：將《健行筆記》官方權威步道與 Google 實境探勘（瀑布、觀景台）智慧聚合
+    const bijiTrails = getNearbyHikingBijiTrails(lat, lng, 20, 6);
+
+    if ((freshSpots && freshSpots.length > 0) || bijiTrails.length > 0) {
+      const combinedSpots = [...(freshSpots || [])];
+      const spotNames = new Set(combinedSpots.map(s => s.name));
+      for (const bt of bijiTrails) {
+        if (!spotNames.has(bt.name)) {
+          combinedSpots.push(bt);
+        }
+      }
+      combinedSpots.sort((a, b) => a.distance_km - b.distance_km);
+      const finalSpots = combinedSpots.slice(0, 10);
 
       // 方案 C 關鍵：自動快取回存至 Supabase campsites.spots 表
       if (supabase && id && !isCurrentGps) {
@@ -392,7 +460,7 @@ export async function POST(request) {
             .eq('id', id);
 
           if (!updateErr) {
-            console.log(`[Plan C] Successfully cached ${finalSpots.length} Google Overview POIs into Supabase for ${name} (${id})`);
+            console.log(`[Plan C] Successfully cached ${finalSpots.length} Google & Biji POIs into Supabase for ${name} (${id})`);
           } else {
             console.warn('[Plan C] Supabase cache write error:', updateErr.message);
           }
@@ -409,7 +477,7 @@ export async function POST(request) {
         spots: finalSpots,
         source: spotSource,
         campsite: isCurrentGps ? '目前 GPS 所在地' : name,
-        summary: `${name || '目前位置'} 周邊透過 Google Overview 實境探勘，發現 ${finalSpots[0]?.name || '山林步道'} 等真實景點。`
+        summary: `${name || '目前位置'} 周邊透過 Google Overview 與《健行筆記》實境探勘，發現 ${finalSpots[0]?.name || '山林步道'} 等真實景點。`
       });
       if (serverSpotsCache.size > 100) {
         const oldestKey = serverSpotsCache.keys().next().value;
@@ -420,7 +488,7 @@ export async function POST(request) {
         success: true,
         source: spotSource,
         campsite: isCurrentGps ? '目前 GPS 所在地' : name,
-        summary: `${name || '目前位置'} 周邊透過 Google Overview 實境探勘，發現 ${finalSpots[0]?.name || '山林步道'} 等真實景點。`,
+        summary: `${name || '目前位置'} 周邊透過 Google Overview 與《健行筆記》實境探勘，發現 ${finalSpots[0]?.name || '山林步道'} 等真實景點。`,
         spots: finalSpots
       });
     }
@@ -439,15 +507,25 @@ export async function POST(request) {
       });
     }
 
-    // 4. Fallback 層級 2：台灣精選名山步道與天然地標資料庫 (100% 真實地理座標，不捏造虛構假景點)
+    // 4. Fallback 層級 2：健行筆記官方步道庫 ＋ 台灣精選名山步道與天然地標 (100% 真實地理座標)
+    const bijiFallback = getNearbyHikingBijiTrails(lat, lng, 30, 8);
     const nearbyCurated = computeNearbyPOIs(lat, lng, elev, 35, 'all', []);
+    const fallbackCombined = [...bijiFallback];
+    const fallbackNames = new Set(fallbackCombined.map(s => s.name));
+
+    for (const p of nearbyCurated) {
+      if (!fallbackNames.has(p.name)) {
+        fallbackCombined.push(p);
+      }
+    }
+    fallbackCombined.sort((a, b) => (a.distance_km || a.distanceKm) - (b.distance_km || b.distanceKm));
 
     return NextResponse.json({
       success: true,
-      source: 'google_overview_knowledge',
+      source: 'hiking_biji_and_knowledge',
       campsite: name,
-      summary: `${name} 位於 ${region}${location}，周邊鄰近真實天然山林步道與觀景地標。`,
-      spots: nearbyCurated.slice(0, 6)
+      summary: `${name} 位於 ${region}${location}，周邊鄰近《健行筆記》官方步道與真實自然景觀。`,
+      spots: fallbackCombined.slice(0, 8)
     });
   } catch (err) {
     console.error('Error in /api/spots:', err);
