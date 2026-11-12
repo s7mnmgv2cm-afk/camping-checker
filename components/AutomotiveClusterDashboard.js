@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * 🏎️ AutomotiveClusterDashboard
@@ -65,18 +66,64 @@ export default function AutomotiveClusterDashboard({
   const [sweepAngle, setSweepAngle] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false); // ⛶ 全螢幕 HUD 儀表盤模式
 
-  // Keyboard shortcut: ESC to exit fullscreen
+  // Keyboard shortcut: ESC to exit fullscreen & Sync iOS Status Bar / Theme Color in Fullscreen HUD
   React.useEffect(() => {
+    if (!isFullscreen || typeof window === 'undefined') return;
+
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isFullscreen) {
+      if (e.key === 'Escape') {
         setIsFullscreen(false);
       }
     };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+
+    // 同步 iOS Safari 頂部狀態列與全域背景色，消除頂部白塊與殘留邊框
+    const fsHex = clusterTheme === 'white' ? '#F8FAFC' : clusterTheme === 'obsidian' ? '#0A0E17' : '#000000';
+    const fsColorScheme = clusterTheme === 'white' ? 'light' : 'dark';
+    const origBodyBg = document.body.style.backgroundColor;
+    const origHtmlBg = document.documentElement.style.backgroundColor;
+    const origColorScheme = document.documentElement.style.colorScheme;
+    const mainEl = document.querySelector('main');
+    const origMainVis = mainEl ? mainEl.style.visibility : '';
+    const origMainBg = mainEl ? mainEl.style.backgroundColor : '';
+    const savedScrollY = window.scrollY;
+
+    document.body.style.backgroundColor = fsHex;
+    document.documentElement.style.backgroundColor = fsHex;
+    document.documentElement.style.colorScheme = fsColorScheme;
+    if (mainEl) {
+      mainEl.style.backgroundColor = fsHex;
+      mainEl.style.visibility = 'hidden';
     }
-  }, [isFullscreen]);
+    window.scrollTo(0, 0);
+
+    // 強制移除並重新掛載 <meta name="theme-color"> 以觸發 iOS WebKit 狀態列重新染色
+    const existingThemeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+    const prevThemeContent = existingThemeMetas[0]?.getAttribute('content') || '#f8fafc';
+    existingThemeMetas.forEach((m) => m.parentNode?.removeChild(m));
+    const freshThemeMeta = document.createElement('meta');
+    freshThemeMeta.name = 'theme-color';
+    freshThemeMeta.content = fsHex;
+    document.head.appendChild(freshThemeMeta);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.backgroundColor = origBodyBg;
+      document.documentElement.style.backgroundColor = origHtmlBg;
+      document.documentElement.style.colorScheme = origColorScheme;
+      if (mainEl) {
+        mainEl.style.visibility = origMainVis;
+        mainEl.style.backgroundColor = origMainBg;
+      }
+      window.scrollTo(0, savedScrollY);
+      const currentMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+      currentMetas.forEach((m) => m.parentNode?.removeChild(m));
+      const restoreMeta = document.createElement('meta');
+      restoreMeta.name = 'theme-color';
+      restoreMeta.content = prevThemeContent;
+      document.head.appendChild(restoreMeta);
+    };
+  }, [isFullscreen, clusterTheme]);
 
   // Trigger Gauge Sweep (超跑發動指針自檢全幅掃描 0 -> MAX -> Settle)
   const triggerNeedleSweep = () => {
@@ -1043,14 +1090,18 @@ export default function AutomotiveClusterDashboard({
       {/* 🏁 SECTION 3: 4-POD RACING AUXILIARY GAUGES (底層 4 聯大字體速度分析儀表) */}
       {renderFourPodSpeedMatrix(false)}
 
-      {/* ⛶ 全螢幕車載 HUD 儀表盤 & 4 聯速度遙測模式 */}
-      {isFullscreen && (
+      {/* ⛶ 全螢幕車載 HUD 儀表盤 & 4 聯速度遙測模式 (透過 createPortal 掛載至 document.body，徹底脫離上層 Modal 容器遮罩限制並填滿頂部狀態列) */}
+      {isFullscreen && typeof document !== 'undefined' && createPortal(
         <div 
           style={{
-            backgroundColor: isWhite ? '#F8FAFC' : '#000000',
-            color: isWhite ? '#0F172A' : '#FFFFFF'
+            zIndex: 99999,
+            background: themeStyles.wrapperBg,
+            backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#000000' : '#0A0E17',
+            color: isWhite ? '#0F172A' : '#FFFFFF',
+            paddingTop: 'max(env(safe-area-inset-top), 16px)',
+            paddingBottom: 'max(env(safe-area-inset-bottom), 16px)'
           }}
-          className="fixed inset-0 z-[100] flex flex-col justify-between p-3.5 sm:p-6 overflow-y-auto animate-in fade-in duration-200 select-none font-sans"
+          className="fixed inset-0 flex flex-col justify-between px-3.5 sm:px-6 overflow-y-auto select-none font-sans"
         >
           {/* Top Bar */}
           <div 
@@ -1176,7 +1227,8 @@ export default function AutomotiveClusterDashboard({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

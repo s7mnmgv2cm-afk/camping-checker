@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { PRESET_HIKING_TRAILS, generatePresetGPX, downloadGPXFile } from '../lib/gpx';
 import ElevationProfileChart from './ElevationProfileChart';
 import AutomotiveClusterDashboard from './AutomotiveClusterDashboard';
@@ -88,22 +89,38 @@ export default function CampsiteGPXTrackerModal({
   }, []);
   const isOled = displayTheme === 'oled';
 
-  // 🌙 口袋省電黑化原生系統狀態列 (消滅 iOS Safari 頂部白條，鎖定 True OLED Black)
+  // 🌙 口袋省電與 OLED 極黑：黑化 iOS Safari / Android 原生系統頂部狀態列 (消滅頂部白條，鎖定 True OLED Black)
   useEffect(() => {
-    if (!isPocketMode) return;
+    if (!isOpen || (!isPocketMode && !isOled)) return;
+
     const origBodyBg = document.body.style.backgroundColor;
     const origHtmlBg = document.documentElement.style.backgroundColor;
+    const origColorScheme = document.documentElement.style.colorScheme;
+    const mainEl = document.querySelector('main');
+    const origMainBg = mainEl ? mainEl.style.backgroundColor : '';
+    const origMainVis = mainEl ? mainEl.style.visibility : '';
+    const savedScrollY = window.scrollY;
+
     document.body.style.backgroundColor = '#000000';
     document.documentElement.style.backgroundColor = '#000000';
-
-    let themeMeta = document.querySelector('meta[name="theme-color"]');
-    const prevTheme = themeMeta ? themeMeta.getAttribute('content') : null;
-    if (!themeMeta) {
-      themeMeta = document.createElement('meta');
-      themeMeta.name = 'theme-color';
-      document.head.appendChild(themeMeta);
+    document.documentElement.style.colorScheme = 'dark';
+    if (mainEl) {
+      mainEl.style.backgroundColor = '#000000';
+      if (isPocketMode) {
+        // 進入口袋暗屏時隱藏底層首頁 <main> 並置頂 scrollY=0，防止 iOS Safari 狀態列取樣到底層白底卡片
+        mainEl.style.visibility = 'hidden';
+        window.scrollTo(0, 0);
+      }
     }
-    themeMeta.setAttribute('content', '#000000');
+
+    // 強制移除並重新插入 <meta name="theme-color" content="#000000">，觸發 iOS WebKit 狀態列重新染色
+    const existingThemeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+    const prevTheme = existingThemeMetas[0]?.getAttribute('content') || '#f8fafc';
+    existingThemeMetas.forEach((m) => m.parentNode?.removeChild(m));
+    const themeMeta = document.createElement('meta');
+    themeMeta.name = 'theme-color';
+    themeMeta.content = '#000000';
+    document.head.appendChild(themeMeta);
 
     let statusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
     const prevStatusBarStyle = statusBarMeta ? statusBarMeta.getAttribute('content') : null;
@@ -116,21 +133,37 @@ export default function CampsiteGPXTrackerModal({
       statusBarMeta.setAttribute('content', 'black-translucent');
     }
 
-    // 剛進入口袋模式時短暫喚醒 3 秒讓使用者確認，隨後沉入 100% 全黑熄屏
-    setIsPocketAwake(true);
-    if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
-    pocketAwakeTimeoutRef.current = setTimeout(() => {
-      setIsPocketAwake(false);
-    }, 3000);
+    if (isPocketMode) {
+      // 剛進入口袋模式時短暫喚醒 3 秒讓使用者確認，隨後沉入 100% 全黑熄屏
+      setIsPocketAwake(true);
+      if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
+      pocketAwakeTimeoutRef.current = setTimeout(() => {
+        setIsPocketAwake(false);
+      }, 3000);
+    }
 
     return () => {
       document.body.style.backgroundColor = origBodyBg;
       document.documentElement.style.backgroundColor = origHtmlBg;
-      if (prevTheme && themeMeta) themeMeta.setAttribute('content', prevTheme);
+      document.documentElement.style.colorScheme = origColorScheme;
+      if (mainEl) {
+        mainEl.style.backgroundColor = origMainBg;
+        mainEl.style.visibility = origMainVis;
+      }
+      if (isPocketMode) {
+        window.scrollTo(0, savedScrollY);
+      }
+      const currentMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+      currentMetas.forEach((m) => m.parentNode?.removeChild(m));
+      const restoreMeta = document.createElement('meta');
+      restoreMeta.name = 'theme-color';
+      restoreMeta.content = prevTheme;
+      document.head.appendChild(restoreMeta);
+
       if (prevStatusBarStyle && statusBarMeta) statusBarMeta.setAttribute('content', prevStatusBarStyle);
       if (pocketAwakeTimeoutRef.current) clearTimeout(pocketAwakeTimeoutRef.current);
     };
-  }, [isPocketMode]);
+  }, [isOpen, isPocketMode, isOled]);
 
   // 🔒 口袋防誤觸雙重機制狀態 (滑軌滑動解鎖 + 2 秒長按緊急解鎖)
   const [sliderPosition, setSliderPosition] = useState(0);
@@ -359,7 +392,10 @@ export default function CampsiteGPXTrackerModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-black/65 backdrop-blur-md animate-in fade-in duration-150">
+      <div 
+        style={{ backgroundColor: isOled ? '#000000' : undefined }}
+        className={`fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 animate-in fade-in duration-150 ${isOled ? 'bg-black' : 'bg-black/65 backdrop-blur-md'}`}
+      >
         <div 
           style={{
             backgroundColor: isOled ? '#000000' : '#F8FAFC',
@@ -1589,8 +1625,8 @@ export default function CampsiteGPXTrackerModal({
         </div>
       )}
 
-      {/* 🌙 OLED 口袋暗屏極致省電模式 (消滅頂部白條 + 100% 熄屏 0 像素發光 + 連點兩下喚出微光 HUD) */}
-      {isPocketMode && isRecording && (
+      {/* 🌙 OLED 口袋暗屏極致省電模式 (透過 createPortal 掛載至 document.body，消滅頂部白條 + 100% 熄屏 0 像素發光 + 連點兩下喚出微光 HUD) */}
+      {isPocketMode && isRecording && typeof document !== 'undefined' && createPortal(
         <div 
           onClick={handlePocketScreenTap}
           onContextMenu={(e) => e.preventDefault()}
@@ -1677,7 +1713,7 @@ export default function CampsiteGPXTrackerModal({
               </div>
 
               <p style={{ color: '#71717A' }} className="text-xs max-w-xs mx-auto pt-1 leading-relaxed">
-                放入背包或口袋時，布料摩擦絕不誤觸喚醒；無操作自動沉入純黑！
+                放入背包或口袋時，布料摩擦絕不誤觸喚醒；建議搭配開啟手機「✈️ 飛航模式」或「🌙 勿擾模式」，防止 LINE/系統通知橫幅跳出誤觸！
               </p>
             </div>
           )}
@@ -1757,7 +1793,8 @@ export default function CampsiteGPXTrackerModal({
               </span>
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
