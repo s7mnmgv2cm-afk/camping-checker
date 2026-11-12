@@ -194,7 +194,7 @@ export default function ElevationProfileChart({
         {/* Live Scrubber Badge or Peak/Valley Stat Badges */}
         {activePoint ? (
           <div 
-            className={`px-2.5 py-0.5 rounded-lg border text-[11px] font-mono font-bold flex items-center gap-2 animate-in fade-in ${
+            className={`px-2.5 py-0.5 rounded-lg border text-[11px] font-michroma font-bold flex items-center gap-2 animate-in fade-in ${
               isOLED 
                 ? 'bg-zinc-900 border-zinc-700 text-zinc-100 shadow-sm' 
                 : 'border-rose-200 bg-rose-50 text-rose-700'
@@ -205,7 +205,7 @@ export default function ElevationProfileChart({
             {activePoint.speed > 0 && <span className={isOLED ? 'text-emerald-400' : ''}>⚡ {activePoint.speed} km/h</span>}
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-[10px] font-mono">
+          <div className="flex items-center gap-2 text-[10px] font-michroma">
             <span className={`${isOLED ? 'text-rose-400' : 'text-rose-600'} font-bold`}>▲ 最高 {maxElevationM || maxEle}m</span>
             <span className={isOLED ? 'text-zinc-600' : 'text-slate-400'}>·</span>
             <span className={`${isOLED ? 'text-emerald-400' : 'text-emerald-600'} font-bold`}>▼ 最低 {minElevationM || minEle}m</span>
