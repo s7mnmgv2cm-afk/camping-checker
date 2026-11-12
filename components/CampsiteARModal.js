@@ -301,6 +301,39 @@ export default function CampsiteARModal({
   // 📐 FOV 自動連動：手機橫放自動切換為 105° 超廣角全景，拿直自動切換為 65° 標準視角
   const effectiveLandscape = isDeviceLandscape;
 
+  // 🎨 AR 開啟時，將頂部狀態列 (Safari theme-color / iOS 原生 App 安全區) 與 AR 背景統一為 slate-950 深色
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    const AR_BG = '#020617';
+    const origBodyBg = document.body.style.backgroundColor;
+    const origHtmlBg = document.documentElement.style.backgroundColor;
+    const origColorScheme = document.documentElement.style.colorScheme;
+    const existingThemeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+    const prevThemes = existingThemeMetas.map(m => ({ media: m.getAttribute('media'), content: m.getAttribute('content') }));
+    existingThemeMetas.forEach(m => m.parentNode?.removeChild(m));
+    const themeMeta = document.createElement('meta');
+    themeMeta.name = 'theme-color';
+    themeMeta.content = AR_BG;
+    document.head.appendChild(themeMeta);
+    document.body.style.backgroundColor = AR_BG;
+    document.documentElement.style.backgroundColor = AR_BG;
+    document.documentElement.style.colorScheme = 'dark';
+
+    return () => {
+      themeMeta.parentNode?.removeChild(themeMeta);
+      prevThemes.forEach(t => {
+        const m = document.createElement('meta');
+        m.name = 'theme-color';
+        if (t.media) m.setAttribute('media', t.media);
+        if (t.content) m.setAttribute('content', t.content);
+        document.head.appendChild(m);
+      });
+      document.body.style.backgroundColor = origBodyBg;
+      document.documentElement.style.backgroundColor = origHtmlBg;
+      document.documentElement.style.colorScheme = origColorScheme;
+    };
+  }, [isOpen]);
+
   // 📱 極致沉浸模式：星空模式（直向與橫向）或 橫向遠山模式，自動把所有可以隱藏的都隱藏起來！
   useEffect(() => {
     if (!isOpen) return;
@@ -1563,9 +1596,9 @@ export default function CampsiteARModal({
   return (
     <div 
       ref={modalRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center p-0 ${effectiveLandscape ? 'sm:p-0' : 'sm:p-4'} bg-slate-950/80 backdrop-blur-md overflow-hidden select-none w-screen h-screen h-[100dvh] max-h-[100dvh]`}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-0 ${effectiveLandscape ? 'sm:p-0' : 'sm:p-4'} bg-slate-950 sm:bg-slate-950/80 backdrop-blur-md overflow-hidden select-none w-screen h-screen h-[100dvh] max-h-[100dvh]`}
     >
-      <div className={`relative w-full h-full h-[100dvh] max-h-[100dvh] ${effectiveLandscape ? 'sm:max-w-none sm:max-h-none sm:rounded-none' : 'sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl'} shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white border border-slate-700 animate-in fade-in zoom-in-95 duration-150`}>
+      <div className={`relative w-full h-full h-[100dvh] max-h-[100dvh] ${effectiveLandscape ? 'sm:max-w-none sm:max-h-none sm:rounded-none' : 'sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl sm:border sm:border-slate-700'} shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white animate-in fade-in zoom-in-95 duration-150`}>
         
         {/* Top Header Floating Glass Bar (現代化頂部控制中樞，排版俐落無折行) */}
         {!isHeaderCollapsed && (
@@ -1858,17 +1891,17 @@ export default function CampsiteARModal({
             className="absolute flex items-center justify-between pointer-events-none animate-in fade-in duration-150"
           >
             {/* 左側：模式狀態膠囊 ＋ ⛅ 天候微膠囊 */}
-            <div className="pointer-events-auto flex items-center gap-1.5">
+            <div className="pointer-events-auto flex items-center gap-1.5 min-w-0 shrink">
               <button
                 type="button"
                 onClick={() => setIsHeaderCollapsed(false)}
-                className="flex items-center gap-1.5 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-3 py-1.5 rounded-full border border-amber-400/50 shadow-2xl text-xs font-bold text-white active:scale-95 transition-all cursor-pointer group"
+                className="flex items-center gap-1.5 whitespace-nowrap shrink-0 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-3 py-1.5 rounded-full border border-amber-400/50 shadow-2xl text-xs font-bold text-white active:scale-95 transition-all cursor-pointer group"
                 title="點擊展開完整模式與定位選單"
               >
                 <span>{arViewMode === 'sun' ? '☀️' : arViewMode === 'mountain' ? '⛰️' : arViewMode === 'spots' ? '🧭' : '🌌'}</span>
-                <span className="text-amber-300 font-extrabold">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-sky-300 text-[11px]">{locationMode === 'current' ? 'GPS' : locationMode === 'custom' ? (customCoords?.name ? (customCoords.name.length > 4 ? customCoords.name.slice(0, 4) + '..' : customCoords.name) : '自訂') : '營地'}</span>
+                <span className="text-amber-300 font-extrabold whitespace-nowrap">{arViewMode === 'sun' ? '日照' : arViewMode === 'mountain' ? '遠山' : arViewMode === 'spots' ? '景點' : '星空'}</span>
+                <span className="text-slate-600 hidden min-[420px]:inline">|</span>
+                <span className="text-sky-300 text-[11px] whitespace-nowrap hidden min-[420px]:inline">{locationMode === 'current' ? 'GPS' : locationMode === 'custom' ? (customCoords?.name ? (customCoords.name.length > 4 ? customCoords.name.slice(0, 4) + '..' : customCoords.name) : '自訂') : '營地'}</span>
                 <span className="text-[10px] text-amber-400 group-hover:translate-y-0.5 transition-transform">▼</span>
               </button>
 
@@ -1876,7 +1909,7 @@ export default function CampsiteARModal({
                 type="button"
                 data-testid="weather-dashboard-btn-collapsed"
                 onClick={() => setShowWeatherModal(true)}
-                className="flex items-center gap-1 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-sky-400/40 shadow-xl text-xs font-bold text-sky-200 active:scale-95 transition-all"
+                className="flex items-center gap-1 whitespace-nowrap shrink-0 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-sky-400/40 shadow-xl text-xs font-bold text-sky-200 active:scale-95 transition-all"
                 title="查看當前位置即時天氣與日月天文"
               >
                 <span>{liveWeather?.weatherInfo?.icon || '⛅'}</span>
@@ -1889,7 +1922,7 @@ export default function CampsiteARModal({
                   type="button"
                   data-testid="gpx-collapsed-btn"
                   onClick={() => onOpenGpxTracker ? onOpenGpxTracker() : gpxTracker.toggleRecording()}
-                  className={`flex items-center gap-1 backdrop-blur-md px-2.5 py-1.5 rounded-full border shadow-xl text-xs font-bold active:scale-95 transition-all ${
+                  className={`flex items-center gap-1 whitespace-nowrap shrink-0 backdrop-blur-md px-2.5 py-1.5 rounded-full border shadow-xl text-xs font-bold active:scale-95 transition-all ${
                     gpxTracker.isRecording
                       ? 'bg-rose-950/90 text-rose-300 border-rose-400/60 ring-1 ring-rose-400/40'
                       : 'bg-slate-950/90 hover:bg-slate-900 text-slate-300 border-white/20'
@@ -1897,13 +1930,13 @@ export default function CampsiteARModal({
                   title={gpxTracker.isRecording ? "GPX 記錄中，點擊開啟儀表板" : "開啟 GPX 軌跡記錄"}
                 >
                   <span>{gpxTracker.isRecording ? '🔴' : '🧭'}</span>
-                  <span>{gpxTracker.isRecording ? `${gpxTracker.currentStats?.totalDistanceKm || '0'}km` : 'GPX'}</span>
+                  <span className="hidden min-[400px]:inline">{gpxTracker.isRecording ? `${gpxTracker.currentStats?.totalDistanceKm || '0'}km` : 'GPX'}</span>
                 </button>
               )}
             </div>
 
             {/* 右側：展開按鈕 + 全螢幕 + 關閉按鈕 */}
-            <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5">
+            <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 shrink-0 ml-1.5">
               {/* 🔋 關鏡頭極限省電微膠囊 */}
               <button
                 type="button"
@@ -1923,7 +1956,7 @@ export default function CampsiteARModal({
               <button
                 type="button"
                 onClick={() => setShowFullscreenGuide(true)}
-                className="px-2 sm:px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all shadow-md flex items-center gap-1"
+                className="hidden min-[440px]:flex px-2 sm:px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-teal-300 rounded-full text-xs font-bold border border-teal-400/40 transition-all shadow-md items-center gap-1"
                 title="查看 iPhone / Android 滿版教學"
               >
                 <span>📱</span>
@@ -1941,14 +1974,15 @@ export default function CampsiteARModal({
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                className={`px-2 sm:px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all shadow-md ${
+                className={`px-2 sm:px-2.5 py-1.5 rounded-full text-xs font-bold border transition-all shadow-md whitespace-nowrap ${
                   isFullscreen
                     ? 'bg-amber-400 text-slate-950 font-black border-amber-300'
                     : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border-white/20'
                 }`}
                 title="切換全螢幕沉浸模式"
               >
-                <span>{isFullscreen ? '⛶ 退出' : '⛶ 沉浸'}</span>
+                <span>⛶</span>
+                <span className="hidden sm:inline">{isFullscreen ? ' 退出' : ' 沉浸'}</span>
               </button>
               <button
                 type="button"
