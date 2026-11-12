@@ -458,10 +458,10 @@ export default function AutomotiveClusterDashboard({
       <div className="flex items-center justify-between">
         <span style={{ color: themeStyles.textColorPrimary }} className="text-xs sm:text-sm font-bold flex items-center gap-1.5">
           <span className="text-base">⚡</span>
-          <span>4 聯速度監測遙測陣列 (一眼確認)</span>
+          <span>4 聯速度監測遙測陣列</span>
         </span>
         <span style={{ color: themeStyles.textColorMuted }} className="text-xs font-mono font-bold">
-          單位：公里/小時 (km/h)
+          單位：km/h
         </span>
       </div>
 
@@ -485,7 +485,7 @@ export default function AutomotiveClusterDashboard({
             {displayStats?.avgSpeedKmh || '0.0'}
           </div>
           <span style={{ color: themeStyles.textColorMuted }} className="text-[11px] font-mono font-bold block">
-            km/h (全程含停頓)
+            km/h
           </span>
         </div>
 
@@ -508,7 +508,7 @@ export default function AutomotiveClusterDashboard({
             {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
           </div>
           <span style={{ color: isWhite ? '#16A34A' : '#10B981' }} className="text-[11px] font-mono font-bold block">
-            km/h (純移動·已扣休息)
+            km/h
           </span>
         </div>
 
@@ -531,7 +531,7 @@ export default function AutomotiveClusterDashboard({
             {displayStats?.maxSpeedKmh || '0.0'}
           </div>
           <span style={{ color: isWhite ? '#E11D48' : '#F43F5E' }} className="text-[11px] font-mono font-bold block">
-            km/h (極速峰值)
+            km/h
           </span>
         </div>
 
@@ -554,7 +554,7 @@ export default function AutomotiveClusterDashboard({
             {displayStats?.minSpeedKmh || '0.0'}
           </div>
           <span style={{ color: isWhite ? '#2563EB' : '#0284C7' }} className="text-[11px] font-mono font-bold block">
-            km/h (爬坡慢速)
+            km/h
           </span>
         </div>
       </div>
@@ -791,7 +791,7 @@ export default function AutomotiveClusterDashboard({
           className="text-[10px] font-medium opacity-70 hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1 mt-0.5"
         >
           <span>🔍</span>
-          <span>點擊儀表盤可放大為全螢幕 HUD 模式</span>
+          <span> 全螢幕 HUD mode </span>
         </button>
 
         {/* Speed Peak & Average Summary Banner */}
