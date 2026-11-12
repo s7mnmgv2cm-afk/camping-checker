@@ -63,6 +63,20 @@ export default function AutomotiveClusterDashboard({
   const [testSpeed, setTestSpeed] = useState(null);
   const [isSweeping, setIsSweeping] = useState(false);
   const [sweepAngle, setSweepAngle] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false); // ⛶ 全螢幕 HUD 儀表盤模式
+
+  // Keyboard shortcut: ESC to exit fullscreen
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isFullscreen]);
 
   // Trigger Gauge Sweep (超跑發動指針自檢全幅掃描 0 -> MAX -> Settle)
   const triggerNeedleSweep = () => {
@@ -274,6 +288,270 @@ export default function AutomotiveClusterDashboard({
     altitudeColor: '#60A5FA'
   };
 
+  // 🏎️ Reusable Speedometer Dial SVG
+  const renderSpeedDialSVG = (svgId = gradientId) => (
+    <svg viewBox="0 0 240 240" className="w-full h-full overflow-visible">
+      <defs>
+        {/* Luminous Speed Gradient */}
+        <linearGradient id={`${svgId}-speed-grad`} x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#10B981" />
+          <stop offset="55%" stopColor="#F59E0B" />
+          <stop offset="100%" stopColor="#DC2626" />
+        </linearGradient>
+
+        {/* Dial Face Inner Shadow / Glow */}
+        <radialGradient id={`${svgId}-dial-glow`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={isWhite ? '#FFFFFF' : 'rgba(245, 158, 11, 0.15)'} />
+          <stop offset="75%" stopColor={isWhite ? '#F8FAFC' : 'rgba(15, 23, 42, 0.5)'} />
+          <stop offset="100%" stopColor={isWhite ? '#F1F5F9' : '#0B0F17'} />
+        </radialGradient>
+
+        <filter id={`${svgId}-needle-shadow`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.18)" />
+        </filter>
+      </defs>
+
+      {/* Dial Face Background */}
+      <circle cx={cx} cy={cy} r="95" fill={`url(#${svgId}-dial-glow)`} />
+
+      {/* Outer Metallic Bezel Rings */}
+      <circle 
+        cx={cx} 
+        cy={cy} 
+        r="108" 
+        fill="none" 
+        stroke={themeStyles.gaugeBezelOuter} 
+        strokeWidth="2.5" 
+      />
+      <circle 
+        cx={cx} 
+        cy={cy} 
+        r="105" 
+        fill="none" 
+        stroke={themeStyles.gaugeBezelInner} 
+        strokeWidth="1.5" 
+      />
+
+      {/* Gauge Background Track Arc */}
+      <path
+        d={describeArc(cx, cy, 94, startAngleDeg, startAngleDeg + sweepAngleDeg)}
+        fill="none"
+        stroke={themeStyles.gaugeTrack}
+        strokeWidth="8"
+        strokeLinecap="round"
+      />
+
+      {/* Active Luminous Progress Arc */}
+      {speedRatio > 0.005 && (
+        <path
+          d={describeArc(cx, cy, 94, startAngleDeg, currentAngleDeg)}
+          fill="none"
+          stroke={`url(#${svgId}-speed-grad)`}
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
+      )}
+
+      {/* Ticks and Scale Numbers (Large and High Contrast, Outer Rim Alignment) */}
+      {ticks.map((t, idx) => (
+        <g key={idx}>
+          <line
+            x1={t.inner.x}
+            y1={t.inner.y}
+            x2={t.outer.x}
+            y2={t.outer.y}
+            stroke={t.isMajor ? themeStyles.gaugeTickMajor : themeStyles.gaugeTickMinor}
+            strokeWidth={t.isMajor ? 2.5 : 1.2}
+          />
+          {t.isLabeled && (
+            <text
+              x={t.labelPos.x}
+              y={t.labelPos.y + 4}
+              textAnchor="middle"
+              fill={themeStyles.gaugeTickText}
+              fontSize={dialMax >= 1000 ? "10" : "12"}
+              fontFamily="monospace"
+              fontWeight="900"
+            >
+              {t.val}
+            </text>
+          )}
+        </g>
+      ))}
+
+      {/* Speed Digital Readout */}
+      <text 
+        x={cx} 
+        y={cy - 14} 
+        textAnchor="middle" 
+        fill={isOLED ? '#10B981' : themeStyles.textColorPrimary} 
+        fontSize={effectiveSpeed >= 100 ? "38" : "44"} 
+        fontFamily="monospace" 
+        fontWeight="900" 
+      >
+        {effectiveSpeed.toFixed(1)}
+      </text>
+      <text 
+        x={cx} 
+        y={cy + 26} 
+        textAnchor="middle" 
+        fill={isOLED ? '#34D399' : themeStyles.textColorSecondary} 
+        fontSize="12" 
+        fontFamily="monospace" 
+        fontWeight="900" 
+        letterSpacing="2"
+      >
+        KM / H
+      </text>
+      <text 
+        x={cx} 
+        y={cy + 42} 
+        textAnchor="middle" 
+        fill={isOLED ? '#F59E0B' : themeStyles.accentColor} 
+        fontSize="11" 
+        fontFamily="sans-serif" 
+        fontWeight="900" 
+        letterSpacing="0.5"
+      >
+        {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 步道巡航均速' : '即時行走速度'))}
+      </text>
+
+      {/* Speed Needle Pointer */}
+      <g 
+        style={{
+          transform: `rotate(${currentAngleDeg}deg)`,
+          transformOrigin: `${cx}px ${cy}px`,
+          transition: isSweeping 
+            ? 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)' 
+            : 'transform 0.42s cubic-bezier(0.34, 1.35, 0.64, 1)'
+        }}
+        filter={`url(#${svgId}-needle-shadow)`}
+      >
+        {/* Needle Blade */}
+        <polygon
+          points={`${cx - 2.5},${cy} ${cx},42 ${cx + 2.5},${cy}`}
+          fill="#DC2626"
+        />
+        <line x1={cx} y1={cy} x2={40} stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" />
+        {/* Counterweight Tail */}
+        <polygon
+          points={`${cx - 2},${cy} ${cx},${cy + 16} ${cx + 2},${cy}`}
+          fill="#991B1B"
+        />
+        {/* Center Pivot Cap */}
+        <circle cx={cx} cy={cy} r="10" fill={themeStyles.gaugeCenterCap} stroke={themeStyles.gaugeCenterCapBorder} strokeWidth="2" />
+        <circle cx={cx} cy={cy} r="3.5" fill="#FFFFFF" />
+      </g>
+    </svg>
+  );
+
+  {/* ⚡ Reusable 4-Pod Speed Matrix (四聯速度監測遙測陣列) */}
+  const renderFourPodSpeedMatrix = (isFs = false) => (
+    <div 
+      style={{
+        backgroundColor: themeStyles.cardBg,
+        borderColor: themeStyles.cardBorder,
+        boxShadow: themeStyles.cardShadow
+      }}
+      className={`p-3 sm:p-3.5 rounded-2xl border space-y-2.5 ${isFs ? 'w-full' : ''}`}
+    >
+      <div className="flex items-center justify-between">
+        <span style={{ color: themeStyles.textColorPrimary }} className="text-xs sm:text-sm font-bold flex items-center gap-1.5">
+          <span className="text-base">⚡</span>
+          <span>4 聯速度監測遙測陣列 (一眼確認)</span>
+        </span>
+        <span style={{ color: themeStyles.textColorMuted }} className="text-xs font-mono font-bold">
+          單位：公里/小時 (km/h)
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {/* Gauge 1: 平均時速 (全程含休息停頓) */}
+        <div 
+          style={{ 
+            backgroundColor: isWhite ? '#FFFFFF' : isOLED ? '#000000' : 'rgba(255,255,255,0.06)', 
+            borderColor: isWhite ? '#E2E8F0' : isOLED ? '#27272A' : 'rgba(255,255,255,0.1)' 
+          }}
+          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          title="全程平均時速：總里程 ÷ 總耗時（包含所有休息停頓與拍照時間）"
+        >
+          <span style={{ color: themeStyles.textColorSecondary }} className="text-xs font-bold block mb-1">
+            平均時速
+          </span>
+          <div 
+            style={{ color: isOLED ? '#F4F4F5' : themeStyles.textColorPrimary }}
+            className="text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1"
+          >
+            {displayStats?.avgSpeedKmh || '0.0'}
+          </div>
+          <span style={{ color: themeStyles.textColorMuted }} className="text-[11px] font-mono font-bold block">
+            km/h (全程含停頓)
+          </span>
+        </div>
+
+        {/* Gauge 2: 移動均速 (純移動巡航·已扣除休息) */}
+        <div 
+          style={{ 
+            backgroundColor: isWhite ? '#F0FDF4' : isOLED ? '#022C22' : 'rgba(6, 78, 59, 0.4)', 
+            borderColor: isWhite ? '#BBF7D0' : isOLED ? '#065F46' : 'rgba(16, 185, 129, 0.3)' 
+          }}
+          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          title="純移動平均時速：移動距離 ÷ 移動時間（已自動扣除所有中途休息停頓）"
+        >
+          <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-emerald-300' : 'text-emerald-800'}`}>
+            移動均速
+          </span>
+          <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-emerald-400' : 'text-emerald-700'}`}>
+            {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
+          </div>
+          <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-emerald-400' : 'text-emerald-600'}`}>
+            km/h (純移動·已扣休息)
+          </span>
+        </div>
+
+        {/* Gauge 3: 最高時速 (Max Peak Speed - 衝刺極速) */}
+        <div 
+          style={{ 
+            backgroundColor: isWhite ? '#FFF1F2' : isOLED ? '#4C0519' : 'rgba(136, 19, 55, 0.4)', 
+            borderColor: isWhite ? '#FECDD3' : isOLED ? '#9F1239' : 'rgba(244, 63, 94, 0.3)' 
+          }}
+          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          title="行進過程中的最高瞬間極速"
+        >
+          <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-rose-300' : 'text-rose-800'}`}>
+            最高時速
+          </span>
+          <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-rose-400' : 'text-rose-600'}`}>
+            {displayStats?.maxSpeedKmh || '0.0'}
+          </div>
+          <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-rose-400' : 'text-rose-500'}`}>
+            km/h (極速峰值)
+          </span>
+        </div>
+
+        {/* Gauge 4: 最低時速 (Min Climb Pace - 爬坡慢速) */}
+        <div 
+          style={{ 
+            backgroundColor: isWhite ? '#EFF6FF' : isOLED ? '#082F49' : 'rgba(30, 58, 138, 0.4)', 
+            borderColor: isWhite ? '#BFDBFE' : isOLED ? '#075985' : 'rgba(59, 130, 246, 0.3)' 
+          }}
+          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          title="移動中的最慢步速（通常為吃力上坡攀爬時）"
+        >
+          <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-sky-300' : 'text-blue-800'}`}>
+            最低時速
+          </span>
+          <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-sky-400' : 'text-blue-600'}`}>
+            {displayStats?.minSpeedKmh || '0.0'}
+          </div>
+          <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-sky-400' : 'text-blue-500'}`}>
+            km/h (爬坡慢速)
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div 
       style={{
@@ -465,167 +743,47 @@ export default function AutomotiveClusterDashboard({
           <span style={{ color: themeStyles.accentColor }} className="font-bold flex items-center gap-1">
             <span>{modeInfo.title}</span>
           </span>
-          <span style={{ color: themeStyles.textColorMuted }} className="font-mono text-[11px]">
-            刻度上限: <strong>{dialMax}</strong> km/h
-          </span>
-        </div>
-
-        <div className="relative w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center">
-          {/* SVG Speed Dial */}
-          <svg viewBox="0 0 240 240" className="w-full h-full overflow-visible">
-            <defs>
-              {/* Luminous Speed Gradient */}
-              <linearGradient id={`${gradientId}-speed-grad`} x1="0%" y1="100%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#10B981" />
-                <stop offset="55%" stopColor="#F59E0B" />
-                <stop offset="100%" stopColor="#DC2626" />
-              </linearGradient>
-
-              {/* Dial Face Inner Shadow / Glow */}
-              <radialGradient id={`${gradientId}-dial-glow`} cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor={isWhite ? '#FFFFFF' : 'rgba(245, 158, 11, 0.15)'} />
-                <stop offset="75%" stopColor={isWhite ? '#F8FAFC' : 'rgba(15, 23, 42, 0.5)'} />
-                <stop offset="100%" stopColor={isWhite ? '#F1F5F9' : '#0B0F17'} />
-              </radialGradient>
-
-              <filter id={`${gradientId}-needle-shadow`} x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.18)" />
-              </filter>
-            </defs>
-
-            {/* Dial Face Background */}
-            <circle cx={cx} cy={cy} r="95" fill={`url(#${gradientId}-dial-glow)`} />
-
-            {/* Outer Metallic Bezel Rings */}
-            <circle 
-              cx={cx} 
-              cy={cy} 
-              r="108" 
-              fill="none" 
-              stroke={themeStyles.gaugeBezelOuter} 
-              strokeWidth="2.5" 
-            />
-            <circle 
-              cx={cx} 
-              cy={cy} 
-              r="105" 
-              fill="none" 
-              stroke={themeStyles.gaugeBezelInner} 
-              strokeWidth="1.5" 
-            />
-
-            {/* Gauge Background Track Arc */}
-            <path
-              d={describeArc(cx, cy, 94, startAngleDeg, startAngleDeg + sweepAngleDeg)}
-              fill="none"
-              stroke={themeStyles.gaugeTrack}
-              strokeWidth="8"
-              strokeLinecap="round"
-            />
-
-            {/* Active Luminous Progress Arc */}
-            {speedRatio > 0.005 && (
-              <path
-                d={describeArc(cx, cy, 94, startAngleDeg, currentAngleDeg)}
-                fill="none"
-                stroke={`url(#${gradientId}-speed-grad)`}
-                strokeWidth="8"
-                strokeLinecap="round"
-              />
-            )}
-
-            {/* Ticks and Scale Numbers (Large and High Contrast, Outer Rim Alignment) */}
-            {ticks.map((t, idx) => (
-              <g key={idx}>
-                <line
-                  x1={t.inner.x}
-                  y1={t.inner.y}
-                  x2={t.outer.x}
-                  y2={t.outer.y}
-                  stroke={t.isMajor ? themeStyles.gaugeTickMajor : themeStyles.gaugeTickMinor}
-                  strokeWidth={t.isMajor ? 2.5 : 1.2}
-                />
-                {t.isLabeled && (
-                  <text
-                    x={t.labelPos.x}
-                    y={t.labelPos.y + 4}
-                    textAnchor="middle"
-                    fill={themeStyles.gaugeTickText}
-                    fontSize={dialMax >= 1000 ? "10" : "12"}
-                    fontFamily="monospace"
-                    fontWeight="900"
-                  >
-                    {t.val}
-                  </text>
-                )}
-              </g>
-            ))}
-
-            {/* Speed Digital Readout (Porsche Cockpit Layout: Big Speed at center, KM/H below pivot, Status badge in open lower quadrant) */}
-            <text 
-              x={cx} 
-              y={cy - 14} 
-              textAnchor="middle" 
-              fill={isOLED ? '#10B981' : themeStyles.textColorPrimary} 
-              fontSize={effectiveSpeed >= 100 ? "38" : "44"} 
-              fontFamily="monospace" 
-              fontWeight="900" 
-            >
-              {effectiveSpeed.toFixed(1)}
-            </text>
-            <text 
-              x={cx} 
-              y={cy + 26} 
-              textAnchor="middle" 
-              fill={isOLED ? '#34D399' : themeStyles.textColorSecondary} 
-              fontSize="12" 
-              fontFamily="monospace" 
-              fontWeight="900" 
-              letterSpacing="2"
-            >
-              KM / H
-            </text>
-            <text 
-              x={cx} 
-              y={cy + 42} 
-              textAnchor="middle" 
-              fill={isOLED ? '#F59E0B' : themeStyles.accentColor} 
-              fontSize="11" 
-              fontFamily="sans-serif" 
-              fontWeight="900" 
-              letterSpacing="0.5"
-            >
-              {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 步道巡航均速' : '即時行走速度'))}
-            </text>
-
-            {/* Speed Needle Pointer (Classic Rally Red with CSS 60fps Hardware Smooth Transition & Counterweight Tail) */}
-            <g 
-              style={{
-                transform: `rotate(${currentAngleDeg}deg)`,
-                transformOrigin: `${cx}px ${cy}px`,
-                transition: isSweeping 
-                  ? 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)' 
-                  : 'transform 0.42s cubic-bezier(0.34, 1.35, 0.64, 1)'
+          <div className="flex items-center gap-2">
+            <span style={{ color: themeStyles.textColorMuted }} className="font-mono text-[11px]">
+              刻度上限: <strong>{dialMax}</strong> km/h
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFullscreen(true);
               }}
-              filter={`url(#${gradientId}-needle-shadow)`}
+              style={{
+                backgroundColor: isWhite ? '#F1F5F9' : isOLED ? '#18181B' : 'rgba(255,255,255,0.1)',
+                borderColor: isWhite ? '#CBD5E1' : isOLED ? '#27272A' : 'rgba(255,255,255,0.15)',
+                color: isWhite ? '#334155' : isOLED ? '#34D399' : '#FFFFFF'
+              }}
+              className="px-2 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 hover:opacity-80 active:scale-95 transition-all cursor-pointer shadow-xs"
+              title="放大為全螢幕 HUD 儀表盤與 4 聯速度監測"
             >
-              {/* Needle Blade */}
-              <polygon
-                points={`${cx - 2.5},${cy} ${cx},42 ${cx + 2.5},${cy}`}
-                fill="#DC2626"
-              />
-              <line x1={cx} y1={cy} x2={cx} y2={40} stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" />
-              {/* Counterweight Tail */}
-              <polygon
-                points={`${cx - 2},${cy} ${cx},${cy + 16} ${cx + 2},${cy}`}
-                fill="#991B1B"
-              />
-              {/* Center Pivot Cap */}
-              <circle cx={cx} cy={cy} r="10" fill={themeStyles.gaugeCenterCap} stroke={themeStyles.gaugeCenterCapBorder} strokeWidth="2" />
-              <circle cx={cx} cy={cy} r="3.5" fill="#FFFFFF" />
-            </g>
-          </svg>
+              <span>⛶ 全螢幕 HUD</span>
+            </button>
+          </div>
         </div>
+
+        {/* Speedometer Dial (Clickable to enter fullscreen) */}
+        <div 
+          onClick={() => setIsFullscreen(true)}
+          className="relative w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center cursor-pointer group"
+          title="點擊儀表盤放大為全螢幕 HUD 模式"
+        >
+          {renderSpeedDialSVG(gradientId)}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(true)}
+          style={{ color: themeStyles.textColorMuted }}
+          className="text-[10px] font-medium opacity-70 hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1 mt-0.5"
+        >
+          <span>🔍</span>
+          <span>點擊儀表盤可放大為全螢幕 HUD 模式</span>
+        </button>
 
         {/* Speed Peak & Average Summary Banner */}
         <div 
@@ -842,105 +1000,143 @@ export default function AutomotiveClusterDashboard({
       </div>
 
       {/* 🏁 SECTION 3: 4-POD RACING AUXILIARY GAUGES (底層 4 聯大字體速度分析儀表) */}
-      <div 
-        style={{
-          backgroundColor: themeStyles.cardBg,
-          borderColor: themeStyles.cardBorder,
-          boxShadow: themeStyles.cardShadow
-        }}
-        className="p-3 sm:p-3.5 rounded-2xl border space-y-2.5"
-      >
-        <div className="flex items-center justify-between">
-          <span style={{ color: themeStyles.textColorPrimary }} className="text-xs sm:text-sm font-bold flex items-center gap-1.5">
-            <span className="text-base">⚡</span>
-            <span>4 聯速度監測遙測陣列 (一眼確認)</span>
-          </span>
-          <span style={{ color: themeStyles.textColorMuted }} className="text-xs font-mono font-bold">
-            單位：公里/小時 (km/h)
-          </span>
-        </div>
+      {renderFourPodSpeedMatrix(false)}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {/* Gauge 1: 平均時速 (Average Speed) */}
+      {/* ⛶ 全螢幕車載 HUD 儀表盤 & 4 聯速度遙測模式 */}
+      {isFullscreen && (
+        <div 
+          style={{
+            backgroundColor: isWhite ? '#F8FAFC' : '#000000',
+            color: isWhite ? '#0F172A' : '#FFFFFF'
+          }}
+          className="fixed inset-0 z-[100] flex flex-col justify-between p-3.5 sm:p-6 overflow-y-auto animate-in fade-in duration-200 select-none font-sans"
+        >
+          {/* Top Bar */}
           <div 
-            style={{ 
-              backgroundColor: isWhite ? '#FFFFFF' : isOLED ? '#000000' : 'rgba(255,255,255,0.06)', 
-              borderColor: isWhite ? '#E2E8F0' : isOLED ? '#27272A' : 'rgba(255,255,255,0.1)' 
-            }}
-            className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+            style={{ borderColor: isWhite ? '#E2E8F0' : '#27272A' }}
+            className="flex items-center justify-between w-full pb-3 border-b shrink-0 flex-wrap gap-2"
           >
-            <span style={{ color: themeStyles.textColorSecondary }} className="text-xs font-bold block mb-1">
-              平均時速
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`w-3 h-3 rounded-full ${isRecording ? "bg-red-500 animate-ping" : "bg-emerald-500"}`} />
+              <div>
+                <h2 className="text-sm sm:text-base font-black tracking-tight flex items-center gap-2">
+                  <span>🧭 車載 HUD 儀表盤 · 4 聯速度遙測</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border font-mono ${
+                    isRecording 
+                      ? "border-red-500/40 bg-red-500/10 text-red-400" 
+                      : "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                  }`}>
+                    {isRecording ? "REC 記錄中" : "STANDBY 待機"}
+                  </span>
+                </h2>
+                <p className={`text-[11px] ${isOLED ? "text-zinc-400" : "text-slate-500"}`}>
+                  {displayTitle || "全螢幕即時遙測 HUD"} · 刻度上限 {dialMax} km/h
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Theme toggle */}
+              <button
+                type="button"
+                data-testid="fs-theme-btn"
+                title="切換全螢幕主題"
+                onClick={() => {
+                  const next = clusterTheme === "white" ? "oled" : clusterTheme === "oled" ? "obsidian" : "white";
+                  setClusterTheme(next);
+                  if (typeof onThemeChange === "function") onThemeChange(next);
+                }}
+                style={{
+                  backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#18181B" : "rgba(255,255,255,0.1)",
+                  borderColor: isWhite ? "#CBD5E1" : isOLED ? "#3F3F46" : "rgba(255,255,255,0.15)",
+                  color: isOLED ? "#34D399" : themeStyles.textColorPrimary
+                }}
+                className="px-2.5 py-1 rounded-xl text-xs font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+              >
+                {isWhite ? "⚪ 純白" : isOLED ? "🌙 極黑" : "🏎️ 曜石"}
+              </button>
+
+              {/* Close / Exit Fullscreen */}
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                title="離開全螢幕 (ESC)"
+              >
+                <span>✕</span>
+                <span>縮小 (ESC)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Central Main Area: Massive Gauge Dial */}
+          <div className="flex-1 flex flex-col items-center justify-center my-3 sm:my-5">
             <div 
-              style={{ color: isOLED ? '#F4F4F5' : themeStyles.textColorPrimary }}
-              className="text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1"
+              onClick={() => setIsFullscreen(false)}
+              className="relative w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 flex items-center justify-center cursor-pointer transition-transform hover:scale-102"
+              title="點擊儀表盤縮小離開全螢幕"
             >
-              {displayStats?.avgSpeedKmh || '0.0'}
+              {renderSpeedDialSVG(`${gradientId}-fs`)}
             </div>
-            <span style={{ color: themeStyles.textColorMuted }} className="text-[11px] font-mono font-bold block">
-              km/h (全程)
-            </span>
+
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(false)}
+              style={{ color: themeStyles.textColorMuted }}
+              className="text-[11px] font-medium opacity-70 hover:opacity-100 transition-opacity cursor-pointer flex items-center gap-1 mt-1"
+            >
+              <span>✕</span>
+              <span>點擊儀表盤或按 ESC 即可離開全螢幕</span>
+            </button>
+
+            {/* Peak & Average Summary Banner */}
+            <div 
+              style={{ color: themeStyles.textColorSecondary }}
+              className="text-xs sm:text-base font-mono font-bold flex items-center justify-center gap-4 mt-2"
+            >
+              <span>衝刺極速: <strong className={`${isOLED ? "text-rose-400" : "text-rose-600"} text-base sm:text-lg font-black`}>{displayStats?.maxSpeedKmh || "0.0"}</strong> km/h</span>
+              <span className="opacity-40">|</span>
+              <span>全程均速: <strong className={`${isOLED ? "text-emerald-400" : "text-emerald-700"} text-base sm:text-lg font-black`}>{displayStats?.avgSpeedKmh || "0.0"}</strong> km/h</span>
+            </div>
           </div>
 
-          {/* Gauge 2: 移動均速 (Moving Average) */}
-          <div 
-            style={{ 
-              backgroundColor: isWhite ? '#F0FDF4' : isOLED ? '#022C22' : 'rgba(6, 78, 59, 0.4)', 
-              borderColor: isWhite ? '#BBF7D0' : isOLED ? '#065F46' : 'rgba(16, 185, 129, 0.3)' 
-            }}
-            className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
-          >
-            <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-emerald-300' : 'text-emerald-800'}`}>
-              移動均速
-            </span>
-            <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-emerald-400' : 'text-emerald-700'}`}>
-              {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
-            </div>
-            <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-emerald-500' : 'text-emerald-600'}`}>
-              km/h (巡航)
-            </span>
-          </div>
+          {/* Bottom Area: 4-Pod Speed Matrix + Telemetry Strip */}
+          <div className="w-full max-w-4xl mx-auto space-y-3 shrink-0">
+            {/* 4 聯速度監測遙測陣列 */}
+            {renderFourPodSpeedMatrix(true)}
 
-          {/* Gauge 3: 最高時速 (Max Peak Speed) */}
-          <div 
-            style={{ 
-              backgroundColor: isWhite ? '#FFF1F2' : isOLED ? '#4C0519' : 'rgba(136, 19, 55, 0.4)', 
-              borderColor: isWhite ? '#FECDD3' : isOLED ? '#9F1239' : 'rgba(244, 63, 94, 0.3)' 
-            }}
-            className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
-          >
-            <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-rose-300' : 'text-rose-800'}`}>
-              最高時速
-            </span>
-            <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-rose-400' : 'text-rose-600'}`}>
-              {displayStats?.maxSpeedKmh || '0.0'}
+            {/* Bottom 3-Pod Telemetry Strip: 里程 · 海拔 · 總計時 */}
+            <div 
+              style={{
+                backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#09090B" : "rgba(255,255,255,0.06)",
+                borderColor: isWhite ? "#E2E8F0" : isOLED ? "#27272A" : "rgba(255,255,255,0.1)"
+              }}
+              className="p-2.5 sm:p-3 rounded-2xl border flex items-center justify-around gap-2 text-center text-xs font-mono"
+            >
+              <div>
+                <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] block">📏 累計里程</span>
+                <strong style={{ color: isOLED ? "#F59E0B" : themeStyles.distanceColor }} className="text-sm sm:text-base font-black">
+                  {displayStats?.totalDistanceKm || "0.00"} <span className="text-xs font-normal">km</span>
+                </strong>
+              </div>
+              <div className="opacity-20">|</div>
+              <div>
+                <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] block">⛰️ 當前海拔</span>
+                <strong style={{ color: isOLED ? "#38BDF8" : themeStyles.altitudeColor }} className="text-sm sm:text-base font-black">
+                  {displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined ? `${displayStats.currentElevation}m` : (displayStats?.maxElevationM ? `${displayStats.maxElevationM}m` : "--")}
+                </strong>
+              </div>
+              <div className="opacity-20">|</div>
+              <div>
+                <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] block">⏱️ 活動耗時</span>
+                <strong style={{ color: isOLED ? "#FFFFFF" : themeStyles.chronoColor }} className="text-sm sm:text-base font-black">
+                  {displayStats?.durationFormatted || "00:00:00"}
+                </strong>
+              </div>
             </div>
-            <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-rose-500' : 'text-rose-500'}`}>
-              km/h (極速)
-            </span>
-          </div>
-
-          {/* Gauge 4: 最低時速 (Min Climb Pace) */}
-          <div 
-            style={{ 
-              backgroundColor: isWhite ? '#EFF6FF' : isOLED ? '#082F49' : 'rgba(30, 58, 138, 0.4)', 
-              borderColor: isWhite ? '#BFDBFE' : isOLED ? '#075985' : 'rgba(59, 130, 246, 0.3)' 
-            }}
-            className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
-          >
-            <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-sky-300' : 'text-blue-800'}`}>
-              最低時速
-            </span>
-            <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-sky-400' : 'text-blue-600'}`}>
-              {displayStats?.minSpeedKmh || '0.0'}
-            </div>
-            <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-sky-500' : 'text-blue-500'}`}>
-              km/h (爬坡)
-            </span>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
