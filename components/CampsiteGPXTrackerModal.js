@@ -41,7 +41,11 @@ export default function CampsiteGPXTrackerModal({
     clearActiveRoute,
     importGPXFile,
     loadPresetTrail,
-    routeAdherence
+    routeAdherence,
+    isSilentHikingMode = false,
+    setIsSilentHikingMode,
+    setIsUiSuspended,
+    syncUiFromRefs
   } = gpxTracker || {};
 
   const [activeTab, setActiveTab] = useState('record'); // 'record' | 'history' | 'import'
@@ -60,6 +64,14 @@ export default function CampsiteGPXTrackerModal({
   const [isPocketAwake, setIsPocketAwake] = useState(false); // 輕碰喚醒 6 秒微光 HUD，其餘時間 100% 全黑熄屏 (0 像素發光)
   const [pocketAlwaysDim, setPocketAlwaysDim] = useState(false); // 是否切換為常駐微光
   const pocketAwakeTimeoutRef = useRef(null);
+
+  // ⚡ 當視窗關閉或處於「口袋 100% 純黑熄屏」狀態時，自動暫停每秒 React State 畫面重繪 (0% GPU/DOM 負載)
+  useEffect(() => {
+    if (typeof setIsUiSuspended === 'function') {
+      const shouldSuspend = !isOpen || (isPocketMode && !isPocketAwake && !pocketAlwaysDim);
+      setIsUiSuspended(shouldSuspend);
+    }
+  }, [isOpen, isPocketMode, isPocketAwake, pocketAlwaysDim, setIsUiSuspended]);
 
   // 🌙 OLED 0 耗電純黑 ⇄ ☀️ 首頁純白主題切換
   const [displayTheme, setDisplayTheme] = useState('white'); // 'white' | 'oled'
@@ -576,8 +588,25 @@ export default function CampsiteGPXTrackerModal({
                       </p>
                     </div>
 
-                    {/* Action Buttons: Pocket Mode + ON/OFF Master Switch */}
-                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                    {/* Action Buttons: Silent Hiking Mode + Pocket Mode + ON/OFF Master Switch */}
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0 w-full sm:w-auto">
+                      {isRecording && typeof setIsSilentHikingMode === 'function' && (
+                        <button
+                          type="button"
+                          onClick={() => setIsSilentHikingMode(!isSilentHikingMode)}
+                          style={{
+                            backgroundColor: isSilentHikingMode ? '#065F46' : (isOled ? '#18181B' : '#F1F5F9'),
+                            color: isSilentHikingMode ? '#ECFDF5' : (isOled ? '#34D399' : '#047857'),
+                            borderColor: isSilentHikingMode ? '#10B981' : (isOled ? '#3F3F46' : '#CBD5E1')
+                          }}
+                          className="flex-1 sm:flex-none px-3 py-2.5 rounded-2xl font-bold text-xs border shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer hover:opacity-90"
+                          title="登山盲記模式：爬山過程完全不更新螢幕與儀表板 (0% GPU/DOM 耗電)，直到按下 OFF 才一次性結算軌跡"
+                        >
+                          <span>🌱</span>
+                          <span>{isSilentHikingMode ? '盲記省電中 (點擊恢復儀表)' : '盲記省電 (不刷畫面)'}</span>
+                        </button>
+                      )}
+
                       {isRecording && (
                         <button
                           type="button"
@@ -588,10 +617,10 @@ export default function CampsiteGPXTrackerModal({
                             borderColor: isOled ? '#3F3F46' : '#334155'
                           }}
                           className="flex-1 sm:flex-none px-3.5 py-2.5 rounded-2xl font-bold text-xs border shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer hover:opacity-90"
-                          title="關閉彩色螢幕改為純黑底，省電防誤觸，維持 100% GPS 連續記錄"
+                          title="關閉彩色螢幕改為純黑底，並暫停每秒畫面更新，省電防誤觸"
                         >
                           <span>🌙</span>
-                          <span>口袋省電 (防休眠)</span>
+                          <span>口袋暗屏 (0 刷新)</span>
                         </button>
                       )}
 
@@ -605,7 +634,7 @@ export default function CampsiteGPXTrackerModal({
                         }}
                         className="flex-1 sm:flex-none px-5 py-2.5 rounded-2xl font-black text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
                       >
-                        <span className={`w-3 h-3 rounded-full ${isRecording ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
+                        <span className={`w-3 h-3 rounded-full ${isRecording ? 'bg-white' : 'bg-slate-400'}`} />
                         <span>{isRecording ? '切換為 OFF' : '切換為 ON'}</span>
                       </button>
                     </div>
@@ -637,30 +666,69 @@ export default function CampsiteGPXTrackerModal({
                   </div>
                 </div>
 
-                {/* 🏎️ 頂級車廠數位儀表板 (Automotive Virtual Cockpit Cluster HUD) */}
-                <AutomotiveClusterDashboard
-                  displayStats={displayStats}
-                  isRecording={isRecording}
-                  displayPointsCount={displayPointsCount}
-                  displayTitle={displayTitle}
-                  isManuallyResting={isManuallyResting}
-                  toggleManualRest={toggleManualRest}
-                  scrubbedSpeed={scrubbedPoint?.speed ?? null}
-                  theme={displayTheme}
-                  onThemeChange={(newTheme) => setDisplayTheme(newTheme === 'obsidian' ? 'oled' : newTheme)}
-                />
+                {/* 🌱 登山盲記省電模式 vs 🏎️ 頂級車廠數位儀表板 */}
+                {isRecording && isSilentHikingMode ? (
+                  <div
+                    style={{
+                      backgroundColor: isOled ? '#000000' : '#F0FDF4',
+                      borderColor: isOled ? '#065F46' : '#86EFAC'
+                    }}
+                    className="p-5 rounded-3xl border-2 text-center space-y-3"
+                  >
+                    <div className="text-2xl">🌱</div>
+                    <h4 className={`text-sm sm:text-base font-black ${isOled ? 'text-emerald-400' : 'text-emerald-900'}`}>
+                      登山盲記極致省電模式運作中 (0 螢幕刷新)
+                    </h4>
+                    <p className={`text-xs leading-relaxed max-w-md mx-auto ${isOled ? 'text-zinc-400' : 'text-emerald-800'}`}>
+                      已完全卸載 SVG 指針儀表與高度剖面圖，並停止每秒畫面更新與硬碟連寫。手機僅以最低功耗在記憶體中收錄衛星座標點，爬完山按下上方 <strong>「切換為 OFF」</strong> 即會自動完整結算總里程、耗時與高度圖！
+                    </p>
+                    <div className="flex items-center justify-center gap-2.5 pt-1">
+                      {typeof syncUiFromRefs === 'function' && (
+                        <button
+                          type="button"
+                          onClick={syncUiFromRefs}
+                          className="px-3.5 py-2 rounded-xl text-xs font-bold border border-emerald-600/40 bg-emerald-950/50 text-emerald-300 hover:bg-emerald-900/60 cursor-pointer"
+                        >
+                          👁️ 更新看一眼目前里程 ({displayStats?.totalDistanceKm || '0.00'} km)
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsSilentHikingMode(false)}
+                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      >
+                        ⚡ 展開即時動態儀表板
+                      </button>
+                    </div>
+                  </div>
+                ) : !(isPocketMode && !isPocketAwake && !pocketAlwaysDim) ? (
+                  <>
+                    {/* 🏎️ 頂級車廠數位儀表板 (Automotive Virtual Cockpit Cluster HUD) */}
+                    <AutomotiveClusterDashboard
+                      displayStats={displayStats}
+                      isRecording={isRecording}
+                      displayPointsCount={displayPointsCount}
+                      displayTitle={displayTitle}
+                      isManuallyResting={isManuallyResting}
+                      toggleManualRest={toggleManualRest}
+                      scrubbedSpeed={scrubbedPoint?.speed ?? null}
+                      theme={displayTheme}
+                      onThemeChange={(newTheme) => setDisplayTheme(newTheme === 'obsidian' ? 'oled' : newTheme)}
+                    />
 
-                {/* 📈 高度剖面圖 (Elevation Profile Chart) - 完全對齊使用者上傳的圖表 */}
-                <ElevationProfileChart
-                  elevationProfile={displayStats?.elevationProfile || []}
-                  totalDistanceKm={displayStats?.totalDistanceKm || '0.00'}
-                  maxElevationM={displayStats?.maxElevationM}
-                  minElevationM={displayStats?.minElevationM}
-                  totalAscentM={displayStats?.totalAscentM || 0}
-                  totalDescentM={displayStats?.totalDescentM || 0}
-                  onHoverPoint={setScrubbedPoint}
-                  theme={displayTheme}
-                />
+                    {/* 📈 高度剖面圖 (Elevation Profile Chart) - 完全對齊使用者上傳的圖表 */}
+                    <ElevationProfileChart
+                      elevationProfile={displayStats?.elevationProfile || []}
+                      totalDistanceKm={displayStats?.totalDistanceKm || '0.00'}
+                      maxElevationM={displayStats?.maxElevationM}
+                      minElevationM={displayStats?.minElevationM}
+                      totalAscentM={displayStats?.totalAscentM || 0}
+                      totalDescentM={displayStats?.totalDescentM || 0}
+                      onHoverPoint={setScrubbedPoint}
+                      theme={displayTheme}
+                    />
+                  </>
+                ) : null}
 
                 {/* 📍 Waypoints Tagging Section */}
                 <div 
@@ -1490,8 +1558,8 @@ export default function CampsiteGPXTrackerModal({
             !isPocketAwake && !pocketAlwaysDim ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500/80 animate-pulse" />
-              <span className="text-emerald-500/90 font-bold tracking-wider">🛰️ GPS 背景航跡收錄中</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500/80" />
+              <span className="text-emerald-500/90 font-bold tracking-wider">🛰️ GPS 背景航跡收錄中 (0 螢幕刷新省電)</span>
             </div>
             
             {/* Mode Toggle: 自動純黑 (預設) vs 常駐微光 */}
@@ -1509,13 +1577,8 @@ export default function CampsiteGPXTrackerModal({
 
           {/* Central Area: 100% 純黑極限熄屏 VS 微光 HUD */}
           {!isPocketAwake && !pocketAlwaysDim ? (
-            /* 1. 深度全黑熄屏 (0 像素發光 · 0 nits · 頂部 status bar 與全屏 100% 純黑) */
-            <div className="my-auto text-center space-y-4 pointer-events-none select-none opacity-40">
-              <div className="w-1.5 h-1.5 mx-auto rounded-full bg-emerald-500/30 animate-pulse" />
-              <div className="text-[11px] font-mono text-zinc-800 tracking-wider">
-                🌙 100% 熄屏省電中 · 輕碰螢幕喚出資訊
-              </div>
-            </div>
+            /* 1. 深度全黑熄屏 (0 像素發光 · 0 nits · 0 CSS 動畫 · 0 React 重繪，讓 GPU 進入 0 FPS 靜態幀休眠) */
+            <div className="my-auto text-center pointer-events-none select-none opacity-0" aria-hidden="true" />
           ) : (
             /* 2. 觸碰喚醒之微光 HUD (消除刺眼白字，採用低耗電深階琥珀微光) */
             <div className="text-center space-y-4 my-auto animate-in fade-in duration-200">
