@@ -469,17 +469,17 @@ export default function AutomotiveClusterDashboard({
         {/* Gauge 1: 平均時速 (全程含休息停頓) */}
         <div 
           style={{ 
-            backgroundColor: isWhite ? '#FFFFFF' : isOLED ? '#000000' : 'rgba(255,255,255,0.06)', 
-            borderColor: isWhite ? '#E2E8F0' : isOLED ? '#27272A' : 'rgba(255,255,255,0.1)' 
+            backgroundColor: isWhite ? '#FFFFFF' : '#000000', 
+            borderColor: isWhite ? '#E2E8F0' : '#27272A' 
           }}
-          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          className="border-2 rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           title="全程平均時速：總里程 ÷ 總耗時（包含所有休息停頓與拍照時間）"
         >
           <span style={{ color: themeStyles.textColorSecondary }} className="text-xs font-bold block mb-1">
             平均時速
           </span>
           <div 
-            style={{ color: isOLED ? '#F4F4F5' : themeStyles.textColorPrimary }}
+            style={{ color: isWhite ? themeStyles.textColorPrimary : '#FFFFFF' }}
             className="text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1"
           >
             {displayStats?.avgSpeedKmh || '0.0'}
@@ -492,19 +492,22 @@ export default function AutomotiveClusterDashboard({
         {/* Gauge 2: 移動均速 (純移動巡航·已扣除休息) */}
         <div 
           style={{ 
-            backgroundColor: isWhite ? '#F0FDF4' : isOLED ? '#022C22' : 'rgba(6, 78, 59, 0.4)', 
-            borderColor: isWhite ? '#BBF7D0' : isOLED ? '#065F46' : 'rgba(16, 185, 129, 0.3)' 
+            backgroundColor: isWhite ? '#F0FDF4' : '#000000', 
+            borderColor: isWhite ? '#BBF7D0' : '#059669' 
           }}
-          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          className="border-2 rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           title="純移動平均時速：移動距離 ÷ 移動時間（已自動扣除所有中途休息停頓）"
         >
-          <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-emerald-300' : 'text-emerald-800'}`}>
+          <span style={{ color: isWhite ? '#15803D' : '#34D399' }} className="text-xs font-bold block mb-1">
             移動均速
           </span>
-          <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-emerald-400' : 'text-emerald-700'}`}>
+          <div 
+            style={{ color: isWhite ? '#166534' : '#34D399' }}
+            className="text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1"
+          >
             {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
           </div>
-          <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-emerald-400' : 'text-emerald-600'}`}>
+          <span style={{ color: isWhite ? '#16A34A' : '#10B981' }} className="text-[11px] font-mono font-bold block">
             km/h (純移動·已扣休息)
           </span>
         </div>
@@ -512,19 +515,22 @@ export default function AutomotiveClusterDashboard({
         {/* Gauge 3: 最高時速 (Max Peak Speed - 衝刺極速) */}
         <div 
           style={{ 
-            backgroundColor: isWhite ? '#FFF1F2' : isOLED ? '#4C0519' : 'rgba(136, 19, 55, 0.4)', 
-            borderColor: isWhite ? '#FECDD3' : isOLED ? '#9F1239' : 'rgba(244, 63, 94, 0.3)' 
+            backgroundColor: isWhite ? '#FFF1F2' : '#000000', 
+            borderColor: isWhite ? '#FECDD3' : '#E11D48' 
           }}
-          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          className="border-2 rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           title="行進過程中的最高瞬間極速"
         >
-          <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-rose-300' : 'text-rose-800'}`}>
+          <span style={{ color: isWhite ? '#BE123C' : '#FB7185' }} className="text-xs font-bold block mb-1">
             最高時速
           </span>
-          <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-rose-400' : 'text-rose-600'}`}>
+          <div 
+            style={{ color: isWhite ? '#9F1239' : '#FB7185' }}
+            className="text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1"
+          >
             {displayStats?.maxSpeedKmh || '0.0'}
           </div>
-          <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-rose-400' : 'text-rose-500'}`}>
+          <span style={{ color: isWhite ? '#E11D48' : '#F43F5E' }} className="text-[11px] font-mono font-bold block">
             km/h (極速峰值)
           </span>
         </div>
@@ -532,19 +538,22 @@ export default function AutomotiveClusterDashboard({
         {/* Gauge 4: 最低時速 (Min Climb Pace - 爬坡慢速) */}
         <div 
           style={{ 
-            backgroundColor: isWhite ? '#EFF6FF' : isOLED ? '#082F49' : 'rgba(30, 58, 138, 0.4)', 
-            borderColor: isWhite ? '#BFDBFE' : isOLED ? '#075985' : 'rgba(59, 130, 246, 0.3)' 
+            backgroundColor: isWhite ? '#EFF6FF' : '#000000', 
+            borderColor: isWhite ? '#BFDBFE' : '#0284C7' 
           }}
-          className="border rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
+          className="border-2 rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
           title="移動中的最慢步速（通常為吃力上坡攀爬時）"
         >
-          <span className={`text-xs font-bold block mb-1 ${isOLED ? 'text-sky-300' : 'text-blue-800'}`}>
+          <span style={{ color: isWhite ? '#1D4ED8' : '#38BDF8' }} className="text-xs font-bold block mb-1">
             最低時速
           </span>
-          <div className={`text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1 ${isOLED ? 'text-sky-400' : 'text-blue-600'}`}>
+          <div 
+            style={{ color: isWhite ? '#1E40AF' : '#38BDF8' }}
+            className="text-2xl sm:text-3xl font-mono font-black tracking-tight leading-none my-1"
+          >
             {displayStats?.minSpeedKmh || '0.0'}
           </div>
-          <span className={`text-[11px] font-mono font-bold block ${isOLED ? 'text-sky-400' : 'text-blue-500'}`}>
+          <span style={{ color: isWhite ? '#2563EB' : '#0284C7' }} className="text-[11px] font-mono font-bold block">
             km/h (爬坡慢速)
           </span>
         </div>
@@ -829,24 +838,25 @@ export default function AutomotiveClusterDashboard({
           </div>
 
           {/* Moving & Rest Breakdowns */}
-          <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'}`}>
+          <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isWhite ? 'border-slate-100' : 'border-zinc-800'}`}>
             <div 
               style={{
                 backgroundColor: isWhite 
                   ? (isRecording && !displayStats?.isStationary ? '#DCFCE7' : '#F0FDF4') 
-                  : isOLED 
-                    ? '#022C22' 
-                    : 'rgba(6, 78, 59, 0.4)',
+                  : '#000000',
                 borderColor: isWhite 
                   ? (isRecording && !displayStats?.isStationary ? '#22C55E' : '#BBF7D0') 
-                  : isOLED 
-                    ? '#065F46' 
-                    : 'rgba(16, 185, 129, 0.3)'
+                  : (isRecording && !displayStats?.isStationary ? '#10B981' : '#059669')
               }}
-              className="border rounded-xl p-2 text-center transition-all"
+              className="border-2 rounded-xl p-2.5 text-center transition-all shadow-xs"
             >
-              <div className="flex items-center justify-center gap-1.5 mb-0.5">
-                <span className={`text-xs font-bold ${isOLED ? 'text-emerald-300' : 'text-emerald-800'}`}>🟢 移動時間</span>
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <span 
+                  style={{ color: isWhite ? '#15803D' : '#34D399' }} 
+                  className="text-xs font-black"
+                >
+                  🟢 移動時間
+                </span>
                 {isRecording && !displayStats?.isStationary && (
                   <span className="px-1.5 py-0.5 bg-emerald-600 text-white text-[10px] font-mono rounded font-black animate-pulse flex items-center gap-1 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -854,7 +864,10 @@ export default function AutomotiveClusterDashboard({
                   </span>
                 )}
               </div>
-              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-emerald-400' : 'text-emerald-900'}`}>
+              <strong 
+                style={{ color: isWhite ? '#14532D' : '#FFFFFF' }}
+                className="text-base sm:text-lg font-mono font-black block truncate tracking-tight"
+              >
                 {displayStats?.movingTimeFormatted || '00:00:00'}
               </strong>
             </div>
@@ -863,19 +876,20 @@ export default function AutomotiveClusterDashboard({
               style={{ 
                 backgroundColor: isWhite 
                   ? (isRecording && displayStats?.isStationary ? '#FEF3C7' : '#FFFBEB') 
-                  : isOLED 
-                    ? '#451A03' 
-                    : 'rgba(120, 53, 15, 0.4)', 
+                  : '#000000', 
                 borderColor: isWhite 
                   ? (isRecording && displayStats?.isStationary ? '#F59E0B' : '#FDE68A') 
-                  : isOLED 
-                    ? '#92400E' 
-                    : 'rgba(245, 158, 11, 0.3)' 
+                  : (isRecording && displayStats?.isStationary ? '#F59E0B' : '#D97706')
               }}
-              className="border rounded-xl p-2 text-center transition-all shadow-sm"
+              className="border-2 rounded-xl p-2.5 text-center transition-all shadow-xs"
             >
-              <div className="flex items-center justify-center gap-1.5 mb-0.5">
-                <span className={`text-xs font-bold ${isOLED ? 'text-amber-300' : 'text-amber-800'}`}>⏸️ 休息停頓</span>
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <span 
+                  style={{ color: isWhite ? '#B45309' : '#FBBF24' }} 
+                  className="text-xs font-black"
+                >
+                  ⏸️ 休息停頓
+                </span>
                 {isRecording && displayStats?.isStationary && (
                   <span className="px-1.5 py-0.5 bg-amber-500 text-white text-[10px] font-mono rounded font-black animate-pulse flex items-center gap-1 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -883,7 +897,10 @@ export default function AutomotiveClusterDashboard({
                   </span>
                 )}
               </div>
-              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-amber-400' : 'text-amber-900'}`}>
+              <strong 
+                style={{ color: isWhite ? '#78350F' : '#FDE68A' }}
+                className="text-base sm:text-lg font-mono font-black block truncate tracking-tight"
+              >
                 {displayStats?.stoppedTimeFormatted || '00:00:00'}
               </strong>
             </div>
@@ -947,52 +964,76 @@ export default function AutomotiveClusterDashboard({
                 <span className="text-base">⛰️</span>
                 <span>當前海拔高度</span>
               </span>
-              <span style={{ color: isOLED ? '#38BDF8' : '#1D4ED8' }} className="font-mono text-[11px] font-bold">
+              <span 
+                style={{ color: isWhite ? '#1D4ED8' : '#38BDF8' }} 
+                className="font-mono text-[11px] font-bold"
+              >
                 ALTIMETER
               </span>
             </div>
 
             {/* GIANT ALTITUDE DISPLAY (人眼秒看 - 支援飛機萬米高空) */}
-            <div className={`text-3xl sm:text-4xl font-mono font-black tracking-tight leading-none ${isOLED ? 'text-sky-400' : 'text-blue-900'} my-1 flex items-baseline gap-1`}>
+            <div 
+              style={{ color: isWhite ? '#1E40AF' : '#38BDF8' }}
+              className="text-3xl sm:text-4xl font-mono font-black tracking-tight leading-none my-1 flex items-baseline gap-1.5"
+            >
               <span>{displayStats?.currentElevation !== null ? Number(displayStats.currentElevation).toLocaleString() : '--'}</span>
-              <span style={{ color: themeStyles.textColorSecondary }} className="text-base font-bold font-mono">公尺 (m)</span>
+              <span style={{ color: themeStyles.textColorSecondary }} className="text-sm sm:text-base font-bold font-mono">公尺 (m)</span>
             </div>
           </div>
 
           {/* Vertical Gain & Loss Telemetry */}
-          <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'}`}>
+          <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isWhite ? 'border-slate-100' : 'border-zinc-800'}`}>
+            {/* 總爬升 (Ascent) */}
             <div 
               style={{ 
-                backgroundColor: isWhite ? '#EFF6FF' : isOLED ? '#1E1B4B' : 'rgba(30, 58, 138, 0.4)', 
-                borderColor: isWhite ? '#BFDBFE' : isOLED ? '#3730A3' : 'rgba(59, 130, 246, 0.3)' 
+                backgroundColor: isWhite ? '#FFF1F2' : '#000000', 
+                borderColor: isWhite ? '#FECDD3' : '#E11D48' 
               }}
-              className="border rounded-xl p-2 text-center"
+              className="border-2 rounded-xl p-2.5 text-center shadow-xs"
             >
-              <span className={`text-xs font-bold block mb-0.5 ${isOLED ? 'text-indigo-300' : 'text-blue-800'}`}>▲ 總爬升</span>
-              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-indigo-200' : 'text-blue-900'}`}>
+              <span 
+                style={{ color: isWhite ? '#BE123C' : '#FB7185' }} 
+                className="text-xs font-black block mb-0.5"
+              >
+                ▲ 總爬升
+              </span>
+              <strong 
+                style={{ color: isWhite ? '#9F1239' : '#FDA4AF' }}
+                className="text-base sm:text-lg font-mono font-black block truncate tracking-tight"
+              >
                 +{Number(displayStats?.totalAscentM || 0).toLocaleString()} m
               </strong>
             </div>
 
+            {/* 總下降 (Descent) */}
             <div 
               style={{ 
-                backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#064E3B' : 'rgba(30, 41, 59, 0.4)', 
-                borderColor: isWhite ? '#E2E8F0' : isOLED ? '#065F46' : 'rgba(148, 163, 184, 0.3)' 
+                backgroundColor: isWhite ? '#F0FDFA' : '#000000', 
+                borderColor: isWhite ? '#CCFBF1' : '#0D9488' 
               }}
-              className="border rounded-xl p-2 text-center"
+              className="border-2 rounded-xl p-2.5 text-center shadow-xs"
             >
-              <span className={`text-xs font-bold block mb-0.5 ${isOLED ? 'text-emerald-300' : 'text-slate-700'}`}>▼ 總下降</span>
-              <strong className={`text-sm sm:text-base font-mono font-black block truncate ${isOLED ? 'text-emerald-200' : 'text-slate-900'}`}>
+              <span 
+                style={{ color: isWhite ? '#0F766E' : '#2DD4BF' }} 
+                className="text-xs font-black block mb-0.5"
+              >
+                ▼ 總下降
+              </span>
+              <strong 
+                style={{ color: isWhite ? '#115E59' : '#5EEAD4' }}
+                className="text-base sm:text-lg font-mono font-black block truncate tracking-tight"
+              >
                 -{Number(displayStats?.totalDescentM || 0).toLocaleString()} m
               </strong>
             </div>
           </div>
 
           {/* Min / Max Elevation Range */}
-          <div className={`pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'} flex items-center justify-between text-xs font-mono`}>
+          <div className={`pt-2 border-t ${isWhite ? 'border-slate-100' : 'border-zinc-800'} flex items-center justify-between text-xs font-mono`}>
             <span style={{ color: themeStyles.textColorSecondary }} className="font-bold">峰谷跨距:</span>
             <span style={{ color: themeStyles.textColorPrimary }} className="font-bold">
-              最低 <strong className={isOLED ? 'text-sky-400 font-bold' : 'text-blue-700'}>{displayStats?.minElevationM ? `${Number(displayStats.minElevationM).toLocaleString()}m` : '--'}</strong> ~ 最高 <strong className={isOLED ? 'text-rose-400 font-bold' : 'text-rose-700'}>{displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : '--'}</strong>
+              最低 <strong style={{ color: isWhite ? '#0284C7' : '#38BDF8' }} className="font-black">{displayStats?.minElevationM ? `${Number(displayStats.minElevationM).toLocaleString()}m` : '--'}</strong> ~ 最高 <strong style={{ color: isWhite ? '#E11D48' : '#FB7185' }} className="font-black">{displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : '--'}</strong>
             </span>
           </div>
         </div>
