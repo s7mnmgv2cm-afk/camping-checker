@@ -46,7 +46,9 @@ export default function CampsiteGPXTrackerModal({
     isSilentHikingMode = false,
     setIsSilentHikingMode,
     setIsUiSuspended,
-    syncUiFromRefs
+    syncUiFromRefs,
+    gpsPollingMode = 'polling_20s',
+    setGpsPollingMode
   } = gpxTracker || {};
 
   const [activeTab, setActiveTab] = useState('record'); // 'record' | 'history' | 'import'
@@ -697,8 +699,8 @@ export default function CampsiteGPXTrackerModal({
                     </div>
                   </div>
 
-                  {/* Track Name Customization */}
-                  <div className={`mt-3 pt-3 border-t space-y-1.5 ${isOled ? 'border-zinc-800' : 'border-slate-100'}`}>
+                  {/* Track Name Customization & GPS Duty-Cycle Polling Selector */}
+                  <div className={`mt-3 pt-3 border-t space-y-2 ${isOled ? 'border-zinc-800' : 'border-slate-100'}`}>
                     <div className="flex items-center gap-2">
                       <span className={`text-xs font-bold shrink-0 ${isOled ? 'text-zinc-300' : 'text-slate-700'}`}>
                         🏷️ 航跡標題：
@@ -716,6 +718,43 @@ export default function CampsiteGPXTrackerModal({
                         className="flex-1 px-3 py-1.5 text-xs font-bold rounded-xl border focus:outline-none focus:border-emerald-500 transition-colors"
                       />
                     </div>
+
+                    {/* 🛰️ GPS 晶片取樣模式切換：20 秒間歇輪詢省電 (預設) vs 1 秒連續追蹤 */}
+                    {typeof setGpsPollingMode === 'function' && (
+                      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+                        <span className={`text-xs font-bold flex items-center gap-1 ${isOled ? 'text-zinc-300' : 'text-slate-700'}`}>
+                          <span>🛰️ GPS 晶片喚醒頻率：</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setGpsPollingMode('polling_20s')}
+                            style={{
+                              backgroundColor: gpsPollingMode === 'polling_20s' ? '#059669' : (isOled ? '#18181B' : '#F1F5F9'),
+                              color: gpsPollingMode === 'polling_20s' ? '#FFFFFF' : (isOled ? '#A1A1AA' : '#475569'),
+                              borderColor: gpsPollingMode === 'polling_20s' ? '#10B981' : (isOled ? '#27272A' : '#CBD5E1')
+                            }}
+                            className="px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer active:scale-95"
+                            title="每隔 20 秒呼叫一次 getCurrentPosition 單點定位並立即寫入離線快取，讓 GPS 晶片在空檔進入休眠大幅省電"
+                          >
+                            🚶 步行省電輪詢 (每 20 秒 · 晶片休眠)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGpsPollingMode('continuous_1s')}
+                            style={{
+                              backgroundColor: gpsPollingMode === 'continuous_1s' ? '#2563EB' : (isOled ? '#18181B' : '#F1F5F9'),
+                              color: gpsPollingMode === 'continuous_1s' ? '#FFFFFF' : (isOled ? '#A1A1AA' : '#475569'),
+                              borderColor: gpsPollingMode === 'continuous_1s' ? '#3B82F6' : (isOled ? '#27272A' : '#CBD5E1')
+                            }}
+                            className="px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer active:scale-95"
+                            title="使用 watchPosition 每秒連續定位，適合單車/開車或即時觀看時速表指針"
+                          >
+                            ⚡ 高頻連續 (每秒 1 次)
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className={`flex items-center gap-1 text-[11px] ${isOled ? 'text-zinc-500' : 'text-slate-500'}`}>
                       <span>💡</span>
                       <span>存檔於手機本機離線空間；</span>
