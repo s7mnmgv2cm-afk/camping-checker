@@ -1,6 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Fjalla+One&family=Michroma&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.font-michroma,
+.font-cluster-number {
+  font-family: 'Michroma', 'Eurostile Extended', 'Microgramma', -apple-system, sans-serif !important;
+  letter-spacing: 0.04em;
+}
+
+.font-fjalla {
+  font-family: 'Fjalla One', 'DIN Alternate', 'DIN Next LT Pro', -apple-system, sans-serif !important;
+  letter-spacing: 0.03em;
+}
 
 /* -------------------------------------------------- */
 /* 1. 全域網頁基礎樣式                                 */

@@ -23,6 +23,11 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="zh-TW">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Fjalla+One&family=Michroma&display=swap" rel="stylesheet" />
+      </head>
       <body style={{ margin: 0, padding: 0, backgroundColor: '#f4f6f8' }}>
         {children}
       </body>
