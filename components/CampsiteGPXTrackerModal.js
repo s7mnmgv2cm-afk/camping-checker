@@ -605,7 +605,7 @@ export default function CampsiteGPXTrackerModal({
                       <p className={`text-xs ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
                         {isRecording 
                           ? '已啟動高精度 GPS 航跡收錄。放口袋健行時可點「🌙 口袋省電」享 0 耗電與防休眠！'
-                          : '切換為 ON 即可隨身記錄您在步道、營地周邊的實際行走足跡。'}
+                          : '切換為 ON 即可隨身記錄您的實際行走足跡。'}
                       </p>
                     </div>
 
@@ -682,7 +682,7 @@ export default function CampsiteGPXTrackerModal({
                     </div>
                     <div className={`flex items-center gap-1 text-[11px] ${isOled ? 'text-zinc-500' : 'text-slate-500'}`}>
                       <span>💡</span>
-                      <span>存檔於手機本機離線空間；若標題重複將自動編為「<strong>{trackName ? `${trackName.replace(/\s*\(第\s*\d+\s*段\)$/, '')} (第 2 段)` : '同名 (第 2 段)'}</strong>」，絕不覆蓋舊檔案！</span>
+                      <span>存檔於手機本機離線空間；</span>
                     </div>
                   </div>
                 </div>
@@ -830,7 +830,7 @@ export default function CampsiteGPXTrackerModal({
                     </div>
                   ) : (
                     <p className={`text-[11px] text-center py-2 ${isOled ? 'text-zinc-500' : 'text-slate-500'}`}>
-                      尚無打卡點。在行走時可隨時記錄岔路、觀景台、水源或營區地標。
+                      尚無打卡點。在行走時可隨時記錄地標。
                     </p>
                   )}
                 </div>
@@ -886,8 +886,8 @@ export default function CampsiteGPXTrackerModal({
                     title="免裝 App，一鍵在 gpx.studio 開啟完整衛星/等高線/3D高度分析"
                   >
                     <span className="text-base">🌐</span>
-                    <span>一鍵在 gpx.studio 線上檢視 (衛星/等高線/坡度) ↗</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-white/25 text-[10px] font-mono font-bold">免裝 App</span>
+                    <span> gpx.studio 線上檢視 ↗ </span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-white/25 text-[10px] font-mono font-bold">No App</span>
                   </button>
 
                   {/* 🗺️ 匯入至 Google 我的地圖 */}
@@ -903,7 +903,7 @@ export default function CampsiteGPXTrackerModal({
                     className="w-full py-2 px-4 rounded-xl font-bold text-xs border shadow-xs transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer hover:opacity-90"
                   >
                     <span>🗺️</span>
-                    <span>備用方案：匯入至 Google 我的地圖 (Google My Maps) ↗</span>
+                    <span>備用方案：匯入至 Google My Maps ↗ (Need PC)</span>
                   </button>
 
                   {/* Reset Track Button */}
