@@ -413,7 +413,7 @@ export default function AutomotiveClusterDashboard({
         fontWeight="900" 
         letterSpacing="0.5"
       >
-        {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 步道巡航均速' : '即時行走速度'))}
+        {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 L: average' : '即時行走速度'))}
       </text>
 
       {/* Speed Needle Pointer */}

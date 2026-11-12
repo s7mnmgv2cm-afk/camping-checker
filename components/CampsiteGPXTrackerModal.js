@@ -371,7 +371,7 @@ export default function CampsiteGPXTrackerModal({
                   </span>
                 </div>
                 <p className={`text-xs mt-0.5 font-mono ${isOled ? 'text-zinc-400' : 'text-slate-500'}`}>
-                  精確記錄 ON/OFF 航線 · 離線手機存檔 · 支援別人的 GPX
+                  GPX tracker mode
                 </p>
               </div>
             </div>
