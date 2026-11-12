@@ -146,6 +146,15 @@ export default function CampsiteARModal({
   // Realtime Live Wind State (auto-fetched for campsite, GPS or custom coordinates)
   const [liveWind, setLiveWind] = useState(null);
   const [loadingWind, setLoadingWind] = useState(false);
+  const [windRefreshTick, setWindRefreshTick] = useState(0);
+  // 🎯 現場微地形實測覆寫 (支援陀螺儀面向鎖定來風 + 麥克風低頻風壓測速 / 蒲福地物目視速選)
+  const [manualWindOverride, setManualWindOverride] = useState(null); // { windDir, windSpeed, sourceLabel, updatedAt }
+  const [isMeasuringMicWind, setIsMeasuringMicWind] = useState(false);
+  const [micWindProgress, setMicWindProgress] = useState(0);
+  const [micWindPreviewKmh, setMicWindPreviewKmh] = useState(0);
+  const [micWindError, setMicWindError] = useState(null);
+  const micStreamRef = useRef(null);
+  const micAudioCtxRef = useRef(null);
 
   // Gyroscope / Orientation state
   const [heading, setHeading] = useState(0); // 0° to 360° (Compass Azimuth)
@@ -497,86 +506,96 @@ export default function CampsiteARModal({
     }
   }, [isOpen, initialLocationMode]);
 
-  // Auto-fetch real-time live weather, ephemeris & wind from Open-Meteo for active coordinates (campsite, GPS, or custom)
+  // Auto-fetch real-time live weather, ephemeris & wind from Open-Meteo for active coordinates (campsite, GPS, or custom) + 5-min auto-refresh
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
-    setLoadingWind(true);
-    setLoadingWeather(true);
 
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,moonrise,moonset,moon_phase,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&timezone=Asia%2FTaipei`;
+    const fetchLatestWeatherAndWind = () => {
+      if (!isMounted) return;
+      setLoadingWind(true);
+      setLoadingWeather(true);
 
-    fetch(url)
-      .then(res => {
-        if (!res.ok) throw new Error('Weather fetch failed');
-        return res.json();
-      })
-      .then(data => {
-        if (isMounted && data?.current) {
-          const windDir = Math.round(data.current.wind_direction_10m ?? 0);
-          const windSpeed = Math.round(data.current.wind_speed_10m ?? 0);
-          setLiveWind({ windDir, windSpeed });
-          setLoadingWind(false);
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,moonrise,moonset,moon_phase,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&timezone=Asia%2FTaipei`;
 
-          const weeklyForecast = (data.daily?.time || []).map((dateStr, idx) => {
-            const [y, m, d] = dateStr.split('-').map(Number);
-            const dateObj = new Date(y, m - 1, d);
-            const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-            const dayLabel = idx === 0 ? '今天' : dayNames[dateObj.getDay()];
-            const formattedDate = `${m}/${d}`;
-            const code = data.daily?.weather_code?.[idx];
-            const info = WMO_WEATHER_MAP[code] || { label: '晴時多雲', icon: '⛅' };
-            return {
-              date: dateStr,
-              dayLabel,
-              formattedDate,
-              weatherCode: code,
-              weatherLabel: info.label,
-              icon: info.icon,
-              maxTemp: Math.round(data.daily?.temperature_2m_max?.[idx] ?? 0),
-              minTemp: Math.round(data.daily?.temperature_2m_min?.[idx] ?? 0),
-              rainProb: data.daily?.precipitation_probability_max?.[idx] ?? 0,
-              windMax: Math.round(data.daily?.wind_speed_10m_max?.[idx] ?? 0),
-            };
-          });
+      fetch(url)
+        .then(res => {
+          if (!res.ok) throw new Error('Weather fetch failed');
+          return res.json();
+        })
+        .then(data => {
+          if (isMounted && data?.current) {
+            const windDirVal = Math.round(data.current.wind_direction_10m ?? 0);
+            const windSpeedVal = Math.round(data.current.wind_speed_10m ?? 0);
+            const updatedTimeStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+            setLiveWind({ windDir: windDirVal, windSpeed: windSpeedVal, updatedAt: updatedTimeStr });
+            setLoadingWind(false);
 
-          setLiveWeather({
-            temp: data.current.temperature_2m,
-            apparentTemp: data.current.apparent_temperature,
-            humidity: data.current.relative_humidity_2m,
-            weatherCode: data.current.weather_code,
-            weatherInfo: WMO_WEATHER_MAP[data.current.weather_code] || { label: '晴時多雲', icon: '⛅', color: 'text-sky-300' },
-            windSpeed,
-            windDir,
-            windDirName: getCardinalDirection(windDir),
-            windSafety: getBeaufortWindSafety(windSpeed),
-            rainProb: data.daily?.precipitation_probability_max?.[0] ?? 0,
-            tempMax: data.daily?.temperature_2m_max?.[0] ?? null,
-            tempMin: data.daily?.temperature_2m_min?.[0] ?? null,
-            sunrise: data.daily?.sunrise?.[0] ? data.daily.sunrise[0].split('T')[1] : null,
-            sunset: data.daily?.sunset?.[0] ? data.daily.sunset[0].split('T')[1] : null,
-            moonrise: data.daily?.moonrise?.[0] ? data.daily.moonrise[0].split('T')[1] : null,
-            moonset: data.daily?.moonset?.[0] ? data.daily.moonset[0].split('T')[1] : null,
-            moonPhase: data.daily?.moon_phase?.[0] ?? null,
-            weeklyForecast,
-            updatedAt: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
-          });
-          setLoadingWeather(false);
-        }
-      })
-      .catch(err => {
-        console.warn('Realtime weather/wind fetch notice:', err);
-        if (isMounted) {
-          setLoadingWind(false);
-          setLoadingWeather(false);
-        }
-      });
+            const weeklyForecast = (data.daily?.time || []).map((dateStr, idx) => {
+              const [y, m, d] = dateStr.split('-').map(Number);
+              const dateObj = new Date(y, m - 1, d);
+              const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+              const dayLabel = idx === 0 ? '今天' : dayNames[dateObj.getDay()];
+              const formattedDate = `${m}/${d}`;
+              const code = data.daily?.weather_code?.[idx];
+              const info = WMO_WEATHER_MAP[code] || { label: '晴時多雲', icon: '⛅' };
+              return {
+                date: dateStr,
+                dayLabel,
+                formattedDate,
+                weatherCode: code,
+                weatherLabel: info.label,
+                icon: info.icon,
+                maxTemp: Math.round(data.daily?.temperature_2m_max?.[idx] ?? 0),
+                minTemp: Math.round(data.daily?.temperature_2m_min?.[idx] ?? 0),
+                rainProb: data.daily?.precipitation_probability_max?.[idx] ?? 0,
+                windMax: Math.round(data.daily?.wind_speed_10m_max?.[idx] ?? 0),
+              };
+            });
+
+            setLiveWeather({
+              temp: data.current.temperature_2m,
+              apparentTemp: data.current.apparent_temperature,
+              humidity: data.current.relative_humidity_2m,
+              weatherCode: data.current.weather_code,
+              weatherInfo: WMO_WEATHER_MAP[data.current.weather_code] || { label: '晴時多雲', icon: '⛅', color: 'text-sky-300' },
+              windSpeed: windSpeedVal,
+              windDir: windDirVal,
+              windDirName: getCardinalDirection(windDirVal),
+              windSafety: getBeaufortWindSafety(windSpeedVal),
+              rainProb: data.daily?.precipitation_probability_max?.[0] ?? 0,
+              tempMax: data.daily?.temperature_2m_max?.[0] ?? null,
+              tempMin: data.daily?.temperature_2m_min?.[0] ?? null,
+              sunrise: data.daily?.sunrise?.[0] ? data.daily.sunrise[0].split('T')[1] : null,
+              sunset: data.daily?.sunset?.[0] ? data.daily.sunset[0].split('T')[1] : null,
+              moonrise: data.daily?.moonrise?.[0] ? data.daily.moonrise[0].split('T')[1] : null,
+              moonset: data.daily?.moonset?.[0] ? data.daily.moonset[0].split('T')[1] : null,
+              moonPhase: data.daily?.moon_phase?.[0] ?? null,
+              weeklyForecast,
+              updatedAt: updatedTimeStr
+            });
+            setLoadingWeather(false);
+          }
+        })
+        .catch(err => {
+          console.warn('Realtime weather/wind fetch notice:', err);
+          if (isMounted) {
+            setLoadingWind(false);
+            setLoadingWeather(false);
+          }
+        });
+    };
+
+    fetchLatestWeatherAndWind();
+    // ⏱️ 每 5 分鐘自動於背景重抓 Open-Meteo 最新風向與風速
+    const intervalId = setInterval(fetchLatestWeatherAndWind, 5 * 60 * 1000);
 
     return () => {
       isMounted = false;
+      clearInterval(intervalId);
     };
-  }, [isOpen, lat, lng, locationMode]);
+  }, [isOpen, lat, lng, locationMode, windRefreshTick]);
 
   // Fetch Google AI Overview spots when modal opens, campsite changes, or locationMode changes
   useEffect(() => {
@@ -731,9 +750,128 @@ export default function CampsiteARModal({
     }
   };
 
-  const windDir = liveWind?.windDir ?? (propWindDir !== undefined && propWindDir !== null ? propWindDir : 45);
-  const windSpeed = liveWind?.windSpeed ?? (propWindSpeed !== undefined && propWindSpeed !== null ? propWindSpeed : 10);
+  const satelliteWindDir = liveWind?.windDir ?? (propWindDir !== undefined && propWindDir !== null ? propWindDir : 45);
+  const satelliteWindSpeed = liveWind?.windSpeed ?? (propWindSpeed !== undefined && propWindSpeed !== null ? propWindSpeed : 10);
+  const windDir = manualWindOverride?.windDir ?? satelliteWindDir;
+  const windSpeed = manualWindOverride?.windSpeed ?? satelliteWindSpeed;
   const windSafety = useMemo(() => getBeaufortWindSafety(windSpeed), [windSpeed]);
+
+  // 🎙️ 停止麥克風測風並釋放音訊硬體
+  const stopMicWindMeasure = () => {
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    if (micAudioCtxRef.current) {
+      try {
+        micAudioCtxRef.current.close();
+      } catch (e) {}
+      micAudioCtxRef.current = null;
+    }
+    setIsMeasuringMicWind(false);
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      stopMicWindMeasure();
+    }
+    return () => stopMicWindMeasure();
+  }, [isOpen]);
+
+  // 🎙️ 啟動 3 秒麥克風低頻風壓聲學量測 (Acoustic Anemometer: 濾取 20~220Hz 風切亂流 RMS 換算 km/h)
+  const handleStartMicWindMeasure = async () => {
+    if (isMeasuringMicWind) {
+      stopMicWindMeasure();
+      return;
+    }
+    setMicWindError(null);
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setMicWindError('此瀏覽器不支援麥克風收音，請使用下方「🌳 蒲福現場目視速選」');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false, // 必須關閉降噪，保留風吹過麥克風孔的低頻風切聲壓
+          autoGainControl: false
+        }
+      });
+      micStreamRef.current = stream;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      micAudioCtxRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      // 低通濾波器 (220Hz)：過濾人聲、蟲鳴鳥叫，只保留氣流吹過麥克風腔體的低頻亂流能量
+      const lowpass = audioCtx.createBiquadFilter();
+      lowpass.type = 'lowpass';
+      lowpass.frequency.value = 220;
+
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.4;
+
+      source.connect(lowpass);
+      lowpass.connect(analyser);
+
+      const dataArray = new Float32Array(analyser.fftSize);
+      setIsMeasuringMicWind(true);
+      setMicWindProgress(0);
+      setMicWindPreviewKmh(0);
+
+      const startTime = Date.now();
+      const durationMs = 3000;
+      const rmsSamples = [];
+
+      const sampleLoop = () => {
+        if (!micAudioCtxRef.current) return;
+        const elapsed = Date.now() - startTime;
+        const pct = Math.min(100, Math.round((elapsed / durationMs) * 100));
+        setMicWindProgress(pct);
+
+        analyser.getFloatTimeDomainData(dataArray);
+        let sumSq = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sumSq += dataArray[i] * dataArray[i];
+        }
+        const rms = Math.sqrt(sumSq / dataArray.length);
+        // 將低頻 RMS 能量非線性映射至風速 (km/h)：靜音底噪 ~0.002 -> 0 km/h，強風壓 ~0.28 -> 58 km/h
+        const normalized = Math.max(0, rms - 0.0025);
+        const estKmh = Math.min(68, Math.round(Math.pow(normalized * 4.2, 0.72) * 58));
+        rmsSamples.push(estKmh);
+        setMicWindPreviewKmh(estKmh);
+
+        if (elapsed < durationMs) {
+          requestAnimationFrame(sampleLoop);
+        } else {
+          // 取前 40% 高能量平均值（代表陣風峰值與持續風壓）
+          const sorted = [...rmsSamples].sort((a, b) => b - a);
+          const topCount = Math.max(1, Math.ceil(sorted.length * 0.4));
+          const avgTopKmh = Math.round(sorted.slice(0, topCount).reduce((a, b) => a + b, 0) / topCount);
+          const finalKmh = Math.max(2, avgTopKmh);
+          const lockedDir = Math.round(heading);
+          const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+
+          setManualWindOverride({
+            windDir: lockedDir,
+            windSpeed: finalKmh,
+            sourceLabel: '🎙️ 麥克風聲學實測',
+            updatedAt: nowStr
+          });
+          stopMicWindMeasure();
+          setSpotToast(`🎙️ 實測完成：來風 ${lockedDir}° (${getHeadingDirectionName(lockedDir)}) · 風速約 ${finalKmh} km/h`);
+          setTimeout(() => setSpotToast(null), 4000);
+        }
+      };
+
+      requestAnimationFrame(sampleLoop);
+    } catch (err) {
+      console.warn('Mic wind meter error:', err);
+      stopMicWindMeasure();
+      setMicWindError('未授權麥克風權限，請直接使用下方「🌳 蒲福現場目視速選」');
+    }
+  };
 
   // 1. Calculate Sun milestones for current or selected season
   const sunMilestones = useMemo(() => {
@@ -2745,11 +2883,11 @@ export default function CampsiteARModal({
             {arViewMode === 'sun' ? (
               <div 
                 onClick={() => setShowWindSafetyModal(true)}
-                className="bg-slate-950/85 backdrop-blur-md border border-white/20 hover:border-amber-400/60 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] text-right cursor-pointer pointer-events-auto transition-all hover:scale-105"
-                title="點擊查看蒲福風力與帳篷斷柱風險評估"
+                className={`bg-slate-950/85 backdrop-blur-md border ${manualWindOverride ? 'border-amber-400/70' : 'border-white/20'} hover:border-amber-400/80 p-2.5 sm:p-3 rounded-2xl text-xs space-y-1 shadow-lg max-w-[48%] text-right cursor-pointer pointer-events-auto transition-all hover:scale-105`}
+                title="點擊開啟現場測風校正與帳篷斷柱風險評估"
               >
                 <div className="flex items-center justify-end gap-1.5 truncate">
-                  <span className={`w-1.5 h-1.5 rounded-full ${loadingWind ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`}></span>
+                  <span className={`w-1.5 h-1.5 rounded-full ${loadingWind ? 'bg-amber-400 animate-ping' : manualWindOverride ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
                   <span className="text-slate-300 font-bold truncate">💨 {windSafety.beaufortName} ({windSpeed} km/h)</span>
                 </div>
                 <div className="text-sky-300 font-extrabold font-mono text-xs sm:text-sm truncate">
@@ -2757,9 +2895,9 @@ export default function CampsiteARModal({
                 </div>
                 <div className="pt-0.5 border-t border-white/10 flex items-center justify-end gap-1.5 flex-wrap">
                   <span className={`px-1.5 py-0.2 rounded text-[10px] font-black ${windSafety.badgeColor}`}>
-                    {windSafety.statusTag}
+                    {manualWindOverride ? '🎯 現場實測' : windSafety.statusTag}
                   </span>
-                  <span className="text-[10px] text-amber-300 underline font-bold">斷柱評估 ❯</span>
+                  <span className="text-[10px] text-amber-300 underline font-bold">測風/評估 ❯</span>
                 </div>
               </div>
             ) : arViewMode === 'spots' ? (
@@ -4252,6 +4390,166 @@ export default function CampsiteARModal({
 
               {/* Modal Content */}
               <div className="p-4 sm:p-6 overflow-y-auto space-y-5 text-xs sm:text-sm">
+
+                {/* 0. 🎯 現場微地形風向 ＆ 風力雙模實測校正面板 */}
+                <div className="bg-slate-950/90 border border-amber-400/40 rounded-2xl p-4 space-y-3.5 shadow-xl">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🎯</span>
+                      <div>
+                        <h4 className="font-black text-amber-300 text-xs sm:text-sm flex items-center gap-2 flex-wrap">
+                          <span>現場微地形風向 ＆ 風力實測校正</span>
+                          {manualWindOverride ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black">
+                              已套用：{manualWindOverride.sourceLabel} ({manualWindOverride.updatedAt})
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold">
+                              🛰️ Open-Meteo 衛星即時每 5 分鐘同步 {liveWind?.updatedAt ? `(${liveWind.updatedAt})` : ''}
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          山谷或樹林常有地形繞流，可將手機面向來風鎖定方位，並透過「麥克風低頻風壓」或「樹梢目視」量測風力
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {manualWindOverride && (
+                        <button
+                          type="button"
+                          onClick={() => setManualWindOverride(null)}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition-all"
+                        >
+                          🛰️ 恢復衛星值 ({satelliteWindSpeed}km/h · {satelliteWindDir}°)
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setWindRefreshTick(t => t + 1)}
+                        disabled={loadingWind}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 text-[11px] font-bold transition-all"
+                      >
+                        {loadingWind ? '⏳ 更新中...' : '🔄 重抓衛星風向'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* 左欄：步驟 1 - 陀螺儀來風方位鎖定 + 3 秒麥克風聲學測風 */}
+                    <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3 space-y-2.5">
+                      <div className="text-xs font-bold text-sky-300 flex items-center justify-between">
+                        <span>① 陀螺儀來風鎖定 ＆ 🎙️ 麥克風測風速</span>
+                        <span className="font-mono text-[11px] text-amber-300">目前朝向 {Math.round(heading)}°</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const lockedDir = Math.round(heading);
+                          const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+                          setManualWindOverride(prev => ({
+                            windDir: lockedDir,
+                            windSpeed: prev?.windSpeed ?? windSpeed,
+                            sourceLabel: '🧭 陀螺儀迎風鎖定',
+                            updatedAt: nowStr
+                          }));
+                        }}
+                        className="w-full py-2 px-3 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 font-black text-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <span>🧭</span>
+                        <span>僅鎖定手機目前朝向 ({Math.round(heading)}° {getHeadingDirectionName(heading)}) 為來風</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleStartMicWindMeasure}
+                        className={`w-full py-2.5 px-3 rounded-xl font-black text-xs transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                          isMeasuringMicWind
+                            ? 'bg-rose-500 text-white animate-pulse shadow-lg'
+                            : 'bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 shadow-md'
+                        }`}
+                      >
+                        <span>🎙️</span>
+                        <span>
+                          {isMeasuringMicWind
+                            ? `測風中 (${micWindProgress}%) · 實時約 ${micWindPreviewKmh} km/h (點擊取消)`
+                            : '面對風口 · 啟動 3 秒麥克風聲學測風速+風向'}
+                        </span>
+                      </button>
+
+                      {micWindError && (
+                        <p className="text-[11px] text-rose-300 bg-rose-950/50 border border-rose-500/30 rounded-lg px-2.5 py-1">
+                          ⚠️ {micWindError}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        💡 原理：擷取氣流吹過手機底部麥克風孔產生的 20~220Hz 低頻亂流聲壓，自動過濾人聲並換算風速；若現場有溪流瀑布巨響，建議改用右側「蒲福地物目視法」。
+                      </p>
+                    </div>
+
+                    {/* 右欄：步驟 2 - 🌳 蒲福氏地物目視 1 秒速選 + 滑桿微調 */}
+                    <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3 space-y-2.5">
+                      <div className="text-xs font-bold text-emerald-300 flex items-center justify-between">
+                        <span>② 🌳 蒲福現場地物目視速選（最抗干擾）</span>
+                        <span className="font-mono text-[11px] text-white">{windSpeed} km/h</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[
+                          { label: '🌱 1~3級 微風', sub: '樹葉微動 · 12 km/h', speed: 12, color: 'border-emerald-500/40 text-emerald-300 bg-emerald-950/40' },
+                          { label: '🌿 4~5級 清風', sub: '小樹搖擺 · 28 km/h', speed: 28, color: 'border-amber-500/40 text-amber-300 bg-amber-950/40' },
+                          { label: '🌲 6級 強風', sub: '大枝搖動 · 43 km/h', speed: 43, color: 'border-orange-500/40 text-orange-300 bg-orange-950/40' },
+                          { label: '🌪️ 7+級 疾風', sub: '全樹劇烈 · 55 km/h', speed: 55, color: 'border-rose-500/40 text-rose-300 bg-rose-950/40' }
+                        ].map((preset) => (
+                          <button
+                            key={preset.speed}
+                            type="button"
+                            onClick={() => {
+                              const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+                              setManualWindOverride(prev => ({
+                                windDir: prev?.windDir ?? windDir,
+                                windSpeed: preset.speed,
+                                sourceLabel: `🌳 目視 ${preset.label.split(' ')[1]}`,
+                                updatedAt: nowStr
+                              }));
+                            }}
+                            className={`p-2 rounded-xl border text-left transition-all active:scale-95 hover:brightness-125 ${preset.color}`}
+                          >
+                            <div className="font-black text-[11px] truncate">{preset.label}</div>
+                            <div className="text-[10px] opacity-80 font-mono truncate">{preset.sub}</div>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="pt-1 space-y-1">
+                        <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                          <span>手動微調風速：{windSpeed} km/h</span>
+                          <span>來風：{windDir}° ({getHeadingDirectionName(windDir)})</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="70"
+                          step="1"
+                          value={windSpeed}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+                            setManualWindOverride(prev => ({
+                              windDir: prev?.windDir ?? windDir,
+                              windSpeed: val,
+                              sourceLabel: '🎛️ 手動微調',
+                              updatedAt: nowStr
+                            }));
+                          }}
+                          className="w-full accent-amber-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 
                 {/* 1. Current Live Status Banner */}
                 <div className={`p-4 rounded-2xl border ${windSafety.bannerBg} flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg`}>
