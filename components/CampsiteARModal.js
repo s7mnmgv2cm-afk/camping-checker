@@ -256,10 +256,20 @@ export default function CampsiteARModal({
 
   const toggleFullscreen = () => {
     if (typeof document === 'undefined') return;
+    const isNativeApp = typeof window !== 'undefined' && Boolean(window.__isCampingNativeApp || window.webkit?.messageHandlers?.arSensorHandler);
     const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
     const isStandalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || window.navigator?.standalone);
 
-    // 在 iOS Safari 上，系統限制一般網頁不能隱藏網址列，點擊時智慧彈出「加入主畫面」滿版指南
+    // 🍏 在 iOS 原生 App 或已加入主畫面的 PWA 中，本身即為 100% 無網址列全螢幕，點擊時直接切換沉浸式收合頂部與底部工具列！
+    if (isNativeApp || isStandalone) {
+      const next = !isFullscreen;
+      setIsFullscreen(next);
+      setIsHeaderCollapsed(next);
+      setIsBottomDeckCollapsed(next);
+      return;
+    }
+
+    // 在一般 iOS Safari 瀏覽器上，點擊時彈出「加入主畫面」滿版指南
     if (isIOS && !isStandalone) {
       setShowFullscreenGuide(true);
       return;
@@ -833,6 +843,9 @@ export default function CampsiteARModal({
       micStreamRef.current = stream;
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
       micAudioCtxRef.current = audioCtx;
 
       const source = audioCtx.createMediaStreamSource(stream);
@@ -1524,6 +1537,8 @@ export default function CampsiteARModal({
       }
     };
 
+    const hasNativeSensorBridge = typeof window !== 'undefined' && Boolean(window.webkit?.messageHandlers?.arSensorHandler);
+
     if (typeof window !== 'undefined') {
       window.addEventListener('nativeOrientationUpdate', handleNativeOrientation);
       // 通知 iOS 原生殼層啟動 CoreMotion 陀螺儀與 CLHeading 電子羅盤 (關閉 AR 時自動停止以省電)
@@ -1532,7 +1547,8 @@ export default function CampsiteARModal({
       } catch (err) {}
     }
 
-    if (typeof DeviceOrientationEvent !== 'undefined') {
+    // 若已在 iOS 原生 App 內由 CoreMotion + CLHeading (真北) 驅動，不再重複註冊 WebKit deviceorientation，避免雙重羅盤訊號互相打架
+    if (!hasNativeSensorBridge && typeof DeviceOrientationEvent !== 'undefined') {
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
           .then(res => {
@@ -1596,6 +1612,7 @@ export default function CampsiteARModal({
   return (
     <div 
       ref={modalRef}
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       className={`fixed inset-0 z-50 flex items-center justify-center p-0 ${effectiveLandscape ? 'sm:p-0' : 'sm:p-4'} bg-slate-950 sm:bg-slate-950/80 backdrop-blur-md overflow-hidden select-none w-screen h-screen h-[100dvh] max-h-[100dvh]`}
     >
       <div className={`relative w-full h-full h-[100dvh] max-h-[100dvh] ${effectiveLandscape ? 'sm:max-w-none sm:max-h-none sm:rounded-none' : 'sm:max-w-5xl sm:max-h-[94vh] sm:rounded-3xl sm:border sm:border-slate-700'} shadow-2xl flex flex-col overflow-hidden bg-slate-950 text-white animate-in fade-in zoom-in-95 duration-150`}>

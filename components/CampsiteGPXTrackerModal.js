@@ -805,7 +805,15 @@ export default function CampsiteGPXTrackerModal({
                         <span>要將手機放進褲子口袋或貼身背包嗎？</span>
                       </div>
                       <p className={`text-[11px] leading-relaxed ${isOled ? 'text-zinc-400' : 'text-slate-600'}`}>
-                        因手機瀏覽器限制，<strong>按實體電源鍵鎖屏或切換到背景會導致系統切斷網頁 GPS</strong>。放進口袋前請點下方<strong>「啟動口袋全黑防誤觸鎖」</strong>，即可全螢幕熄滅為 100% 純黑並鎖死觸控，大腿摩擦絕不誤觸離開網頁！
+                        {isNativeBridgeActive ? (
+                          <>
+                            🍏 <strong>iOS 原生背景定位已啟用：</strong>您可以直接<strong>按實體電源鍵鎖屏放入口袋或背包</strong>，系統會透過 CoreLocation 在背景持續記錄軌跡與時間；亦可點下方<strong>「啟動口袋全黑防誤觸鎖」</strong>保持螢幕待機。
+                          </>
+                        ) : (
+                          <>
+                            因手機瀏覽器限制，<strong>按實體電源鍵鎖屏或切換到背景會導致系統切斷網頁 GPS</strong>。放進口袋前請點下方<strong>「啟動口袋全黑防誤觸鎖」</strong>，即可全螢幕熄滅為 100% 純黑並鎖死觸控，大腿摩擦絕不誤觸離開網頁！
+                          </>
+                        )}
                       </p>
                       <button
                         type="button"
@@ -1335,7 +1343,7 @@ export default function CampsiteGPXTrackerModal({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".gpx,application/gpx+xml,text/xml"
+                    accept=".gpx,.xml,application/gpx+xml,text/xml,application/octet-stream,text/plain,*/*"
                     onChange={handleFileUpload}
                     className="hidden"
                     id="gpx-file-upload-input"
