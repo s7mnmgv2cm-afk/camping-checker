@@ -424,7 +424,7 @@ export default function CampsiteGPXTrackerModal({
                     ? 'bg-zinc-900 text-emerald-400 border-emerald-500/50 shadow-sm'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                 }`}
-                title="切換首頁純白 ⇄ OLED 極黑 (0 耗電)"
+                title="切換首頁純白 ⇄ OLED 極黑"
               >
                 <span>{isOled ? '🌙 OLED 極黑' : '☀️ 首頁純白'}</span>
               </button>

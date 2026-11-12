@@ -589,7 +589,7 @@ export default function AutomotiveClusterDashboard({
               style={{ color: isWhite ? (isRecording ? '#DC2626' : '#15803D') : themeStyles.textColorPrimary }}
               className="font-mono font-black text-xs tracking-wider uppercase"
             >
-              {isRecording ? 'GPS 記錄中 (REC)' : '儀表待機中 (READY)'}
+              {isRecording ? 'GPS Tracking' : 'Standby'}
             </span>
           </div>
 
