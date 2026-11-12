@@ -61,11 +61,14 @@ export default function CampsiteGPXTrackerModal({
   const [editTrackNameInput, setEditTrackNameInput] = useState('');
   const [scrubbedPoint, setScrubbedPoint] = useState(null); // 聯動高度圖與時速表紅針
   const [isPocketMode, setIsPocketMode] = useState(false); // 🌙 OLED 口袋暗屏省電防休眠模式
-  const [isPocketAwake, setIsPocketAwake] = useState(false); // 輕碰喚醒 6 秒微光 HUD，其餘時間 100% 全黑熄屏 (0 像素發光)
+  const [isPocketAwake, setIsPocketAwake] = useState(false); // 連點兩下喚醒 6 秒微光 HUD，其餘時間 100% 全黑熄屏 (0 像素發光)
+  const [pocketSingleTapHint, setPocketSingleTapHint] = useState(false); // 單擊時僅顯示極微光提示「請連點兩下」，防止口袋內大腿摩擦喚醒 HUD
   const [pocketAlwaysDim, setPocketAlwaysDim] = useState(false); // 是否切換為常駐微光
   const pocketAwakeTimeoutRef = useRef(null);
+  const pocketSingleTapTimeoutRef = useRef(null);
+  const lastPocketTapTimeRef = useRef(0);
 
-  // ⚡ 當視窗關閉或處於「口袋 100% 純黑熄屏」狀態時，自動暫停每秒 React State 畫面重繪 (0% GPU/DOM 負載)
+  // ⚡ 當視窗關閉或處於「口袋模式」時，自動暫停每秒 React State 畫面重繪 (0% GPU/DOM 負載)
   useEffect(() => {
     if (typeof setIsUiSuspended === 'function') {
       const shouldSuspend = !isOpen || (isPocketMode && !isPocketAwake && !pocketAlwaysDim);
@@ -215,8 +218,26 @@ export default function CampsiteGPXTrackerModal({
     }
   };
 
-  // 3. 口袋碰觸偵測（喚出 6 秒微光 HUD 預覽時間與滑軌，隨後自動回歸 100% 全黑暗屏）
+  // 3. 口袋碰觸偵測（防大腿摩擦誤喚醒：全黑狀態下需「連點兩下」才喚出 6 秒微光 HUD 與解鎖滑軌）
   const handlePocketScreenTap = () => {
+    const now = Date.now();
+    const timeSinceLastTap = now - lastPocketTapTimeRef.current;
+    lastPocketTapTimeRef.current = now;
+
+    // 若目前處於 100% 全黑熄屏，單次觸碰（例如口袋內大腿/布料摩擦）不喚醒 HUD，僅連點兩下 (<450ms) 才喚醒
+    if (!isPocketAwake && !pocketAlwaysDim && timeSinceLastTap > 450) {
+      setPocketSingleTapHint(true);
+      if (pocketSingleTapTimeoutRef.current) clearTimeout(pocketSingleTapTimeoutRef.current);
+      pocketSingleTapTimeoutRef.current = setTimeout(() => {
+        setPocketSingleTapHint(false);
+      }, 1800);
+      return;
+    }
+
+    setPocketSingleTapHint(false);
+    if (typeof syncUiFromRefs === 'function') {
+      syncUiFromRefs();
+    }
     setIsPocketAwake(true);
     setShowTouchHint(true);
     if (touchHintTimeoutRef.current) clearTimeout(touchHintTimeoutRef.current);
@@ -673,7 +694,7 @@ export default function CampsiteGPXTrackerModal({
                       backgroundColor: isOled ? '#000000' : '#F0FDF4',
                       borderColor: isOled ? '#065F46' : '#86EFAC'
                     }}
-                    className="p-5 rounded-3xl border-2 text-center space-y-3"
+                    className="p-5 rounded-3xl border-2 text-center space-y-3.5"
                   >
                     <div className="text-2xl">🌱</div>
                     <h4 className={`text-sm sm:text-base font-black ${isOled ? 'text-emerald-400' : 'text-emerald-900'}`}>
@@ -682,7 +703,34 @@ export default function CampsiteGPXTrackerModal({
                     <p className={`text-xs leading-relaxed max-w-md mx-auto ${isOled ? 'text-zinc-400' : 'text-emerald-800'}`}>
                       已完全卸載 SVG 指針儀表與高度剖面圖，並停止每秒畫面更新與硬碟連寫。手機僅以最低功耗在記憶體中收錄衛星座標點，爬完山按下上方 <strong>「切換為 OFF」</strong> 即會自動完整結算總里程、耗時與高度圖！
                     </p>
-                    <div className="flex items-center justify-center gap-2.5 pt-1">
+
+                    {/* 🔒 放進口袋防誤觸提示與一鍵鎖屏按鈕 */}
+                    <div
+                      style={{
+                        backgroundColor: isOled ? '#09090B' : '#FFFFFF',
+                        borderColor: isOled ? '#27272A' : '#BBF7D0'
+                      }}
+                      className="p-3.5 rounded-2xl border max-w-md mx-auto space-y-2.5 text-left"
+                    >
+                      <div className={`text-xs font-bold flex items-center gap-1.5 ${isOled ? 'text-amber-400' : 'text-amber-800'}`}>
+                        <span>👖</span>
+                        <span>要將手機放進褲子口袋或貼身背包嗎？</span>
+                      </div>
+                      <p className={`text-[11px] leading-relaxed ${isOled ? 'text-zinc-400' : 'text-slate-600'}`}>
+                        因手機瀏覽器限制，<strong>按實體電源鍵鎖屏或切換到背景會導致系統切斷網頁 GPS</strong>。放進口袋前請點下方<strong>「啟動口袋全黑防誤觸鎖」</strong>，即可全螢幕熄滅為 100% 純黑並鎖死觸控，大腿摩擦絕不誤觸離開網頁！
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsPocketMode(true)}
+                        style={{ backgroundColor: '#059669', color: '#FFFFFF' }}
+                        className="w-full py-2.5 px-4 rounded-xl text-xs font-black shadow-md hover:bg-emerald-700 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>🔒</span>
+                        <span>放進口袋：啟動全黑防誤觸鎖 (0 刷新 + 防大腿誤觸)</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-2.5 pt-1 flex-wrap">
                       {typeof syncUiFromRefs === 'function' && (
                         <button
                           type="button"
@@ -695,13 +743,13 @@ export default function CampsiteGPXTrackerModal({
                       <button
                         type="button"
                         onClick={() => setIsSilentHikingMode(false)}
-                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 cursor-pointer"
                       >
                         ⚡ 展開即時動態儀表板
                       </button>
                     </div>
                   </div>
-                ) : !(isPocketMode && !isPocketAwake && !pocketAlwaysDim) ? (
+                ) : !isPocketMode ? (
                   <>
                     {/* 🏎️ 頂級車廠數位儀表板 (Automotive Virtual Cockpit Cluster HUD) */}
                     <AutomotiveClusterDashboard
@@ -1541,17 +1589,18 @@ export default function CampsiteGPXTrackerModal({
         </div>
       )}
 
-      {/* 🌙 OLED 口袋暗屏極致省電模式 (消滅頂部白條 + 100% 熄屏 0 像素發光 + 觸碰喚出微光 HUD) */}
+      {/* 🌙 OLED 口袋暗屏極致省電模式 (消滅頂部白條 + 100% 熄屏 0 像素發光 + 連點兩下喚出微光 HUD) */}
       {isPocketMode && isRecording && (
         <div 
           onClick={handlePocketScreenTap}
+          onContextMenu={(e) => e.preventDefault()}
           style={{ 
             zIndex: 99999, 
             backgroundColor: '#000000',
             paddingTop: 'max(env(safe-area-inset-top), 24px)',
             paddingBottom: 'max(env(safe-area-inset-bottom), 24px)'
           }}
-          className="fixed inset-0 text-zinc-300 flex flex-col justify-between px-5 select-none overflow-hidden transition-all duration-300 cursor-pointer"
+          className="fixed inset-0 text-zinc-300 flex flex-col justify-between px-5 touch-none select-none overscroll-none overflow-hidden transition-all duration-300 cursor-pointer"
         >
           {/* Top Status (僅在喚醒時顯示，全黑熄屏時完全熄滅不發光) */}
           <div className={`flex items-center justify-between text-xs text-zinc-600 font-mono border-b border-zinc-900 pb-3 transition-opacity duration-300 ${
@@ -1578,7 +1627,14 @@ export default function CampsiteGPXTrackerModal({
           {/* Central Area: 100% 純黑極限熄屏 VS 微光 HUD */}
           {!isPocketAwake && !pocketAlwaysDim ? (
             /* 1. 深度全黑熄屏 (0 像素發光 · 0 nits · 0 CSS 動畫 · 0 React 重繪，讓 GPU 進入 0 FPS 靜態幀休眠) */
-            <div className="my-auto text-center pointer-events-none select-none opacity-0" aria-hidden="true" />
+            <div className="my-auto text-center pointer-events-none select-none">
+              {pocketSingleTapHint && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-500 text-[11px] font-mono">
+                  <span>🔒</span>
+                  <span>口袋盲記防誤觸中 · 請「連點兩下」螢幕喚出解鎖滑軌</span>
+                </div>
+              )}
+            </div>
           ) : (
             /* 2. 觸碰喚醒之微光 HUD (消除刺眼白字，採用低耗電深階琥珀微光) */
             <div className="text-center space-y-4 my-auto animate-in fade-in duration-200">
