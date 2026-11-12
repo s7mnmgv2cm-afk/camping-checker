@@ -48,7 +48,8 @@ export default function CampsiteGPXTrackerModal({
     setIsUiSuspended,
     syncUiFromRefs,
     gpsPollingMode = 'polling_20s',
-    setGpsPollingMode
+    setGpsPollingMode,
+    isNativeBridgeActive = false
   } = gpxTracker || {};
 
   const [activeTab, setActiveTab] = useState('record'); // 'record' | 'history' | 'import'
@@ -553,6 +554,18 @@ export default function CampsiteGPXTrackerModal({
             <div className="px-4 py-2 bg-rose-50 border-b border-rose-200 text-rose-800 text-xs flex items-center gap-2">
               <span>⚠️</span>
               <span>{geoError}</span>
+            </div>
+          )}
+
+          {/* 🍏 iOS Native CoreLocation Background Bridge Active Banner */}
+          {isNativeBridgeActive && (
+            <div className={`px-4 py-1.5 border-b text-[11px] font-bold flex items-center justify-between gap-2 ${
+              isOled ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            }`}>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>🍏 iOS 原生 CoreLocation 背景橋接已連線：可直接按實體電源鍵關掉螢幕放進背包，背景持續記錄軌跡（每小時僅耗電 ~1.5%）</span>
+              </span>
             </div>
           )}
 

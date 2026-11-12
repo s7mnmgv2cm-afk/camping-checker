@@ -1484,6 +1484,21 @@ export default function CampsiteARModal({
       setHasGyroscope(true);
     };
 
+    // 🍏 支援 Xcode iOS 原生 CoreMotion + CLHeading 橋接推播 (nativeOrientationUpdate)
+    const handleNativeOrientation = (e) => {
+      if (e?.detail) {
+        handleOrientation(e.detail);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('nativeOrientationUpdate', handleNativeOrientation);
+      // 通知 iOS 原生殼層啟動 CoreMotion 陀螺儀與 CLHeading 電子羅盤 (關閉 AR 時自動停止以省電)
+      try {
+        window.webkit?.messageHandlers?.arSensorHandler?.postMessage(true);
+      } catch (err) {}
+    }
+
     if (typeof DeviceOrientationEvent !== 'undefined') {
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
@@ -1500,6 +1515,12 @@ export default function CampsiteARModal({
 
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('nativeOrientationUpdate', handleNativeOrientation);
+        try {
+          window.webkit?.messageHandlers?.arSensorHandler?.postMessage(false);
+        } catch (err) {}
+      }
     };
   }, [isOpen, isDeviceLandscape, permissionGranted]);
 
