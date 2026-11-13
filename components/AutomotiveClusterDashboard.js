@@ -238,10 +238,10 @@ export default function AutomotiveClusterDashboard({
     if (isSweeping) return;
     setIsSweeping(true);
     setSweepAngle(120);
-    setSweepAccelAngle(110);
+    setSweepAccelAngle(105);
     setTimeout(() => {
       setSweepAngle(-120);
-      setSweepAccelAngle(-110);
+      setSweepAccelAngle(-105);
       setTimeout(() => {
         setSweepAngle(null);
         setSweepAccelAngle(null);
@@ -364,7 +364,7 @@ export default function AutomotiveClusterDashboard({
   const accelG = accelMs2 / 9.80665;
   const maxDialG = dialMax <= 30 ? 0.25 : dialMax <= 60 ? 0.35 : 0.50;
   const clampedAccelG = Math.max(-maxDialG, Math.min(maxDialG, accelG));
-  const targetAccelAngleDeg = (clampedAccelG / maxDialG) * 110;
+  const targetAccelAngleDeg = (clampedAccelG / maxDialG) * 105;
   const currentAccelAngleDeg = sweepAccelAngle !== null ? sweepAccelAngle : targetAccelAngleDeg;
   const isBraking = accelMs2 < -0.08;
 
@@ -388,65 +388,55 @@ export default function AutomotiveClusterDashboard({
     ].join(' ');
   };
 
+  // 🏎️ Ferrari Maranello-style sparse major numerals (only 5 clean anchor numbers across the entire arc, zero clutter)
   const ticks = (() => {
-    let step = 2;
-    let majorFreq = 1;
-    let minorStep = 1;
-    if (dialMax >= 1000) {
-      step = 200;
-      majorFreq = 1;
-      minorStep = 100;
-    } else if (dialMax >= 300) {
-      step = 50;
-      majorFreq = 1;
-      minorStep = 25;
-    } else if (dialMax >= 150) {
-      step = 20;
-      majorFreq = 2;
-      minorStep = 10;
-    } else if (dialMax >= 50) {
-      step = 10;
-      majorFreq = 1;
-      minorStep = 5;
-    } else if (dialMax >= 25) {
-      step = 5;
-      majorFreq = 1;
-      minorStep = 2.5;
-    } else {
-      step = 2;
-      majorFreq = 1;
-      minorStep = 1;
-    }
+    const labelMap = {
+      12: [0, 3, 6, 9, 12],
+      30: [0, 10, 20, 30],
+      60: [0, 15, 30, 45, 60],
+      120: [0, 30, 60, 90, 120],
+      160: [0, 40, 80, 120, 160],
+      180: [0, 45, 90, 135, 180],
+      350: [0, 100, 200, 300, 350],
+      1000: [0, 250, 500, 750, 1000]
+    };
+    const labeledValues = labelMap[dialMax] || [
+      0,
+      Math.round(dialMax * 0.25),
+      Math.round(dialMax * 0.5),
+      Math.round(dialMax * 0.75),
+      dialMax
+    ];
 
+    const totalTicks = 24;
     const arr = [];
-    const totalSteps = Math.round(dialMax / minorStep);
-    for (let i = 0; i <= totalSteps; i++) {
-      const val = Math.min(dialMax, i * minorStep);
-      const ratio = val / dialMax;
-      const angle = startAngleDeg + (ratio * sweepAngleDeg);
-      const isMajor = Math.abs((val % step)) < 0.001 || i === totalSteps || i === 0;
-      const isLabeled = isMajor && (Math.round(val / step) % majorFreq === 0 || i === totalSteps || i === 0);
-      
-      const outer = polarToCartesian(cx, cy, 96, angle);
-      const inner = polarToCartesian(cx, cy, isMajor ? 84 : 89, angle);
-      const labelPos = polarToCartesian(cx, cy, 73, angle);
-      arr.push({ val: Math.round(val), outer, inner, labelPos, isMajor, isLabeled });
+    for (let i = 0; i <= totalTicks; i++) {
+      const ratio = i / totalTicks;
+      const val = Math.round(ratio * dialMax);
+      const angle = startAngleDeg + ratio * sweepAngleDeg;
+      const isLabeled = labeledValues.some((lv) => Math.abs((lv / dialMax) - ratio) < 0.015);
+      const isMajor = isLabeled || i % 3 === 0;
+      const isRedline = ratio >= 0.82;
+
+      const outer = polarToCartesian(cx, cy, 97, angle);
+      const inner = polarToCartesian(cx, cy, isLabeled ? 85 : isMajor ? 89 : 92, angle);
+      const labelPos = polarToCartesian(cx, cy, 74, angle);
+      arr.push({ val, outer, inner, labelPos, isMajor, isLabeled, isRedline });
     }
     return arr;
   })();
 
-  // Inner G-Force Acceleration Scale Ticks (-110°, -55°, 0°, +55°, +110°)
+  // Inner G-Force Acceleration Scale Ticks (label-free micro markers so needles never collide with text)
   const accelTicks = [
-    { angle: -110, label: `-${maxDialG}G`, isCenter: false },
-    { angle: -55, label: '', isCenter: false },
-    { angle: 0, label: '0G', isCenter: true },
-    { angle: 55, label: '', isCenter: false },
-    { angle: 110, label: `+${maxDialG}G`, isCenter: false }
+    { angle: -105, isCenter: false },
+    { angle: -52.5, isCenter: false },
+    { angle: 0, isCenter: true },
+    { angle: 52.5, isCenter: false },
+    { angle: 105, isCenter: false }
   ].map((t) => ({
     ...t,
-    outer: polarToCartesian(cx, cy, 64, t.angle),
-    inner: polarToCartesian(cx, cy, t.isCenter ? 58 : 60, t.angle),
-    labelPos: polarToCartesian(cx, cy, 52, t.angle)
+    outer: polarToCartesian(cx, cy, 61, t.angle),
+    inner: polarToCartesian(cx, cy, t.isCenter ? 55 : 57.5, t.angle)
   }));
 
   const isWhite = clusterTheme === 'white';
@@ -471,14 +461,14 @@ export default function AutomotiveClusterDashboard({
     gaugeTickMajor: '#0F172A',
     gaugeTickMinor: '#94A3B8',
     gaugeTickText: '#0F172A',
-    gaugeCenterCap: '#059669',
-    gaugeCenterCapBorder: '#CBD5E1',
+    gaugeCenterCap: '#18181B',
+    gaugeCenterCapBorder: '#94A3B8',
     speedColor: '#0F172A',
     chronoColor: '#0F172A',
     distanceColor: '#059669',
     altitudeColor: '#1E3A8A',
-    accelPositiveColor: '#0284C7',
-    accelBrakeColor: '#D97706'
+    accelPositiveColor: '#D97706',
+    accelBrakeColor: '#DC2626'
   } : isOLED ? {
     wrapperBg: '#000000',
     wrapperBorder: '#27272A',
@@ -498,14 +488,14 @@ export default function AutomotiveClusterDashboard({
     gaugeTickMajor: '#F4F4F5',
     gaugeTickMinor: '#52525B',
     gaugeTickText: '#A1A1AA',
-    gaugeCenterCap: '#10B981',
-    gaugeCenterCapBorder: '#059669',
-    speedColor: '#10B981',
+    gaugeCenterCap: '#18181B',
+    gaugeCenterCapBorder: '#52525B',
+    speedColor: '#F8FAFC',
     chronoColor: '#FFFFFF',
     distanceColor: '#F59E0B',
     altitudeColor: '#38BDF8',
-    accelPositiveColor: '#38BDF8',
-    accelBrakeColor: '#FBBF24'
+    accelPositiveColor: '#FACC15',
+    accelBrakeColor: '#F97316'
   } : {
     wrapperBg: 'radial-gradient(ellipse at 50% 0%, #172033 0%, #0A0E17 65%, #05070B 100%)',
     wrapperBorder: 'rgba(255, 255, 255, 0.12)',
@@ -525,14 +515,14 @@ export default function AutomotiveClusterDashboard({
     gaugeTickMajor: 'rgba(255, 255, 255, 0.85)',
     gaugeTickMinor: 'rgba(255, 255, 255, 0.35)',
     gaugeTickText: 'rgba(255, 255, 255, 0.85)',
-    gaugeCenterCap: '#1E293B',
-    gaugeCenterCapBorder: '#EF4444',
+    gaugeCenterCap: '#18181B',
+    gaugeCenterCapBorder: '#71717A',
     speedColor: '#FFFFFF',
     chronoColor: '#FFFFFF',
     distanceColor: '#F59E0B',
     altitudeColor: '#60A5FA',
-    accelPositiveColor: '#38BDF8',
-    accelBrakeColor: '#FBBF24'
+    accelPositiveColor: '#FACC15',
+    accelBrakeColor: '#F97316'
   };
 
   const activeAccelNeedleColor = isBraking ? themeStyles.accelBrakeColor : themeStyles.accelPositiveColor;
@@ -542,51 +532,85 @@ export default function AutomotiveClusterDashboard({
   const renderSpeedDialSVG = (svgId = gradientId) => (
     <svg viewBox="8 5 224 176" className="w-full h-full overflow-visible">
       <defs>
+        {/* Scuderia Ferrari Luminous Sweep Gradient (Giallo Modena -> Rosso Corsa) */}
         <linearGradient id={`${svgId}-speed-grad`} x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#10B981" />
-          <stop offset="55%" stopColor="#F59E0B" />
+          <stop offset="0%" stopColor="#FACC15" />
+          <stop offset="65%" stopColor="#F97316" />
           <stop offset="100%" stopColor="#DC2626" />
         </linearGradient>
 
+        {/* Brushed Titanium Metallic Bezel Gradient */}
+        <linearGradient id={`${svgId}-bezel-metal`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={isWhite ? '#CBD5E1' : '#71717A'} />
+          <stop offset="35%" stopColor={isWhite ? '#F8FAFC' : '#D4D4D8'} />
+          <stop offset="70%" stopColor={isWhite ? '#94A3B8' : '#3F3F46'} />
+          <stop offset="100%" stopColor={isWhite ? '#CBD5E1' : '#71717A'} />
+        </linearGradient>
+
+        {/* Nero Daytona Deep Radial Dial Face */}
         <radialGradient id={`${svgId}-dial-glow`} cx="50%" cy="62%" r="58%">
-          <stop offset="0%" stopColor={isWhite ? '#FFFFFF' : 'rgba(245, 158, 11, 0.15)'} />
-          <stop offset="75%" stopColor={isWhite ? '#F8FAFC' : 'rgba(15, 23, 42, 0.5)'} />
-          <stop offset="100%" stopColor={isWhite ? '#F1F5F9' : '#0B0F17'} />
+          <stop offset="0%" stopColor={isWhite ? '#FFFFFF' : '#16181D'} />
+          <stop offset="70%" stopColor={isWhite ? '#F8FAFC' : '#0B0C0F'} />
+          <stop offset="100%" stopColor={isWhite ? '#E2E8F0' : '#050507'} />
         </radialGradient>
 
         <filter id={`${svgId}-needle-shadow`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.22)" />
+          <feDropShadow dx="0" dy="2" stdDeviation="2.2" floodColor="rgba(0,0,0,0.45)" />
         </filter>
       </defs>
 
-      {/* 252° 超跑扇形儀表罩底色（裁切無用的下半圓，讓可用顯示面積最大化） */}
+      {/* 252° 超跑扇形儀表罩底色 */}
       <path
         d={`${describeArc(cx, cy, 103, -126, 126)} Z`}
         fill={`url(#${svgId}-dial-glow)`}
       />
 
-      {/* 上半部 252° 金屬外框弧線（不畫多餘下半圓） */}
+      {/* 髮絲紋鈦金屬外框 + 法拉利紅細內圈 */}
       <path
         d={describeArc(cx, cy, 108, -126, 126)}
         fill="none"
-        stroke={themeStyles.gaugeBezelOuter}
-        strokeWidth="2.5"
+        stroke={`url(#${svgId}-bezel-metal)`}
+        strokeWidth="3"
         strokeLinecap="round"
       />
       <path
-        d={`${describeArc(cx, cy, 105, -126, 126)} Z`}
+        d={describeArc(cx, cy, 103.5, -126, 126)}
         fill="none"
-        stroke={themeStyles.gaugeBezelInner}
-        strokeWidth="1.2"
-        strokeLinejoin="round"
+        stroke="#DC2626"
+        strokeOpacity={isWhite ? '0.45' : '0.65'}
+        strokeWidth="0.9"
+      />
+
+      {/* 機械同心細刻紋環 (Chronograph Guilloché Rings) */}
+      <path
+        d={describeArc(cx, cy, 67, -120, 120)}
+        fill="none"
+        stroke={isWhite ? 'rgba(15,23,42,0.07)' : 'rgba(255,255,255,0.07)'}
+        strokeWidth="0.8"
+      />
+      <path
+        d={describeArc(cx, cy, 46, -120, 120)}
+        fill="none"
+        stroke={isWhite ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.05)'}
+        strokeWidth="0.7"
       />
 
       {/* Outer Speedometer Track */}
       <path
         d={describeArc(cx, cy, 94, startAngleDeg, startAngleDeg + sweepAngleDeg)}
         fill="none"
-        stroke={themeStyles.gaugeTrack}
-        strokeWidth="8"
+        stroke={isWhite ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)'}
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+
+      {/* Subtle Redline Accent Zone (Top 18% of Scale) */}
+      <path
+        d={describeArc(cx, cy, 94, startAngleDeg + sweepAngleDeg * 0.82, startAngleDeg + sweepAngleDeg)}
+        fill="none"
+        stroke="#DC2626"
+        strokeOpacity="0.45"
+        strokeWidth="5"
         strokeLinecap="round"
       />
 
@@ -595,17 +619,17 @@ export default function AutomotiveClusterDashboard({
           d={describeArc(cx, cy, 94, startAngleDeg, currentAngleDeg)}
           fill="none"
           stroke={`url(#${svgId}-speed-grad)`}
-          strokeWidth="8"
+          strokeWidth="5"
           strokeLinecap="round"
         />
       )}
 
-      {/* ⚡ Inner Coaxial Acceleration G-Force Track (-110° Brake <-> 0° Neutral <-> +110° Accel) */}
+      {/* ⚡ Inner Coaxial Acceleration G-Force Track (極簡無字軌道，零重疊干擾) */}
       <path
-        d={describeArc(cx, cy, 62, -110, 110)}
+        d={describeArc(cx, cy, 59, -105, 105)}
         fill="none"
-        stroke={isWhite ? 'rgba(14, 165, 233, 0.18)' : 'rgba(56, 189, 248, 0.18)'}
-        strokeWidth="3"
+        stroke={isWhite ? 'rgba(217, 119, 6, 0.16)' : 'rgba(250, 204, 21, 0.16)'}
+        strokeWidth="2"
         strokeLinecap="round"
       />
 
@@ -614,44 +638,31 @@ export default function AutomotiveClusterDashboard({
         <path
           d={
             currentAccelAngleDeg >= 0
-              ? describeArc(cx, cy, 62, 0, currentAccelAngleDeg)
-              : describeArc(cx, cy, 62, currentAccelAngleDeg, 0)
+              ? describeArc(cx, cy, 59, 0, currentAccelAngleDeg)
+              : describeArc(cx, cy, 59, currentAccelAngleDeg, 0)
           }
           fill="none"
           stroke={activeAccelNeedleColor}
-          strokeWidth="3.5"
+          strokeWidth="2.5"
           strokeLinecap="round"
         />
       )}
 
-      {/* Inner G-Force Scale Ticks & Labels */}
+      {/* Inner G-Force Micro Ticks (僅保留 5 個極簡刻度點，徹底消除 -0.5G / +0.5G 雜亂字樣) */}
       {accelTicks.map((t, idx) => (
-        <g key={`accel-tick-${idx}`}>
-          <line
-            x1={t.inner.x}
-            y1={t.inner.y}
-            x2={t.outer.x}
-            y2={t.outer.y}
-            stroke={t.isCenter ? themeStyles.accelPositiveColor : themeStyles.gaugeTickMinor}
-            strokeWidth={t.isCenter ? 1.8 : 1.1}
-          />
-          {t.label && (
-            <text
-              x={t.labelPos.x}
-              y={t.labelPos.y + 2.5}
-              textAnchor="middle"
-              fill={t.isCenter ? themeStyles.accelPositiveColor : themeStyles.textColorMuted}
-              fontSize="7.5"
-              fontFamily="monospace"
-              fontWeight="800"
-            >
-              {t.label}
-            </text>
-          )}
-        </g>
+        <line
+          key={`accel-tick-${idx}`}
+          x1={t.inner.x}
+          y1={t.inner.y}
+          x2={t.outer.x}
+          y2={t.outer.y}
+          stroke={t.isCenter ? themeStyles.accelPositiveColor : (isWhite ? '#94A3B8' : '#52525B')}
+          strokeWidth={t.isCenter ? 1.6 : 1.0}
+          strokeLinecap="round"
+        />
       ))}
 
-      {/* Outer Speedometer Ticks */}
+      {/* Outer Speedometer Ticks & Sparse 5-Anchor Numerals */}
       {ticks.map((t, idx) => (
         <g key={idx}>
           <line
@@ -659,18 +670,27 @@ export default function AutomotiveClusterDashboard({
             y1={t.inner.y}
             x2={t.outer.x}
             y2={t.outer.y}
-            stroke={t.isMajor ? themeStyles.gaugeTickMajor : themeStyles.gaugeTickMinor}
-            strokeWidth={t.isMajor ? 2.5 : 1.2}
+            stroke={
+              t.isRedline
+                ? '#EF4444'
+                : t.isLabeled
+                  ? (isWhite ? '#0F172A' : '#F8FAFC')
+                  : t.isMajor
+                    ? (isWhite ? '#64748B' : '#71717A')
+                    : (isWhite ? '#CBD5E1' : '#3F3F46')
+            }
+            strokeWidth={t.isLabeled ? 2.2 : t.isMajor ? 1.4 : 0.9}
+            strokeLinecap="round"
           />
           {t.isLabeled && (
             <text
               x={t.labelPos.x}
-              y={t.labelPos.y + 4}
+              y={t.labelPos.y + 3.5}
               textAnchor="middle"
-              fill={themeStyles.gaugeTickText}
-              fontSize={dialMax >= 1000 ? "9" : "11"}
-              fontFamily="'Michroma', 'Eurostile Extended', 'Microgramma', sans-serif"
-              fontWeight="900"
+              fill={t.isRedline ? '#F87171' : (isWhite ? '#0F172A' : '#E4E4E7')}
+              fontSize={dialMax >= 1000 ? '8.5' : '9.5'}
+              fontFamily="'Michroma', 'Eurostile Extended', sans-serif"
+              fontWeight="800"
             >
               {t.val}
             </text>
@@ -678,57 +698,57 @@ export default function AutomotiveClusterDashboard({
         </g>
       ))}
 
-      {/* Digital Speed Readout */}
-      <text 
-        x={cx} 
-        y={cy - 14} 
-        textAnchor="middle" 
-        fill={isOLED ? '#10B981' : themeStyles.textColorPrimary} 
-        fontSize={effectiveSpeed >= 100 ? "32" : "38"} 
-        fontFamily="'Michroma', 'Eurostile Extended', 'Microgramma', sans-serif" 
-        fontWeight="900" 
+      {/* Digital Speed Readout (純淨高對比數字，不塞多餘文字) */}
+      <text
+        x={cx}
+        y={cy - 11}
+        textAnchor="middle"
+        fill={isWhite ? '#0F172A' : '#FFFFFF'}
+        fontSize={effectiveSpeed >= 100 ? '29' : '34'}
+        fontFamily="'Michroma', 'Eurostile Extended', sans-serif"
+        fontWeight="900"
+        letterSpacing="-0.5"
       >
         {effectiveSpeed.toFixed(1)}
       </text>
-      <text 
-        x={cx} 
-        y={cy + 24} 
-        textAnchor="middle" 
-        fill={isOLED ? '#34D399' : themeStyles.textColorSecondary} 
-        fontSize="11" 
-        fontFamily="'Michroma', 'Eurostile Extended', 'Microgramma', sans-serif" 
-        fontWeight="900" 
-        letterSpacing="2"
-      >
-        KM / H
-      </text>
-      <text 
-        x={cx} 
-        y={cy + 39} 
-        textAnchor="middle" 
-        fill={isOLED ? '#F59E0B' : themeStyles.accentColor} 
-        fontSize="10.5" 
-        fontFamily="sans-serif" 
-        fontWeight="900" 
-        letterSpacing="0.5"
-      >
-        {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 L: average' : '即時行進速度'))}
-      </text>
-
-      {/* ⚡ Coaxial Acceleration Digital Telemetry Readout inside Dial */}
       <text
         x={cx}
-        y={cy + 53}
+        y={cy + 22}
         textAnchor="middle"
-        fill={activeAccelNeedleColor}
-        fontSize="9.5"
-        fontFamily="monospace"
-        fontWeight="900"
+        fill={isWhite ? '#64748B' : '#A1A1AA'}
+        fontSize="8.5"
+        fontFamily="'Michroma', 'Eurostile Extended', sans-serif"
+        fontWeight="800"
+        letterSpacing="3"
       >
-        {`G: ${formattedAccelG} (${formattedAccelMs2})`}
+        KM/H
       </text>
 
-      {/* ⚡ Secondary Coaxial Needle: Acceleration G-Force Pointer (青藍色加速 / 琥珀色減速煞車) */}
+      {/* Ferrari Manettino-Style Minimal G-Force Capsule (取代原本 3 行擁擠文字) */}
+      <g transform={`translate(${cx - 28}, ${cy + 30})`}>
+        <rect
+          width="56"
+          height="14"
+          rx="7"
+          fill={isWhite ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.06)'}
+          stroke={isWhite ? 'rgba(15,23,42,0.12)' : 'rgba(255,255,255,0.12)'}
+          strokeWidth="0.7"
+        />
+        <text
+          x="28"
+          y="9.8"
+          textAnchor="middle"
+          fill={activeAccelNeedleColor}
+          fontSize="8"
+          fontFamily="monospace"
+          fontWeight="800"
+          letterSpacing="0.5"
+        >
+          {`${accelG >= 0 ? '+' : ''}${accelG.toFixed(2)} G`}
+        </text>
+      </g>
+
+      {/* ⚡ Secondary Coaxial Needle: Giallo Modena Acceleration Hairline Pointer */}
       <g
         style={{
           transform: `rotate(${currentAccelAngleDeg}deg)`,
@@ -740,39 +760,41 @@ export default function AutomotiveClusterDashboard({
         filter={`url(#${svgId}-needle-shadow)`}
       >
         <polygon
-          points={`${cx - 1.8},${cy} ${cx},${cy - 63} ${cx + 1.8},${cy}`}
+          points={`${cx - 1.1},${cy} ${cx},${cy - 60} ${cx + 1.1},${cy}`}
           fill={activeAccelNeedleColor}
         />
-        <circle cx={cx} cy={cy - 63} r="2.2" fill={activeAccelNeedleColor} />
+        <circle cx={cx} cy={cy - 60} r="1.5" fill={activeAccelNeedleColor} />
         <polygon
-          points={`${cx - 1.5},${cy} ${cx},${cy + 11} ${cx + 1.5},${cy}`}
+          points={`${cx - 1.0},${cy} ${cx},${cy + 9} ${cx + 1.0},${cy}`}
           fill={activeAccelNeedleColor}
-          opacity="0.75"
+          opacity="0.7"
         />
       </g>
 
-      {/* 🏎️ Primary Needle: Speed Pointer (紅色主指針) */}
-      <g 
+      {/* 🏎️ Primary Needle: Rosso Corsa Sculpted Speed Pointer + Brushed Titanium Hub */}
+      <g
         style={{
           transform: `rotate(${currentAngleDeg}deg)`,
           transformOrigin: `${cx}px ${cy}px`,
-          transition: isSweeping 
-            ? 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)' 
+          transition: isSweeping
+            ? 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)'
             : 'transform 0.42s cubic-bezier(0.34, 1.35, 0.64, 1)'
         }}
         filter={`url(#${svgId}-needle-shadow)`}
       >
         <polygon
-          points={`${cx - 2.5},${cy} ${cx},42 ${cx + 2.5},${cy}`}
+          points={`${cx - 2.2},${cy} ${cx},${cy - 92} ${cx + 2.2},${cy}`}
           fill="#DC2626"
         />
-        <line x1={cx} y1={cy} x2={cx} y2={42} stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1={cx} y1={cy} x2={cx} y2={cy - 92} stroke="#F87171" strokeWidth="0.9" strokeLinecap="round" />
         <polygon
-          points={`${cx - 2},${cy} ${cx},${cy + 16} ${cx + 2},${cy}`}
-          fill="#991B1B"
+          points={`${cx - 1.8},${cy} ${cx},${cy + 14} ${cx + 1.8},${cy}`}
+          fill="#7F1D1D"
         />
-        <circle cx={cx} cy={cy} r="10" fill={themeStyles.gaugeCenterCap} stroke={themeStyles.gaugeCenterCapBorder} strokeWidth="2" />
-        <circle cx={cx} cy={cy} r="3.5" fill="#FFFFFF" />
+        {/* 消光黑鈦金屬中軸蓋 (取代原本亮綠色圓蓋) */}
+        <circle cx={cx} cy={cy} r="9.5" fill="#18181B" stroke={`url(#${svgId}-bezel-metal)`} strokeWidth="1.8" />
+        <circle cx={cx} cy={cy} r="4.5" fill="#09090B" />
+        <circle cx={cx} cy={cy} r="2.0" fill="#EF4444" />
       </g>
     </svg>
   );
@@ -1104,7 +1126,7 @@ export default function AutomotiveClusterDashboard({
           <span className="opacity-30">|</span>
           <span className="flex items-center gap-1">
             <span style={{ backgroundColor: themeStyles.accelPositiveColor }} className="w-2.5 h-1 rounded-full inline-block" />
-            <span style={{ color: themeStyles.textColorSecondary }}>青針：縱向加速度 (±{maxDialG}G)</span>
+            <span style={{ color: themeStyles.textColorSecondary }}>黃針：縱向加速度 (±{maxDialG}G)</span>
           </span>
         </div>
 
