@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useId, useState } from 'react';
+import React, { useId, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
- * 🏎️ AutomotiveClusterDashboard
- * 頂級車廠米色護眼數位儀表板 (Luxury Classic Automotive Cluster - Beige Eye-Protection Edition)
+ * 🏎️ AutomotiveClusterDashboard (v4 - Dual Coaxial Speed + Acceleration G-Force Needle Edition)
+ * 頂級車廠護眼數位儀表板 (Luxury Classic Automotive Cluster)
  * 支援全域動態量程：徒步 (12) → 單車 (60) → 汽車 (160) → 高鐵 (350) → 飛機 (1000 km/h)
+ * 新增同軸雙指針設計：紅色主指針（即時時速 km/h）＋ 亮青/琥珀副指針（即時縱向加速度 G 值 / m/s²）
  */
 const SPEED_MODES = [
   { id: 'auto', label: '⚡ 自動', max: null, icon: '⚡' },
@@ -18,20 +19,20 @@ const SPEED_MODES = [
 ];
 
 function getAutoDialMax(speed, maxRecordedSpeed) {
-  const peak = Math.max(speed, maxRecordedSpeed);
+  // 限制自動量程在未手動切換高鐵/飛機模式時，最高鎖定至 180 km/h (汽車巡航)，避免單一 GPS 飄移跳點把車載 HUD 誤切成高鐵或飛機
+  const rawPeak = Math.max(speed, maxRecordedSpeed);
+  const peak = Math.min(rawPeak, 180);
   if (peak <= 10) return 12;      // 🚶 健行 (高解析度)
   if (peak <= 25) return 30;      // 🏃 慢跑衝刺
   if (peak <= 55) return 60;      // 🚴 單車騎行
   if (peak <= 100) return 120;    // 🛵 機車公路
-  if (peak <= 160) return 180;    // 🚗 汽車巡航
-  if (peak <= 320) return 350;    // 🚄 高鐵特快
-  return 1000;                    // ✈️ 飛機民航巡航 (800~1000 km/h)
+  return 180;                     // 🚗 汽車巡航 (車載 HUD)
 }
 
 function getModeTitle(dialMax) {
   if (dialMax >= 800) return { title: '✈️ 航空巡航模式 (Aviation HUD)', desc: '民航客機高空巡航時速 800~1000 km/h' };
   if (dialMax >= 300) return { title: '🚄 軌道極速模式 (Rail Express)', desc: '台灣高鐵巡航時速 300 km/h' };
-  if (dialMax >= 150) return { title: '🚗 汽車公路模式 (Highway Cruise)', desc: '一般道路與高速公路行駛' };
+  if (dialMax >= 120) return { title: '🚗 汽車公路模式 (Highway Cruise)', desc: '一般道路與高速公路行駛' };
   if (dialMax >= 50) return { title: '🚴 單車騎行模式 (Cycling / MTB)', desc: '自行車、越野單車巡航' };
   if (dialMax >= 25) return { title: '🏃 越野路跑模式 (Trail Running)', desc: '跑步與快走下坡衝刺' };
   return { title: '🚶 徒步漫行模式 (Hiking & Trekking)', desc: '深山步道高精度慢速遙測' };
@@ -46,7 +47,8 @@ export default function AutomotiveClusterDashboard({
   toggleManualRest = null,
   scrubbedSpeed = null,
   theme = null,
-  onThemeChange = null
+  onThemeChange = null,
+  onVehicleModeChange = null
 }) {
   const gradientId = useId();
   // 支援三種主題：'white' (首頁純白) | 'oled' (OLED 極黑 0 耗電) | 'obsidian' (曜石賽道)
@@ -54,7 +56,7 @@ export default function AutomotiveClusterDashboard({
   const [speedMode, setSpeedMode] = useState('auto'); // 'auto' | 'hike' | 'bike' | 'drive' | 'train' | 'plane'
 
   // 同步外部傳入之 theme
-  React.useEffect(() => {
+  useEffect(() => {
     if (theme && (theme === 'white' || theme === 'oled' || theme === 'obsidian')) {
       setClusterTheme(theme);
     }
@@ -64,10 +66,102 @@ export default function AutomotiveClusterDashboard({
   const [testSpeed, setTestSpeed] = useState(null);
   const [isSweeping, setIsSweeping] = useState(false);
   const [sweepAngle, setSweepAngle] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false); // ⛶ 全螢幕 HUD 儀表盤模式
+  const [sweepAccelAngle, setSweepAccelAngle] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false); // ⛶ 全螢幕車載 HUD 儀表盤模式
+
+  // ⚡ 同軸加速度副指針狀態 (縱向加速度 m/s² 與 G 值)
+  const [accelMs2, setAccelMs2] = useState(0);
+  const [peakAccelG, setPeakAccelG] = useState(0);
+  const [peakBrakeG, setPeakBrakeG] = useState(0);
+  const prevSpeedSampleRef = useRef({ speedKmh: null, timeMs: 0 });
+  const accelDecayIntervalRef = useRef(null);
+
+  // 📱 橫向模式 (Landscape) 偵測與車載 HUD 防休眠常亮開關
+  const [isLandscape, setIsLandscape] = useState(false);
+  const [keepScreenAwake, setKeepScreenAwake] = useState(false); // 使用者可自由選擇是否保持螢幕常亮不休眠
+  const wakeLockSentinelRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia ? window.matchMedia('(orientation: landscape)') : null;
+    const checkLandscape = () => {
+      const mqlLand = mql ? mql.matches : false;
+      const ratioLand = window.innerWidth > window.innerHeight;
+      setIsLandscape(Boolean(mqlLand || ratioLand));
+    };
+    checkLandscape();
+    window.addEventListener('resize', checkLandscape);
+    window.addEventListener('orientationchange', checkLandscape);
+    if (mql?.addEventListener) mql.addEventListener('change', checkLandscape);
+    return () => {
+      window.removeEventListener('resize', checkLandscape);
+      window.removeEventListener('orientationchange', checkLandscape);
+      if (mql?.removeEventListener) mql.removeEventListener('change', checkLandscape);
+    };
+  }, []);
+
+  // ☀️ 螢幕防休眠控制：僅在「全螢幕車載 HUD + 橫向 Landscape 模式 + 使用者開啟常亮」時生效；離開全螢幕或轉直向立即恢復正常休眠省電
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const shouldStayAwake = isFullscreen && isLandscape && keepScreenAwake;
+
+    // 1. iOS 原生 App 橋接 (UIApplication.shared.isIdleTimerDisabled)
+    try {
+      window.webkit?.messageHandlers?.keepAwakeHandler?.postMessage(shouldStayAwake);
+    } catch (e) {}
+
+    // 2. 純網頁瀏覽器 Screen Wake Lock API 備援
+    let cancelled = false;
+    const syncWebWakeLock = async () => {
+      if (shouldStayAwake) {
+        if ('wakeLock' in navigator && !wakeLockSentinelRef.current) {
+          try {
+            window.__allowWebWakeLock = true;
+            const sentinel = await navigator.wakeLock.request('screen');
+            if (cancelled) {
+              sentinel.release().catch(() => {});
+            } else {
+              wakeLockSentinelRef.current = sentinel;
+              sentinel.addEventListener('release', () => {
+                wakeLockSentinelRef.current = null;
+              });
+            }
+          } catch (err) {}
+        }
+      } else {
+        window.__allowWebWakeLock = false;
+        if (wakeLockSentinelRef.current) {
+          wakeLockSentinelRef.current.release().catch(() => {});
+          wakeLockSentinelRef.current = null;
+        }
+      }
+    };
+
+    syncWebWakeLock();
+
+    const handleVis = () => {
+      if (document.visibilityState === 'visible' && shouldStayAwake) {
+        syncWebWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVis);
+      window.__allowWebWakeLock = false;
+      if (wakeLockSentinelRef.current) {
+        wakeLockSentinelRef.current.release().catch(() => {});
+        wakeLockSentinelRef.current = null;
+      }
+      try {
+        window.webkit?.messageHandlers?.keepAwakeHandler?.postMessage(false);
+      } catch (e) {}
+    };
+  }, [isFullscreen, isLandscape, keepScreenAwake]);
 
   // Keyboard shortcut: ESC to exit fullscreen & Sync iOS Status Bar / Theme Color in Fullscreen HUD
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isFullscreen || typeof window === 'undefined') return;
 
     const handleKeyDown = (e) => {
@@ -77,7 +171,6 @@ export default function AutomotiveClusterDashboard({
     };
     window.addEventListener('keydown', handleKeyDown);
 
-    // 同步 iOS Safari 頂部狀態列與全域背景色，消除頂部白塊與殘留邊框
     const fsHex = clusterTheme === 'white' ? '#F8FAFC' : clusterTheme === 'obsidian' ? '#0A0E17' : '#000000';
     const fsColorScheme = clusterTheme === 'white' ? 'light' : 'dark';
     const origBodyBg = document.body.style.backgroundColor;
@@ -97,7 +190,6 @@ export default function AutomotiveClusterDashboard({
     }
     window.scrollTo(0, 0);
 
-    // 強制移除並重新掛載 <meta name="theme-color"> 以觸發 iOS WebKit 狀態列重新染色
     const existingThemeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
     const prevThemeContent = existingThemeMetas[0]?.getAttribute('content') || '#f8fafc';
     existingThemeMetas.forEach((m) => m.parentNode?.removeChild(m));
@@ -125,22 +217,24 @@ export default function AutomotiveClusterDashboard({
     };
   }, [isFullscreen, clusterTheme]);
 
-  // Trigger Gauge Sweep (超跑發動指針自檢全幅掃描 0 -> MAX -> Settle)
+  // Trigger Gauge Sweep (超跑發動雙指針自檢全幅掃描：時速針 + 加速度針同步掃描歸位)
   const triggerNeedleSweep = () => {
     if (isSweeping) return;
     setIsSweeping(true);
-    setSweepAngle(120); // Sweep to max scale (+120 deg)
+    setSweepAngle(120);
+    setSweepAccelAngle(110);
     setTimeout(() => {
-      setSweepAngle(-120); // Sweep back to zero (-120 deg)
+      setSweepAngle(-120);
+      setSweepAccelAngle(-110);
       setTimeout(() => {
-        setSweepAngle(null); // Settle smoothly at actual speed
+        setSweepAngle(null);
+        setSweepAccelAngle(null);
         setIsSweeping(false);
       }, 550);
     }, 600);
   };
 
-  // Run ignition sweep once upon opening/mounting so needle moves immediately
-  React.useEffect(() => {
+  useEffect(() => {
     const t = setTimeout(() => {
       triggerNeedleSweep();
     }, 400);
@@ -153,7 +247,6 @@ export default function AutomotiveClusterDashboard({
     if (testSpeed !== null) return testSpeed;
     if (scrubbedSpeed !== null && scrubbedSpeed !== undefined && scrubbedSpeed >= 0) return scrubbedSpeed;
     if (isRecording) return baseCurrentSpeed;
-    // When reviewing past tracks/presets, show cruising moving average speed rather than sitting frozen at 0
     if (baseCurrentSpeed > 0) return baseCurrentSpeed;
     const mAvg = parseFloat(displayStats?.movingAvgSpeedKmh || 0);
     if (mAvg > 0) return mAvg;
@@ -162,25 +255,103 @@ export default function AutomotiveClusterDashboard({
     return 0;
   })();
 
-  const avgSpeed = parseFloat(displayStats?.avgSpeedKmh || 0);
-  const movingAvgSpeed = parseFloat(displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || 0);
+  // ⚡ 即時計算縱向加速度 (a = Δv / Δt)，支援 GPS 實測、試跑模擬與定速自動歸零阻尼
+  useEffect(() => {
+    if (isSweeping) return;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const prev = prevSpeedSampleRef.current;
+
+    if (prev.speedKmh !== null && prev.timeMs > 0) {
+      const dtSec = (now - prev.timeMs) / 1000;
+      if (dtSec >= 0.12 && dtSec <= 15) {
+        const dvMs = (effectiveSpeed - prev.speedKmh) / 3.6;
+        // 限制單次計算加速度於 [-7.5, +7.5] m/s² (約 ±0.76 G)
+        const rawAccel = Math.max(-7.5, Math.min(7.5, dvMs / dtSec));
+        setAccelMs2((oldVal) => {
+          const smoothed = oldVal * 0.4 + rawAccel * 0.6;
+          const gVal = smoothed / 9.80665;
+          if (gVal > 0.01) {
+            setPeakAccelG((p) => Math.max(p, Math.round(gVal * 100) / 100));
+          } else if (gVal < -0.01) {
+            setPeakBrakeG((p) => Math.max(p, Math.round(Math.abs(gVal) * 100) / 100));
+          }
+          return smoothed;
+        });
+      }
+    }
+
+    prevSpeedSampleRef.current = { speedKmh: effectiveSpeed, timeMs: now };
+
+    // 若速度維持恆定（定速巡航或停止），1.1 秒後讓加速度指針平滑阻尼回彈至 0.00 G（12 點鐘正上方）
+    if (accelDecayIntervalRef.current) {
+      clearInterval(accelDecayIntervalRef.current);
+      accelDecayIntervalRef.current = null;
+    }
+    const decayStartTimeout = setTimeout(() => {
+      accelDecayIntervalRef.current = setInterval(() => {
+        setAccelMs2((curr) => {
+          if (Math.abs(curr) < 0.04) {
+            if (accelDecayIntervalRef.current) {
+              clearInterval(accelDecayIntervalRef.current);
+              accelDecayIntervalRef.current = null;
+            }
+            return 0;
+          }
+          return curr * 0.55;
+        });
+      }, 120);
+    }, 1100);
+
+    return () => {
+      clearTimeout(decayStartTimeout);
+    };
+  }, [effectiveSpeed, isSweeping]);
+
+  // Cleanup decay interval on unmount
+  useEffect(() => {
+    return () => {
+      if (accelDecayIntervalRef.current) {
+        clearInterval(accelDecayIntervalRef.current);
+      }
+    };
+  }, []);
+
   const maxSpeed = parseFloat(displayStats?.maxSpeedKmh || 0);
-  const minSpeed = parseFloat(displayStats?.minSpeedKmh || 0);
 
   // Dynamic dial scale based on selected mode or automatic detection
   const selectedConfig = SPEED_MODES.find(m => m.id === speedMode);
   const dialMax = selectedConfig?.max || getAutoDialMax(effectiveSpeed, maxSpeed);
   const modeInfo = getModeTitle(dialMax);
 
+  // 🚗 當偵測到車載 HUD 模式 (dialMax >= 120 或開啟全螢幕 HUD) 時，同步通知定位引擎升級為 1Hz 連續都卜勒追蹤並鎖定汽車極速上限
+  useEffect(() => {
+    if (typeof onVehicleModeChange !== 'function') return;
+    if (speedMode !== 'auto') {
+      onVehicleModeChange(speedMode);
+    } else if (dialMax >= 120 || isFullscreen) {
+      onVehicleModeChange('drive');
+    } else if (dialMax >= 50) {
+      onVehicleModeChange('bike');
+    }
+  }, [speedMode, dialMax, isFullscreen, onVehicleModeChange]);
+
   const speedRatio = Math.min(1, Math.max(0, effectiveSpeed / dialMax));
   
-  // Needle & Arc geometry: 240-degree sweep from -120 deg (0) to +120 deg (max)
+  // Primary Speed Needle geometry: 240-degree sweep from -120 deg (0) to +120 deg (max)
   const startAngleDeg = -120;
   const sweepAngleDeg = 240;
   const targetAngleDeg = startAngleDeg + (speedRatio * sweepAngleDeg);
   const currentAngleDeg = sweepAngle !== null ? sweepAngle : targetAngleDeg;
 
-  // Center (cx, cy) and radius for larger 240x240 SVG gauge
+  // Coaxial Acceleration Needle geometry: 0° = 12 o'clock top dead center (0.00 G)
+  // Left (-110° to 0°) = Deceleration / Braking (-G); Right (0° to +110°) = Acceleration (+G)
+  const accelG = accelMs2 / 9.80665;
+  const maxDialG = dialMax <= 30 ? 0.25 : dialMax <= 60 ? 0.35 : 0.50;
+  const clampedAccelG = Math.max(-maxDialG, Math.min(maxDialG, accelG));
+  const targetAccelAngleDeg = (clampedAccelG / maxDialG) * 110;
+  const currentAccelAngleDeg = sweepAccelAngle !== null ? sweepAccelAngle : targetAccelAngleDeg;
+  const isBraking = accelMs2 < -0.08;
+
   const cx = 120;
   const cy = 128;
   const polarToCartesian = (centerX, centerY, r, angleInDegrees) => {
@@ -201,36 +372,34 @@ export default function AutomotiveClusterDashboard({
     ].join(' ');
   };
 
-  // Speedometer ticks with human-friendly intervals (0, 200, 400, 600, 800, 1000 for plane; 0, 40, 80, 120, 160 for car, etc.)
   const ticks = (() => {
     let step = 2;
     let majorFreq = 1;
     let minorStep = 1;
     if (dialMax >= 1000) {
-      step = 200; // 0, 200, 400, 600, 800, 1000
+      step = 200;
       majorFreq = 1;
       minorStep = 100;
     } else if (dialMax >= 300) {
-      step = 50; // 0, 50, 100, 150, 200, 250, 300, 350
+      step = 50;
       majorFreq = 1;
       minorStep = 25;
     } else if (dialMax >= 150) {
-      step = 20; // 0, 20, 40, 60, 80, 100, 120, 140, 160
-      majorFreq = 2; // labels on 0, 40, 80, 120, 160
+      step = 20;
+      majorFreq = 2;
       minorStep = 10;
     } else if (dialMax >= 50) {
-      step = 10; // 0, 10, 20, 30, 40, 50, 60
+      step = 10;
       majorFreq = 1;
       minorStep = 5;
     } else if (dialMax >= 25) {
-      step = 5; // 0, 5, 10, 15, 20, 25, 30
+      step = 5;
       majorFreq = 1;
       minorStep = 2.5;
     } else {
-      // 徒步健行 12 km/h: 完美對稱 0, 2, 4, 6(頂峰), 8, 10, 12
       step = 2;
-      majorFreq = 1; // 每一格都有主刻度數字，頂峰剛好是 6
-      minorStep = 1; // 1, 3, 5, 7, 9, 11 為副刻度線
+      majorFreq = 1;
+      minorStep = 1;
     }
 
     const arr = [];
@@ -244,19 +413,30 @@ export default function AutomotiveClusterDashboard({
       
       const outer = polarToCartesian(cx, cy, 96, angle);
       const inner = polarToCartesian(cx, cy, isMajor ? 84 : 89, angle);
-      // 將標籤位置推近外環 (r=73)，徹底遠離中心文字，杜絕重疊碰撞
       const labelPos = polarToCartesian(cx, cy, 73, angle);
       arr.push({ val: Math.round(val), outer, inner, labelPos, isMajor, isLabeled });
     }
     return arr;
   })();
 
+  // Inner G-Force Acceleration Scale Ticks (-110°, -55°, 0°, +55°, +110°)
+  const accelTicks = [
+    { angle: -110, label: `-${maxDialG}G`, isCenter: false },
+    { angle: -55, label: '', isCenter: false },
+    { angle: 0, label: '0G', isCenter: true },
+    { angle: 55, label: '', isCenter: false },
+    { angle: 110, label: `+${maxDialG}G`, isCenter: false }
+  ].map((t) => ({
+    ...t,
+    outer: polarToCartesian(cx, cy, 64, t.angle),
+    inner: polarToCartesian(cx, cy, t.isCenter ? 58 : 60, t.angle),
+    labelPos: polarToCartesian(cx, cy, 52, t.angle)
+  }));
+
   const isWhite = clusterTheme === 'white';
   const isOLED = clusterTheme === 'oled';
 
-  // Palette definitions: 與首頁同步之純白風格 (Default) ✕ OLED 極黑 (0 耗電) ✕ 曜石賽道
   const themeStyles = isWhite ? {
-    // ⚪ 與首頁台灣露營地研究中心 100% 同步之雪白現代風格 (Default)
     wrapperBg: '#FFFFFF',
     wrapperBorder: '#E2E8F0',
     wrapperShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1)',
@@ -280,9 +460,10 @@ export default function AutomotiveClusterDashboard({
     speedColor: '#0F172A',
     chronoColor: '#0F172A',
     distanceColor: '#059669',
-    altitudeColor: '#1E3A8A'
+    altitudeColor: '#1E3A8A',
+    accelPositiveColor: '#0284C7',
+    accelBrakeColor: '#D97706'
   } : isOLED ? {
-    // 🌙 OLED 極黑 0 耗電色彩編碼高對比方案 (True OLED #000000 Pixel-Off)
     wrapperBg: '#000000',
     wrapperBorder: '#27272A',
     wrapperShadow: '0 0 0 1px #18181B',
@@ -303,12 +484,13 @@ export default function AutomotiveClusterDashboard({
     gaugeTickText: '#A1A1AA',
     gaugeCenterCap: '#10B981',
     gaugeCenterCapBorder: '#059669',
-    speedColor: '#10B981',        // ⚡ 鮮明翡翠綠
-    chronoColor: '#FFFFFF',       // ⏱️ 高對比冷白
-    distanceColor: '#F59E0B',     // 📏 活力琥珀橘
-    altitudeColor: '#38BDF8'      // ⛰️ 冰川天藍
+    speedColor: '#10B981',
+    chronoColor: '#FFFFFF',
+    distanceColor: '#F59E0B',
+    altitudeColor: '#38BDF8',
+    accelPositiveColor: '#38BDF8',
+    accelBrakeColor: '#FBBF24'
   } : {
-    // 🏎️ 曜石賽道夜間模式
     wrapperBg: 'radial-gradient(ellipse at 50% 0%, #172033 0%, #0A0E17 65%, #05070B 100%)',
     wrapperBorder: 'rgba(255, 255, 255, 0.12)',
     wrapperShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
@@ -332,21 +514,24 @@ export default function AutomotiveClusterDashboard({
     speedColor: '#FFFFFF',
     chronoColor: '#FFFFFF',
     distanceColor: '#F59E0B',
-    altitudeColor: '#60A5FA'
+    altitudeColor: '#60A5FA',
+    accelPositiveColor: '#38BDF8',
+    accelBrakeColor: '#FBBF24'
   };
 
-  // 🏎️ Reusable Speedometer Dial SVG
+  const activeAccelNeedleColor = isBraking ? themeStyles.accelBrakeColor : themeStyles.accelPositiveColor;
+  const formattedAccelG = `${accelG >= 0 ? '+' : ''}${accelG.toFixed(2)}G`;
+  const formattedAccelMs2 = `${accelMs2 >= 0 ? '+' : ''}${accelMs2.toFixed(1)} m/s²`;
+
   const renderSpeedDialSVG = (svgId = gradientId) => (
     <svg viewBox="0 0 240 240" className="w-full h-full overflow-visible">
       <defs>
-        {/* Luminous Speed Gradient */}
         <linearGradient id={`${svgId}-speed-grad`} x1="0%" y1="100%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#10B981" />
           <stop offset="55%" stopColor="#F59E0B" />
           <stop offset="100%" stopColor="#DC2626" />
         </linearGradient>
 
-        {/* Dial Face Inner Shadow / Glow */}
         <radialGradient id={`${svgId}-dial-glow`} cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor={isWhite ? '#FFFFFF' : 'rgba(245, 158, 11, 0.15)'} />
           <stop offset="75%" stopColor={isWhite ? '#F8FAFC' : 'rgba(15, 23, 42, 0.5)'} />
@@ -354,14 +539,12 @@ export default function AutomotiveClusterDashboard({
         </radialGradient>
 
         <filter id={`${svgId}-needle-shadow`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.18)" />
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="rgba(0,0,0,0.22)" />
         </filter>
       </defs>
 
-      {/* Dial Face Background */}
       <circle cx={cx} cy={cy} r="95" fill={`url(#${svgId}-dial-glow)`} />
 
-      {/* Outer Metallic Bezel Rings */}
       <circle 
         cx={cx} 
         cy={cy} 
@@ -379,7 +562,7 @@ export default function AutomotiveClusterDashboard({
         strokeWidth="1.5" 
       />
 
-      {/* Gauge Background Track Arc */}
+      {/* Outer Speedometer Track */}
       <path
         d={describeArc(cx, cy, 94, startAngleDeg, startAngleDeg + sweepAngleDeg)}
         fill="none"
@@ -388,7 +571,6 @@ export default function AutomotiveClusterDashboard({
         strokeLinecap="round"
       />
 
-      {/* Active Luminous Progress Arc */}
       {speedRatio > 0.005 && (
         <path
           d={describeArc(cx, cy, 94, startAngleDeg, currentAngleDeg)}
@@ -399,7 +581,58 @@ export default function AutomotiveClusterDashboard({
         />
       )}
 
-      {/* Ticks and Scale Numbers (Large and High Contrast, Outer Rim Alignment) */}
+      {/* ⚡ Inner Coaxial Acceleration G-Force Track (-110° Brake <-> 0° Neutral <-> +110° Accel) */}
+      <path
+        d={describeArc(cx, cy, 62, -110, 110)}
+        fill="none"
+        stroke={isWhite ? 'rgba(14, 165, 233, 0.18)' : 'rgba(56, 189, 248, 0.18)'}
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+
+      {/* Active G-Force Arc from 0° (Top Dead Center) */}
+      {Math.abs(currentAccelAngleDeg) > 1.5 && (
+        <path
+          d={
+            currentAccelAngleDeg >= 0
+              ? describeArc(cx, cy, 62, 0, currentAccelAngleDeg)
+              : describeArc(cx, cy, 62, currentAccelAngleDeg, 0)
+          }
+          fill="none"
+          stroke={activeAccelNeedleColor}
+          strokeWidth="3.5"
+          strokeLinecap="round"
+        />
+      )}
+
+      {/* Inner G-Force Scale Ticks & Labels */}
+      {accelTicks.map((t, idx) => (
+        <g key={`accel-tick-${idx}`}>
+          <line
+            x1={t.inner.x}
+            y1={t.inner.y}
+            x2={t.outer.x}
+            y2={t.outer.y}
+            stroke={t.isCenter ? themeStyles.accelPositiveColor : themeStyles.gaugeTickMinor}
+            strokeWidth={t.isCenter ? 1.8 : 1.1}
+          />
+          {t.label && (
+            <text
+              x={t.labelPos.x}
+              y={t.labelPos.y + 2.5}
+              textAnchor="middle"
+              fill={t.isCenter ? themeStyles.accelPositiveColor : themeStyles.textColorMuted}
+              fontSize="7.5"
+              fontFamily="monospace"
+              fontWeight="800"
+            >
+              {t.label}
+            </text>
+          )}
+        </g>
+      ))}
+
+      {/* Outer Speedometer Ticks */}
       {ticks.map((t, idx) => (
         <g key={idx}>
           <line
@@ -426,7 +659,7 @@ export default function AutomotiveClusterDashboard({
         </g>
       ))}
 
-      {/* Speed Digital Readout */}
+      {/* Digital Speed Readout */}
       <text 
         x={cx} 
         y={cy - 14} 
@@ -452,18 +685,54 @@ export default function AutomotiveClusterDashboard({
       </text>
       <text 
         x={cx} 
-        y={cy + 42} 
+        y={cy + 41} 
         textAnchor="middle" 
         fill={isOLED ? '#F59E0B' : themeStyles.accentColor} 
-        fontSize="11" 
+        fontSize="10.5" 
         fontFamily="sans-serif" 
         fontWeight="900" 
         letterSpacing="0.5"
       >
-        {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 L: average' : '即時行走速度'))}
+        {testSpeed !== null ? '⚡ 模擬試跑' : (scrubbedSpeed !== null && scrubbedSpeed !== undefined ? '📍 剖面點時速' : (!isRecording && effectiveSpeed > 0 ? '🚶 L: average' : '即時行進速度'))}
       </text>
 
-      {/* Speed Needle Pointer */}
+      {/* ⚡ Coaxial Acceleration Digital Telemetry Readout inside Dial */}
+      <text
+        x={cx}
+        y={cy + 56}
+        textAnchor="middle"
+        fill={activeAccelNeedleColor}
+        fontSize="9.5"
+        fontFamily="monospace"
+        fontWeight="900"
+      >
+        {`G: ${formattedAccelG} (${formattedAccelMs2})`}
+      </text>
+
+      {/* ⚡ Secondary Coaxial Needle: Acceleration G-Force Pointer (青藍色加速 / 琥珀色減速煞車) */}
+      <g
+        style={{
+          transform: `rotate(${currentAccelAngleDeg}deg)`,
+          transformOrigin: `${cx}px ${cy}px`,
+          transition: isSweeping
+            ? 'transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)'
+            : 'transform 0.28s cubic-bezier(0.25, 1, 0.5, 1)'
+        }}
+        filter={`url(#${svgId}-needle-shadow)`}
+      >
+        <polygon
+          points={`${cx - 1.8},${cy} ${cx},${cy - 63} ${cx + 1.8},${cy}`}
+          fill={activeAccelNeedleColor}
+        />
+        <circle cx={cx} cy={cy - 63} r="2.2" fill={activeAccelNeedleColor} />
+        <polygon
+          points={`${cx - 1.5},${cy} ${cx},${cy + 11} ${cx + 1.5},${cy}`}
+          fill={activeAccelNeedleColor}
+          opacity="0.75"
+        />
+      </g>
+
+      {/* 🏎️ Primary Needle: Speed Pointer (紅色主指針) */}
       <g 
         style={{
           transform: `rotate(${currentAngleDeg}deg)`,
@@ -474,25 +743,21 @@ export default function AutomotiveClusterDashboard({
         }}
         filter={`url(#${svgId}-needle-shadow)`}
       >
-        {/* Needle Blade */}
         <polygon
           points={`${cx - 2.5},${cy} ${cx},42 ${cx + 2.5},${cy}`}
           fill="#DC2626"
         />
-        <line x1={cx} y1={cy} x2={40} stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" />
-        {/* Counterweight Tail */}
+        <line x1={cx} y1={cy} x2={cx} y2={42} stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round" />
         <polygon
           points={`${cx - 2},${cy} ${cx},${cy + 16} ${cx + 2},${cy}`}
           fill="#991B1B"
         />
-        {/* Center Pivot Cap */}
         <circle cx={cx} cy={cy} r="10" fill={themeStyles.gaugeCenterCap} stroke={themeStyles.gaugeCenterCapBorder} strokeWidth="2" />
         <circle cx={cx} cy={cy} r="3.5" fill="#FFFFFF" />
       </g>
     </svg>
   );
 
-  {/* ⚡ Reusable 4-Pod Speed Matrix (四聯速度監測遙測陣列) */}
   const renderFourPodSpeedMatrix = (isFs = false) => (
     <div 
       style={{
@@ -505,15 +770,14 @@ export default function AutomotiveClusterDashboard({
       <div className="flex items-center justify-between">
         <span style={{ color: themeStyles.textColorPrimary }} className="text-xs sm:text-sm font-bold flex items-center gap-1.5">
           <span className="text-base">⚡</span>
-          <span>4 聯速度監測遙測陣列</span>
+          <span>4 聯速度與加速度遙測陣列</span>
         </span>
         <span style={{ color: themeStyles.textColorMuted }} className="text-xs font-mono font-bold">
-          單位：km/h
+          單位：km/h · G
         </span>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {/* Gauge 1: 平均時速 (全程含休息停頓) */}
         <div 
           style={{ 
             backgroundColor: isWhite ? '#FFFFFF' : '#000000', 
@@ -536,7 +800,6 @@ export default function AutomotiveClusterDashboard({
           </span>
         </div>
 
-        {/* Gauge 2: 移動均速 (純移動巡航·已扣除休息) */}
         <div 
           style={{ 
             backgroundColor: isWhite ? '#F0FDF4' : '#000000', 
@@ -559,14 +822,13 @@ export default function AutomotiveClusterDashboard({
           </span>
         </div>
 
-        {/* Gauge 3: 最高時速 (Max Peak Speed - 衝刺極速) */}
         <div 
           style={{ 
             backgroundColor: isWhite ? '#FFF1F2' : '#000000', 
             borderColor: isWhite ? '#FECDD3' : '#E11D48' 
           }}
           className="border-2 rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
-          title="行進過程中的最高瞬間極速"
+          title="行進過程中的最高瞬間極速（已濾除 GPS 飄移跳點）"
         >
           <span style={{ color: isWhite ? '#BE123C' : '#FB7185' }} className="text-xs font-bold block mb-1">
             最高時速
@@ -582,26 +844,25 @@ export default function AutomotiveClusterDashboard({
           </span>
         </div>
 
-        {/* Gauge 4: 最低時速 (Min Climb Pace - 爬坡慢速) */}
         <div 
           style={{ 
-            backgroundColor: isWhite ? '#EFF6FF' : '#000000', 
-            borderColor: isWhite ? '#BFDBFE' : '#0284C7' 
+            backgroundColor: isWhite ? (isBraking ? '#FFFBEB' : '#EFF6FF') : '#000000', 
+            borderColor: isWhite ? (isBraking ? '#FDE68A' : '#BFDBFE') : (isBraking ? '#D97706' : '#0284C7')
           }}
-          className="border-2 rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs"
-          title="移動中的最慢步速（通常為吃力上坡攀爬時）"
+          className="border-2 rounded-2xl p-2.5 flex flex-col justify-between text-center shadow-xs transition-colors"
+          title="即時縱向加速度（正值 +G 為加速推背，負值 -G 為減速煞車）"
         >
-          <span style={{ color: isWhite ? '#1D4ED8' : '#38BDF8' }} className="text-xs font-bold block mb-1">
-            最低時速
+          <span style={{ color: isWhite ? (isBraking ? '#B45309' : '#1D4ED8') : (isBraking ? '#FBBF24' : '#38BDF8') }} className="text-xs font-bold block mb-1">
+            即時加速度
           </span>
           <div 
-            style={{ color: isWhite ? '#1E40AF' : '#38BDF8' }}
-            className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1"
+            style={{ color: isWhite ? (isBraking ? '#92400E' : '#1E40AF') : (isBraking ? '#FBBF24' : '#38BDF8') }}
+            className="text-xl sm:text-2xl font-michroma font-bold tracking-tight leading-none my-1"
           >
-            {displayStats?.minSpeedKmh || '0.0'}
+            {formattedAccelG}
           </div>
-          <span style={{ color: isWhite ? '#2563EB' : '#0284C7' }} className="text-[11px] font-mono font-bold block">
-            km/h
+          <span style={{ color: isWhite ? (isBraking ? '#D97706' : '#2563EB') : (isBraking ? '#F59E0B' : '#0284C7') }} className="text-[11px] font-mono font-bold block">
+            {formattedAccelMs2}
           </span>
         </div>
       </div>
@@ -617,13 +878,11 @@ export default function AutomotiveClusterDashboard({
       }}
       className="rounded-3xl border-2 p-3.5 sm:p-5 overflow-hidden relative select-none space-y-3.5 transition-all duration-300"
     >
-      {/* 🏁 Header Bar: 儀表連線狀態與風格切換 */}
       <div 
         style={{ borderColor: themeStyles.topBarBorder }}
         className="flex items-center justify-between pb-2.5 border-b"
       >
         <div className="flex items-center gap-2">
-          {/* Active Status Beacon */}
           <div 
             style={{ 
               backgroundColor: isWhite ? (isRecording ? '#FEF2F2' : '#F0FDF4') : 'rgba(0,0,0,0.6)',
@@ -650,7 +909,6 @@ export default function AutomotiveClusterDashboard({
           </div>
         </div>
 
-        {/* Theme Switcher Button */}
         <button
           type="button"
           onClick={() => {
@@ -671,7 +929,6 @@ export default function AutomotiveClusterDashboard({
         </button>
       </div>
 
-      {/* 🚀 速度情境量程快速切換 (支援徒步、單車、開車、高鐵、飛機 1000 km/h) */}
       <div 
         style={{
           backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#09090B' : 'rgba(255,255,255,0.04)',
@@ -718,7 +975,6 @@ export default function AutomotiveClusterDashboard({
         </div>
       </div>
 
-      {/* ⚡ 指針動態自檢與速度模擬試跑列 (點擊看紅針滑動旋轉) */}
       <div 
         style={{
           backgroundColor: isWhite ? '#F8FAFC' : 'rgba(255,255,255,0.04)',
@@ -733,10 +989,10 @@ export default function AutomotiveClusterDashboard({
             disabled={isSweeping}
             style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
             className="px-2.5 py-1 rounded-xl text-[11px] font-black shadow-sm hover:bg-red-700 active:scale-95 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
-            title="像超跑啟動一樣指針全幅掃描自檢"
+            title="像超跑啟動一樣雙指針全幅掃描自檢"
           >
             <span>🏎️</span>
-            <span>指針自檢 (Sweep)</span>
+            <span>雙針自檢 (Sweep)</span>
           </button>
           <span style={{ color: themeStyles.textColorSecondary }} className="text-[11px] font-bold hidden sm:inline">
             快速試跑：
@@ -785,7 +1041,6 @@ export default function AutomotiveClusterDashboard({
         </div>
       </div>
 
-      {/* 🏎️ SECTION 1: CENTRAL SPEEDOMETER GAUGE (超大清晰車廠指針儀) */}
       <div 
         style={{
           backgroundColor: themeStyles.cardBg,
@@ -794,7 +1049,6 @@ export default function AutomotiveClusterDashboard({
         }}
         className="rounded-2xl border p-3 flex flex-col items-center justify-center relative"
       >
-        {/* Dynamic Mode Annunciator Banner */}
         <div className="flex items-center justify-between w-full px-2 pb-1 border-b border-slate-100 text-xs">
           <span style={{ color: themeStyles.accentColor }} className="font-bold flex items-center gap-1">
             <span>{modeInfo.title}</span>
@@ -822,7 +1076,19 @@ export default function AutomotiveClusterDashboard({
           </div>
         </div>
 
-        {/* Speedometer Dial (Clickable to enter fullscreen) */}
+        {/* Needle Legend Pill (紅針時速 / 青藍針加速度) */}
+        <div className="flex items-center justify-center gap-3 text-[10px] font-bold pt-1.5 opacity-90">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-1 rounded-full bg-red-600 inline-block" />
+            <span style={{ color: themeStyles.textColorSecondary }}>紅針：即時時速</span>
+          </span>
+          <span className="opacity-30">|</span>
+          <span className="flex items-center gap-1">
+            <span style={{ backgroundColor: themeStyles.accelPositiveColor }} className="w-2.5 h-1 rounded-full inline-block" />
+            <span style={{ color: themeStyles.textColorSecondary }}>青針：縱向加速度 (±{maxDialG}G)</span>
+          </span>
+        </div>
+
         <div 
           onClick={() => setIsFullscreen(true)}
           className="relative w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center cursor-pointer group"
@@ -841,21 +1107,19 @@ export default function AutomotiveClusterDashboard({
           <span> 全螢幕 HUD mode </span>
         </button>
 
-        {/* Speed Peak & Average Summary Banner */}
         <div 
           style={{ color: themeStyles.textColorSecondary }}
-          className={`text-xs sm:text-sm font-bold flex items-center justify-center gap-3 pt-1.5 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'} w-full`}
+          className={`text-xs font-bold flex items-center justify-center gap-2.5 flex-wrap pt-1.5 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'} w-full`}
         >
-          <span>衝刺極速: <strong className={`${isOLED ? 'text-rose-400' : 'text-rose-600'} text-xs sm:text-sm font-michroma font-bold`}>{displayStats?.maxSpeedKmh || '0.0'}</strong> km/h</span>
+          <span>衝刺極速: <strong className={`${isOLED ? 'text-rose-400' : 'text-rose-600'} font-michroma font-bold`}>{displayStats?.maxSpeedKmh || '0.0'}</strong> km/h</span>
           <span className="opacity-40">|</span>
-          <span>全程均速: <strong className={`${isOLED ? 'text-emerald-400' : 'text-emerald-700'} text-xs sm:text-sm font-michroma font-bold`}>{displayStats?.avgSpeedKmh || '0.0'}</strong> km/h</span>
+          <span>全程均速: <strong className={`${isOLED ? 'text-emerald-400' : 'text-emerald-700'} font-michroma font-bold`}>{displayStats?.avgSpeedKmh || '0.0'}</strong> km/h</span>
+          <span className="opacity-40">|</span>
+          <span>峰值加/減速: <strong style={{ color: themeStyles.accelPositiveColor }} className="font-mono font-bold">+{peakAccelG.toFixed(2)}G</strong> / <strong style={{ color: themeStyles.accelBrakeColor }} className="font-mono font-bold">-{peakBrakeG.toFixed(2)}G</strong></span>
         </div>
       </div>
 
-      {/* 🏎️ SECTION 2: DUAL COCKPIT WINGS (時間與海拔雙翼 - 大字體排版) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        
-        {/* ── LEFT WING: CHRONOGRAPH & TRIP (計時與里程) ── */}
         <div 
           style={{
             backgroundColor: themeStyles.cardBg,
@@ -875,7 +1139,6 @@ export default function AutomotiveClusterDashboard({
               </span>
             </div>
             
-            {/* GIANT DURATION DISPLAY (置中、寬體人眼秒看) */}
             <div 
               style={{ color: isOLED ? '#FFFFFF' : themeStyles.textColorPrimary }}
               className="text-3xl sm:text-4xl font-michroma font-bold tracking-tight leading-none my-2 text-center"
@@ -884,7 +1147,6 @@ export default function AutomotiveClusterDashboard({
             </div>
           </div>
 
-          {/* Moving & Rest Breakdowns */}
           <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isWhite ? 'border-slate-100' : 'border-zinc-800'}`}>
             <div 
               style={{
@@ -953,7 +1215,6 @@ export default function AutomotiveClusterDashboard({
             </div>
           </div>
 
-          {/* Live Motion/Rest Status Banner & Manual Rest Switch */}
           {isRecording && (
             <div 
               style={{ backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#09090B' : 'rgba(255,255,255,0.05)', borderColor: isWhite ? '#E2E8F0' : isOLED ? '#27272A' : 'rgba(255,255,255,0.1)' }}
@@ -962,7 +1223,7 @@ export default function AutomotiveClusterDashboard({
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${displayStats?.isStationary ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 animate-pulse'}`} />
                 <span style={{ color: themeStyles.textColorPrimary }} className="text-[11px] font-bold truncate">
-                  {displayStats?.isStationary ? '休息停頓計秒中 (時速 ≤ 0.8)' : '健行移動計秒中'}
+                  {displayStats?.isStationary ? '休息停頓計秒中 (時速 ≤ 1.2)' : '移動計秒中'}
                 </span>
               </div>
               {typeof toggleManualRest === 'function' && (
@@ -982,7 +1243,6 @@ export default function AutomotiveClusterDashboard({
             </div>
           )}
 
-          {/* Trip Odometer */}
           <div className={`pt-2 border-t ${isOLED ? 'border-zinc-800' : 'border-slate-100'} flex items-baseline justify-between`}>
             <span style={{ color: themeStyles.textColorSecondary }} className="text-xs font-bold">
               📏 累計路徑里程
@@ -996,7 +1256,6 @@ export default function AutomotiveClusterDashboard({
           </div>
         </div>
 
-        {/* ── RIGHT WING: ALTIMETRY & INCLINE (高度與爬升) ── */}
         <div 
           style={{
             backgroundColor: themeStyles.cardBg,
@@ -1019,7 +1278,6 @@ export default function AutomotiveClusterDashboard({
               </span>
             </div>
 
-            {/* GIANT ALTITUDE DISPLAY (置中、寬體人眼秒看 - 支援飛機萬米高空) */}
             <div 
               style={{ color: isWhite ? '#1E40AF' : '#38BDF8' }}
               className="text-3xl sm:text-4xl font-michroma font-bold tracking-normal leading-none my-2 flex items-baseline justify-center gap-2 text-center"
@@ -1029,9 +1287,7 @@ export default function AutomotiveClusterDashboard({
             </div>
           </div>
 
-          {/* Vertical Gain & Loss Telemetry */}
           <div className={`grid grid-cols-2 gap-2 pt-2 border-t ${isWhite ? 'border-slate-100' : 'border-zinc-800'}`}>
-            {/* 總爬升 (Ascent) */}
             <div 
               style={{ 
                 backgroundColor: isWhite ? '#FFF1F2' : '#000000', 
@@ -1053,7 +1309,6 @@ export default function AutomotiveClusterDashboard({
               </strong>
             </div>
 
-            {/* 總下降 (Descent) */}
             <div 
               style={{ 
                 backgroundColor: isWhite ? '#F0FDFA' : '#000000', 
@@ -1076,7 +1331,6 @@ export default function AutomotiveClusterDashboard({
             </div>
           </div>
 
-          {/* Min / Max Elevation Range */}
           <div className={`pt-2 border-t ${isWhite ? 'border-slate-100' : 'border-zinc-800'} flex items-center justify-between text-xs`}>
             <span style={{ color: themeStyles.textColorSecondary }} className="font-bold">峰谷跨距:</span>
             <span style={{ color: themeStyles.textColorPrimary }} className="font-bold">
@@ -1084,13 +1338,10 @@ export default function AutomotiveClusterDashboard({
             </span>
           </div>
         </div>
-
       </div>
 
-      {/* 🏁 SECTION 3: 4-POD RACING AUXILIARY GAUGES (底層 4 聯大字體速度分析儀表) */}
       {renderFourPodSpeedMatrix(false)}
 
-      {/* ⛶ 全螢幕車載 HUD 儀表盤 & 4 聯速度遙測模式 (透過 createPortal 掛載至 document.body，徹底脫離上層 Modal 容器遮罩限制並填滿頂部狀態列) */}
       {isFullscreen && typeof document !== 'undefined' && createPortal(
         <div 
           style={{
@@ -1103,7 +1354,6 @@ export default function AutomotiveClusterDashboard({
           }}
           className="fixed inset-0 flex flex-col justify-between px-3.5 sm:px-6 overflow-y-auto select-none font-sans"
         >
-          {/* Top Bar */}
           <div 
             style={{ borderColor: isWhite ? '#E2E8F0' : '#27272A' }}
             className="flex items-center justify-between w-full pb-3 border-b shrink-0 flex-wrap gap-2"
@@ -1122,13 +1372,34 @@ export default function AutomotiveClusterDashboard({
                   </span>
                 </h2>
                 <p className={`text-[11px] ${isOLED ? "text-zinc-400" : "text-slate-500"}`}>
-                  {displayTitle || "全螢幕即時遙測 HUD"} · 刻度上限 {dialMax} km/h
+                  {displayTitle || "全螢幕即時遙測 HUD"} · 刻度上限 {dialMax} km/h · 加速度 ±{maxDialG}G
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* Theme toggle */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* ☀️ 橫向車載 HUD 專用：螢幕不休眠常亮開關 */}
+              {isLandscape && (
+                <button
+                  type="button"
+                  data-testid="fs-keep-awake-btn"
+                  onClick={() => setKeepScreenAwake(prev => !prev)}
+                  style={{
+                    backgroundColor: keepScreenAwake
+                      ? '#059669'
+                      : (isWhite ? '#FFFFFF' : isOLED ? '#18181B' : 'rgba(255,255,255,0.1)'),
+                    borderColor: keepScreenAwake
+                      ? '#10B981'
+                      : (isWhite ? '#CBD5E1' : isOLED ? '#3F3F46' : 'rgba(255,255,255,0.15)'),
+                    color: keepScreenAwake ? '#FFFFFF' : themeStyles.textColorPrimary
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="橫向車載 HUD 模式下，可自由切換是否保持螢幕常亮不休眠"
+                >
+                  <span>{keepScreenAwake ? '☀️ 螢幕常亮：開 (不休眠)' : '💤 螢幕常亮：關 (允許休眠)'}</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 data-testid="fs-theme-btn"
@@ -1143,12 +1414,11 @@ export default function AutomotiveClusterDashboard({
                   borderColor: isWhite ? "#CBD5E1" : isOLED ? "#3F3F46" : "rgba(255,255,255,0.15)",
                   color: isOLED ? "#34D399" : themeStyles.textColorPrimary
                 }}
-                className="px-2.5 py-1 rounded-xl text-xs font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                className="px-2.5 py-1.5 rounded-xl text-xs font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer"
               >
                 {isWhite ? "⚪ 純白" : isOLED ? "🌙 極黑" : "🏎️ 曜石"}
               </button>
 
-              {/* Close / Exit Fullscreen */}
               <button
                 type="button"
                 onClick={() => setIsFullscreen(false)}
@@ -1161,7 +1431,6 @@ export default function AutomotiveClusterDashboard({
             </div>
           </div>
 
-          {/* Central Main Area: Massive Gauge Dial */}
           <div className="flex-1 flex flex-col items-center justify-center my-3 sm:my-5">
             <div 
               onClick={() => setIsFullscreen(false)}
@@ -1181,23 +1450,21 @@ export default function AutomotiveClusterDashboard({
               <span>點擊儀表盤或按 ESC 即可離開全螢幕</span>
             </button>
 
-            {/* Peak & Average Summary Banner */}
             <div 
               style={{ color: themeStyles.textColorSecondary }}
-              className="text-xs sm:text-base font-bold flex items-center justify-center gap-4 mt-2"
+              className="text-xs sm:text-base font-bold flex items-center justify-center gap-3 sm:gap-4 flex-wrap mt-2"
             >
               <span>衝刺極速: <strong className={`${isOLED ? "text-rose-400" : "text-rose-600"} text-sm sm:text-base font-michroma font-bold`}>{displayStats?.maxSpeedKmh || "0.0"}</strong> km/h</span>
               <span className="opacity-40">|</span>
               <span>全程均速: <strong className={`${isOLED ? "text-emerald-400" : "text-emerald-700"} text-sm sm:text-base font-michroma font-bold`}>{displayStats?.avgSpeedKmh || "0.0"}</strong> km/h</span>
+              <span className="opacity-40">|</span>
+              <span>加速度: <strong style={{ color: activeAccelNeedleColor }} className="text-sm sm:text-base font-mono font-bold">{formattedAccelG}</strong></span>
             </div>
           </div>
 
-          {/* Bottom Area: 4-Pod Speed Matrix + Telemetry Strip */}
           <div className="w-full max-w-4xl mx-auto space-y-3 shrink-0">
-            {/* 4 聯速度監測遙測陣列 */}
             {renderFourPodSpeedMatrix(true)}
 
-            {/* Bottom 3-Pod Telemetry Strip: 里程 · 海拔 · 總計時 */}
             <div 
               style={{
                 backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#09090B" : "rgba(255,255,255,0.06)",
@@ -1209,6 +1476,13 @@ export default function AutomotiveClusterDashboard({
                 <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] block">📏 累計里程</span>
                 <strong style={{ color: isOLED ? "#F59E0B" : themeStyles.distanceColor }} className="text-sm sm:text-base font-michroma font-bold">
                   {displayStats?.totalDistanceKm || "0.00"} <span className="text-xs font-normal">km</span>
+                </strong>
+              </div>
+              <div className="opacity-20">|</div>
+              <div>
+                <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] block">⚡ 縱向 G 值</span>
+                <strong style={{ color: activeAccelNeedleColor }} className="text-sm sm:text-base font-mono font-bold">
+                  {formattedAccelG}
                 </strong>
               </div>
               <div className="opacity-20">|</div>
