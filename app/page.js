@@ -436,8 +436,8 @@ export default function Home() {
     }
   };
 
-  // 🎯 1. 基礎過濾邏輯
-  const filteredCampsites = campsites.filter((site) => {
+  // 🎯 1. 基礎過濾邏輯 (使用 useMemo 避免 GPX 每秒跳秒時重複對 2,300+ 筆營地進行篩選與重繪)
+  const filteredCampsites = useMemo(() => campsites.filter((site) => {
     const { mins } = getCampDriveInfo(site);
     const driveOk = (mins === null || isNaN(mins) || mins === 0) ? true : (mins <= maxDriveTime);
     const alt = parseAltitudeNum(site.altitude);
@@ -457,7 +457,7 @@ export default function Home() {
     });
 
     return driveOk && altOk && nameMatch && regionMatch && bookmarkOk && favOk && notesOk && tagsOk;
-  });
+  }), [campsites, originKey, isNightDrive, maxDriveTime, minAltitude, maxAltitude, searchName, searchRegion, showOnlyBookmarked, bookmarkedCamps, showOnlyFavorites, favoriteCamps, showOnlyWithNotes, userNotes, selectedTags]);
 
   // 當過濾條件改變時，自動回到第一頁
   useEffect(() => {
@@ -465,7 +465,7 @@ export default function Home() {
   }, [campsites, originKey, maxDriveTime, minAltitude, maxAltitude, searchName, searchRegion, showOnlyBookmarked, showOnlyFavorites, showOnlyWithNotes, selectedTags]);
 
   // 🎯 2. 智慧排序邏輯
-  const sortedFilteredCampsites = [...filteredCampsites].sort((a, b) => {
+  const sortedFilteredCampsites = useMemo(() => [...filteredCampsites].sort((a, b) => {
     if (sortBy === 'favorite_first') {
       const aFav = favoriteCamps.has(a.id) ? 1 : 0;
       const bFav = favoriteCamps.has(b.id) ? 1 : 0;
@@ -495,21 +495,21 @@ export default function Home() {
       return parseAltitudeNum(a.altitude) - parseAltitudeNum(b.altitude);
     }
     return 0;
-  });
+  }), [filteredCampsites, sortBy, favoriteCamps, bookmarkedCamps, userNotes, originKey, isNightDrive]);
 
-  const chartData = sortedFilteredCampsites
+  const chartData = useMemo(() => sortedFilteredCampsites
     .filter((site) => site.altitude)
     .map((site) => {
       const { mins, dist } = getCampDriveInfo(site);
       return { ...site, currentMins: mins, currentDist: dist, x: parseDistanceNum(dist), y: parseAltitudeNum(site.altitude) };
-    });
+    }), [sortedFilteredCampsites, originKey, isNightDrive]);
 
   // 🎯 3. 分頁邏輯
   const totalPages = Math.max(1, Math.ceil(sortedFilteredCampsites.length / itemsPerPage));
-  const currentCampsites = sortedFilteredCampsites.slice(
+  const currentCampsites = useMemo(() => sortedFilteredCampsites.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
-  );
+  ), [sortedFilteredCampsites, currentPage, itemsPerPage]);
 
   // 📋 表格模式專屬篩選資料
   const tableDisplayCamps = useMemo(() => {
@@ -712,7 +712,7 @@ export default function Home() {
                   className="px-2 py-0.5 text-[11px] font-mono font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100 transition-all flex items-center gap-1 shadow-xs cursor-pointer"
                   title="點擊查看版本更新歷程 (Version History)"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   <span>{APP_VERSION}</span>
                 </button>
               </div>
@@ -813,7 +813,7 @@ export default function Home() {
           {/* 左側：品牌標語與核心特色 */}
           <div className="max-w-2xl space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-bold tracking-wide">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
               <span>四合一 WebAR · 日照搭帳 ✕ 遠山稜線 ✕ 秘境景點 ✕ 天文星空</span>
             </div>
 
@@ -859,7 +859,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleGenerateAIPrompt}
-                className="px-2.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/20 hover:border-white/30 backdrop-blur-md transition-all flex items-center justify-center gap-1 shadow-sm"
+                className="px-2.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/20 hover:border-white/30 transition-all flex items-center justify-center gap-1 shadow-sm"
               >
                 <span>🤖</span>
                 <span>AI 顧問</span>
@@ -868,9 +868,9 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setShowGpxModal(true)}
-                className={`px-2.5 py-2.5 rounded-xl font-bold text-xs backdrop-blur-md transition-all flex items-center justify-center gap-1 shadow-sm border ${
+                className={`px-2.5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1 shadow-sm border ${
                   gpxTracker.isRecording
-                    ? 'bg-rose-500/25 text-rose-200 border-rose-400/50 animate-pulse ring-1 ring-rose-400/50'
+                    ? 'bg-rose-500/25 text-rose-200 border-rose-400/50 ring-1 ring-rose-400/50'
                     : 'bg-white/10 hover:bg-white/15 text-white border-white/20'
                 }`}
                 title="記錄健行 GPX 航跡、離線手機存檔、匯入別人的紀錄防走錯"
@@ -882,7 +882,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setShowArGuideModal(true)}
-                className="px-2.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs border border-white/15 hover:border-white/25 backdrop-blur-md transition-all flex items-center justify-center gap-1 shadow-sm"
+                className="px-2.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs border border-white/15 hover:border-white/25 transition-all flex items-center justify-center gap-1 shadow-sm"
               >
                 <span>📖</span>
                 <span>指南</span>
@@ -2024,13 +2024,13 @@ export default function Home() {
         >
           <div 
             style={{ backgroundColor: '#FAF7F2', borderColor: '#DECDB9', color: '#2D241E' }}
-            className="px-4 py-2.5 rounded-full border shadow-2xl flex items-center gap-2.5 text-xs backdrop-blur-md"
+            className="px-4 py-2.5 rounded-full border shadow-2xl flex items-center gap-2.5 text-xs"
           >
             <div 
               onClick={() => setShowGpxModal(true)} 
               className="flex items-center gap-2 cursor-pointer hover:opacity-85"
             >
-              <span className={`w-2.5 h-2.5 rounded-full ${gpxTracker.isRecording ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
+              <span className={`w-2.5 h-2.5 rounded-full ${gpxTracker.isRecording ? 'bg-red-500' : 'bg-emerald-500'}`} />
               <span className="font-black text-[#261E18]">
                 {gpxTracker.isRecording ? 'GPX 記錄中' : '導航跟隨中'}
               </span>
