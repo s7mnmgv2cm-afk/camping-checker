@@ -298,7 +298,7 @@ export default function AutomotiveClusterDashboard({
     return 0;
   })();
 
-  // ⚡ 即時計算縱向加速度 (a = Δv / Δt)，支援 GPS 實測、試跑模擬與定速自動歸零阻尼
+  // ⚡ 縱向加速度 (G 值)：真實記錄優先採用 GPS 衛星時間戳計算值 (displayStats.currentAccelG)，試跑模擬則即時動態演算
   useEffect(() => {
     if (isSweeping) return;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -314,16 +314,33 @@ export default function AutomotiveClusterDashboard({
       return;
     }
 
-    const prev = prevSpeedSampleRef.current;
+    // 1. 真實 GPS 記錄中（非試跑模擬）：直接採用後端/Hook 以真實衛星時間戳計算之縱向加速度，杜絕 React 渲染延遲假暴衝
+    if (
+      isRecording &&
+      testSpeed === null &&
+      (scrubbedSpeed === null || scrubbedSpeed === undefined) &&
+      displayStats?.currentAccelMs2 !== undefined &&
+      displayStats?.currentAccelMs2 !== null
+    ) {
+      const trueMs2 = toSafeNumber(displayStats.currentAccelMs2, 0);
+      setAccelMs2(trueMs2);
+      const truePeakA = toSafeNumber(displayStats?.peakAccelG, 0);
+      const truePeakB = toSafeNumber(displayStats?.peakBrakeG, 0);
+      if (truePeakA > 0) setPeakAccelG((p) => Math.max(p, truePeakA));
+      if (truePeakB > 0) setPeakBrakeG((p) => Math.max(p, truePeakB));
+      prevSpeedSampleRef.current = { speedKmh: effectiveSpeed, timeMs: now };
+      return;
+    }
 
+    // 2. 快速試跑 (testSpeed) 或高度剖面檢視 (scrubbedSpeed) 互動模擬
+    const prev = prevSpeedSampleRef.current;
     if (prev.speedKmh !== null && prev.timeMs > 0) {
-      const dtSec = (now - prev.timeMs) / 1000;
-      if (dtSec >= 0.12 && dtSec <= 15) {
+      const dtSec = Math.max(0.45, (now - prev.timeMs) / 1000);
+      if (dtSec <= 15) {
         const dvMs = (effectiveSpeed - prev.speedKmh) / 3.6;
-        // 限制單次計算加速度於 [-7.5, +7.5] m/s² (約 ±0.76 G)
-        const rawAccel = Math.max(-7.5, Math.min(7.5, dvMs / dtSec));
+        const rawAccel = Math.max(-6.37, Math.min(6.37, dvMs / dtSec));
         setAccelMs2((oldVal) => {
-          const smoothed = oldVal * 0.4 + rawAccel * 0.6;
+          const smoothed = oldVal * 0.35 + rawAccel * 0.65;
           const gVal = smoothed / 9.80665;
           if (gVal > 0.01) {
             setPeakAccelG((p) => Math.max(p, Math.round(gVal * 100) / 100));
@@ -337,7 +354,6 @@ export default function AutomotiveClusterDashboard({
 
     prevSpeedSampleRef.current = { speedKmh: effectiveSpeed, timeMs: now };
 
-    // 若速度維持恆定（定速巡航或停止），1.1 秒後讓加速度指針平滑阻尼回彈至 0.00 G（12 點鐘正上方）
     if (accelDecayIntervalRef.current) {
       clearInterval(accelDecayIntervalRef.current);
       accelDecayIntervalRef.current = null;
@@ -360,7 +376,7 @@ export default function AutomotiveClusterDashboard({
     return () => {
       clearTimeout(decayStartTimeout);
     };
-  }, [effectiveSpeed, isSweeping, isRecording, testSpeed, scrubbedSpeed]);
+  }, [effectiveSpeed, isSweeping, isRecording, testSpeed, scrubbedSpeed, displayStats?.currentAccelMs2, displayStats?.peakAccelG, displayStats?.peakBrakeG]);
 
   // Cleanup decay interval on unmount
   useEffect(() => {
@@ -716,7 +732,7 @@ export default function AutomotiveClusterDashboard({
         />
       )}
 
-      {/* Inner G-Force Micro Ticks (僅保留 5 個極簡刻度點，徹底消除 -0.5G / +0.5G 雜亂字樣) */}
+      {/* Inner G-Force Micro Ticks + 極簡左減(-)／右加(+)方向標記 */}
       {accelTicks.map((t, idx) => (
         <line
           key={`accel-tick-${idx}`}
@@ -729,6 +745,30 @@ export default function AutomotiveClusterDashboard({
           strokeLinecap="round"
         />
       ))}
+      <text
+        x={polarToCartesian(cx, cy, 58, -114).x}
+        y={polarToCartesian(cx, cy, 58, -114).y + 2.5}
+        textAnchor="middle"
+        fill={themeStyles.accelBrakeColor}
+        fontSize="7"
+        fontFamily="'Michroma', sans-serif"
+        fontWeight="900"
+        opacity="0.85"
+      >
+        -
+      </text>
+      <text
+        x={polarToCartesian(cx, cy, 58, 114).x}
+        y={polarToCartesian(cx, cy, 58, 114).y + 2.5}
+        textAnchor="middle"
+        fill={themeStyles.accelPositiveColor}
+        fontSize="7"
+        fontFamily="'Michroma', sans-serif"
+        fontWeight="900"
+        opacity="0.85"
+      >
+        +
+      </text>
 
       {/* Outer Speedometer Ticks & Sparse 5-Anchor Numerals */}
       {ticks.map((t, idx) => (
@@ -792,10 +832,10 @@ export default function AutomotiveClusterDashboard({
         KM/H
       </text>
 
-      {/* Ferrari Manettino-Style Minimal G-Force Capsule (取代原本 3 行擁擠文字) */}
-      <g transform={`translate(${cx - 28}, ${cy + 30})`}>
+      {/* Ferrari Manettino-Style Minimal G-Force Capsule (統一使用 Michroma 寬體賽車字型) */}
+      <g transform={`translate(${cx - 32}, ${cy + 30})`}>
         <rect
-          width="56"
+          width="64"
           height="14"
           rx="7"
           fill={isWhite ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.06)'}
@@ -803,14 +843,14 @@ export default function AutomotiveClusterDashboard({
           strokeWidth="0.7"
         />
         <text
-          x="28"
+          x="32"
           y="9.8"
           textAnchor="middle"
           fill={activeAccelNeedleColor}
-          fontSize="8"
-          fontFamily="monospace"
+          fontSize="7.2"
+          fontFamily="'Michroma', 'Eurostile Extended', sans-serif"
           fontWeight="800"
-          letterSpacing="0.5"
+          letterSpacing="0.3"
         >
           {`${accelG >= 0 ? '+' : ''}${accelG.toFixed(2)} G`}
         </text>
@@ -1247,7 +1287,7 @@ export default function AutomotiveClusterDashboard({
           <span className="opacity-40">|</span>
           <span>全程均速: <strong className={`${isOLED ? 'text-emerald-400' : 'text-emerald-700'} font-michroma font-bold`}>{displayStats?.avgSpeedKmh || '0.0'}</strong> km/h</span>
           <span className="opacity-40">|</span>
-          <span>峰值加/減速: <strong style={{ color: themeStyles.accelPositiveColor }} className="font-mono font-bold">+{peakAccelG.toFixed(2)}G</strong> / <strong style={{ color: themeStyles.accelBrakeColor }} className="font-mono font-bold">-{peakBrakeG.toFixed(2)}G</strong></span>
+          <span>峰值加/減速: <strong style={{ color: themeStyles.accelPositiveColor }} className="font-michroma font-bold">+{Math.max(peakAccelG, toSafeNumber(displayStats?.peakAccelG, 0)).toFixed(2)}G</strong> / <strong style={{ color: themeStyles.accelBrakeColor }} className="font-michroma font-bold">-{Math.max(peakBrakeG, toSafeNumber(displayStats?.peakBrakeG, 0)).toFixed(2)}G</strong></span>
         </div>
       </div>
 
@@ -1629,10 +1669,10 @@ export default function AutomotiveClusterDashboard({
                     style={{ color: isWhite ? "#1E40AF" : "#38BDF8" }}
                     className="text-xl sm:text-2xl font-michroma font-bold tracking-tight leading-none my-1.5"
                   >
-                    +{peakAccelG.toFixed(2)}G
+                    +{Math.max(peakAccelG, toSafeNumber(displayStats?.peakAccelG, 0)).toFixed(2)}G
                   </div>
-                  <span style={{ color: isWhite ? "#2563EB" : "#0284C7" }} className="text-[11px] font-mono font-bold">
-                    +{(peakAccelG * 9.80665).toFixed(1)} m/s²
+                  <span style={{ color: isWhite ? "#2563EB" : "#0284C7" }} className="text-[11px] font-michroma font-bold">
+                    +{(Math.max(peakAccelG, toSafeNumber(displayStats?.peakAccelG, 0)) * 9.80665).toFixed(1)} m/s²
                   </span>
                 </div>
               </div>
@@ -1729,7 +1769,7 @@ export default function AutomotiveClusterDashboard({
                   <span className="opacity-40">|</span>
                   <span>均速: <strong className={`${isOLED ? "text-emerald-400" : "text-emerald-700"} font-michroma font-bold`}>{displayStats?.avgSpeedKmh || "0.0"}</strong> km/h</span>
                   <span className="opacity-40">|</span>
-                  <span>加速度: <strong style={{ color: activeAccelNeedleColor }} className="font-mono font-bold">{formattedAccelG}</strong></span>
+                  <span>加速度: <strong style={{ color: activeAccelNeedleColor }} className="font-michroma font-bold">{formattedAccelG}</strong></span>
                 </div>
               </div>
 
@@ -1752,7 +1792,7 @@ export default function AutomotiveClusterDashboard({
                   <div className="opacity-20">|</div>
                   <div>
                     <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] block">⚡ 縱向 G 值</span>
-                    <strong style={{ color: activeAccelNeedleColor }} className="text-sm font-mono font-bold">
+                    <strong style={{ color: activeAccelNeedleColor }} className="text-sm font-michroma font-bold">
                       {formattedAccelG}
                     </strong>
                   </div>
