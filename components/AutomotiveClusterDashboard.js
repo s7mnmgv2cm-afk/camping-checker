@@ -524,7 +524,7 @@ export default function AutomotiveClusterDashboard({
   const formattedAccelMs2 = `${accelMs2 >= 0 ? '+' : ''}${accelMs2.toFixed(1)} m/s²`;
 
   const renderSpeedDialSVG = (svgId = gradientId) => (
-    <svg viewBox="0 0 240 184" className="w-full h-full overflow-visible">
+    <svg viewBox="8 5 224 176" className="w-full h-full overflow-visible">
       <defs>
         <linearGradient id={`${svgId}-speed-grad`} x1="0%" y1="100%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#10B981" />
@@ -860,7 +860,7 @@ export default function AutomotiveClusterDashboard({
           </span>
           <div 
             style={{ color: isWhite ? (isBraking ? '#92400E' : '#1E40AF') : (isBraking ? '#FBBF24' : '#38BDF8') }}
-            className={`${isCompact ? 'text-base sm:text-lg my-0.5' : 'text-xl sm:text-2xl my-1'} font-michroma font-bold tracking-tight leading-none`}
+            className={`${isCompact ? 'text-sm sm:text-base my-0.5' : 'text-lg sm:text-xl my-1'} font-michroma font-bold tracking-tight leading-none`}
           >
             {formattedAccelG}
           </div>
@@ -1094,7 +1094,7 @@ export default function AutomotiveClusterDashboard({
 
         <div 
           onClick={() => setIsFullscreen(true)}
-          style={{ aspectRatio: '240 / 184' }}
+          style={{ aspectRatio: '224 / 176' }}
           className="relative w-64 sm:w-72 flex items-center justify-center cursor-pointer group my-1"
           title="點擊儀表盤放大為全螢幕 HUD 模式"
         >
@@ -1353,21 +1353,21 @@ export default function AutomotiveClusterDashboard({
             background: themeStyles.wrapperBg,
             backgroundColor: isWhite ? '#F8FAFC' : isOLED ? '#000000' : '#0A0E17',
             color: isWhite ? '#0F172A' : '#FFFFFF',
-            paddingTop: 'max(env(safe-area-inset-top), 8px)',
-            paddingBottom: 'max(env(safe-area-inset-bottom), 8px)',
-            paddingLeft: 'max(env(safe-area-inset-left), 12px)',
-            paddingRight: 'max(env(safe-area-inset-right), 12px)'
+            paddingTop: 'max(env(safe-area-inset-top), 4px)',
+            paddingBottom: 'max(env(safe-area-inset-bottom), 4px)',
+            paddingLeft: 'max(env(safe-area-inset-left), 10px)',
+            paddingRight: 'max(env(safe-area-inset-right), 10px)'
           }}
           className="fixed inset-0 h-[100dvh] w-screen overflow-hidden flex flex-col justify-between select-none font-sans"
         >
-          {/* (a) 單行緊湊頂部列：高度與「縮小 (ESC)」按鈕完全一致，且「縮小 (ESC)」緊靠螢幕最右側 */}
+          {/* 單行極簡頂部列：高度與「縮小 (ESC)」按鈕一致，「縮小 (ESC)」緊靠螢幕最右側 */}
           <div 
             style={{ borderColor: isWhite ? '#E2E8F0' : '#27272A' }}
-            className="flex items-center justify-between w-full pb-1.5 border-b shrink-0 flex-nowrap gap-1.5"
+            className="flex items-center justify-between w-full pb-1 border-b shrink-0 flex-nowrap gap-1.5"
           >
             <div className="flex items-center gap-1.5 min-w-0">
               <span className={`w-2 h-2 rounded-full shrink-0 ${isRecording ? "bg-red-500 animate-ping" : "bg-emerald-500"}`} />
-              <span className="text-xs sm:text-sm font-black tracking-tight truncate">
+              <span className="text-xs font-black tracking-tight truncate">
                 🧭 車載 HUD
               </span>
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border font-mono shrink-0 ${
@@ -1376,9 +1376,6 @@ export default function AutomotiveClusterDashboard({
                   : "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
               }`}>
                 {isRecording ? "REC" : "STANDBY"}
-              </span>
-              <span className={`hidden sm:inline text-[11px] font-mono truncate ${isOLED ? "text-zinc-400" : "text-slate-500"}`}>
-                上限 {dialMax}km/h · ±{maxDialG}G
               </span>
             </div>
 
@@ -1398,7 +1395,7 @@ export default function AutomotiveClusterDashboard({
                       : (isWhite ? '#CBD5E1' : isOLED ? '#3F3F46' : 'rgba(255,255,255,0.15)'),
                     color: keepScreenAwake ? '#FFFFFF' : themeStyles.textColorPrimary
                   }}
-                  className="px-2 py-1 rounded-lg text-[11px] font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                  className="px-2 py-0.5 rounded-lg text-[11px] font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer shrink-0"
                   title="橫向車載 HUD 模式下，可自由切換是否保持螢幕常亮不休眠"
                 >
                   <span>{keepScreenAwake ? '☀️ 常亮：開' : '💤 常亮：關'}</span>
@@ -1419,7 +1416,7 @@ export default function AutomotiveClusterDashboard({
                   borderColor: isWhite ? "#CBD5E1" : isOLED ? "#3F3F46" : "rgba(255,255,255,0.15)",
                   color: isOLED ? "#34D399" : themeStyles.textColorPrimary
                 }}
-                className="px-2 py-1 rounded-lg text-[11px] font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer shrink-0"
+                className="px-2 py-0.5 rounded-lg text-[11px] font-bold border shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer shrink-0"
               >
                 {isWhite ? "⚪ 純白" : isOLED ? "🌙 極黑" : "🏎️ 曜石"}
               </button>
@@ -1427,7 +1424,7 @@ export default function AutomotiveClusterDashboard({
               <button
                 type="button"
                 onClick={() => setIsFullscreen(false)}
-                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
+                className="px-2.5 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
                 title="離開全螢幕 (ESC)"
               >
                 <span>✕</span>
@@ -1436,121 +1433,127 @@ export default function AutomotiveClusterDashboard({
             </div>
           </div>
 
-          {/* (b) & (c) 依直向 / 橫向自動配置：橫向時左翼 4 聯陣列、正中央鎖定超大錶盤、右翼行程遙測，免滑動一屏盡覽 */}
+          {/* 橫向 Landscape 模式：僅保留「儀表板、最高時速、最高加速度、累積里程、當前海拔」，上下零留黑、儀表板最大化 */}
           {isLandscape ? (
             <div 
-              style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 1fr)' }}
-              className="flex-1 min-h-0 w-full items-center gap-2.5 py-1"
+              style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.72fr) minmax(0, 2.6fr) minmax(120px, 0.72fr)' }}
+              className="flex-1 min-h-0 w-full items-stretch gap-2 pt-1"
             >
-              {/* 左翼：4 聯速度與加速度遙測陣列 + 峰值 G */}
-              <div className="h-full flex flex-col justify-center gap-1.5 min-w-0">
-                {renderFourPodSpeedMatrix(true, true)}
+              {/* 左側極簡雙卡：最高時速 + 最高加速度 */}
+              <div className="h-full flex flex-col justify-center gap-2 min-w-0">
                 <div
                   style={{
-                    backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#09090B" : "rgba(255,255,255,0.06)",
-                    borderColor: isWhite ? "#E2E8F0" : isOLED ? "#27272A" : "rgba(255,255,255,0.1)"
+                    backgroundColor: isWhite ? "#FFF1F2" : "#000000",
+                    borderColor: isWhite ? "#FECDD3" : "#E11D48"
                   }}
-                  className="px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-[11px] font-bold"
+                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
                 >
-                  <span style={{ color: themeStyles.textColorMuted }}>峰值加/減速</span>
-                  <span className="font-mono">
-                    <strong style={{ color: themeStyles.accelPositiveColor }}>+{peakAccelG.toFixed(2)}G</strong>
-                    <span className="opacity-40 mx-1">/</span>
-                    <strong style={{ color: themeStyles.accelBrakeColor }}>-{peakBrakeG.toFixed(2)}G</strong>
+                  <span style={{ color: isWhite ? "#BE123C" : "#FB7185" }} className="text-xs font-black tracking-wide">
+                    🚀 最高時速
+                  </span>
+                  <div
+                    style={{ color: isWhite ? "#9F1239" : "#FB7185" }}
+                    className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1.5"
+                  >
+                    {displayStats?.maxSpeedKmh || "0.0"}
+                  </div>
+                  <span style={{ color: isWhite ? "#E11D48" : "#F43F5E" }} className="text-[11px] font-mono font-bold">
+                    km/h
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: isWhite ? "#EFF6FF" : "#000000",
+                    borderColor: isWhite ? "#BFDBFE" : "#0284C7"
+                  }}
+                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
+                >
+                  <span style={{ color: isWhite ? "#1D4ED8" : "#38BDF8" }} className="text-xs font-black tracking-wide">
+                    ⚡ 最高加速度
+                  </span>
+                  <div
+                    style={{ color: isWhite ? "#1E40AF" : "#38BDF8" }}
+                    className="text-xl sm:text-2xl font-michroma font-bold tracking-tight leading-none my-1.5"
+                  >
+                    +{peakAccelG.toFixed(2)}G
+                  </div>
+                  <span style={{ color: isWhite ? "#2563EB" : "#0284C7" }} className="text-[11px] font-mono font-bold">
+                    +{(peakAccelG * 9.80665).toFixed(1)} m/s²
                   </span>
                 </div>
               </div>
 
-              {/* 正中央：鎖定螢幕正中心超大 252° 扇形雙針儀表盤（免滑動、零下半圓浪費） */}
-              <div className="h-full flex flex-col items-center justify-center min-w-0">
+              {/* 正中央：滿版撐滿上下高度的 252° 扇形雙針儀表盤（零上下留黑） */}
+              <div className="h-full flex items-center justify-center min-w-0 overflow-hidden">
                 <div 
                   onClick={() => setIsFullscreen(false)}
-                  style={{ width: 'min(102dvh, 42vw)', aspectRatio: '240 / 184' }}
-                  className="relative flex items-center justify-center cursor-pointer transition-transform hover:scale-102"
+                  style={{
+                    height: 'calc(100dvh - 42px)',
+                    maxWidth: '100%',
+                    aspectRatio: '224 / 176'
+                  }}
+                  className="relative flex items-center justify-center cursor-pointer"
                   title="點擊儀表盤縮小離開全螢幕"
                 >
                   {renderSpeedDialSVG(`${gradientId}-fs-land`)}
                 </div>
               </div>
 
-              {/* 右翼：累計里程、當前海拔、活動耗時、移動/休息時間 */}
-              <div className="h-full flex flex-col justify-center gap-1.5 min-w-0">
-                <div className="grid grid-cols-2 gap-1.5">
+              {/* 右側極簡雙卡：累積里程 + 當前海拔 */}
+              <div className="h-full flex flex-col justify-center gap-2 min-w-0">
+                <div
+                  style={{
+                    backgroundColor: isWhite ? "#FFFBEB" : "#000000",
+                    borderColor: isWhite ? "#FDE68A" : "#D97706"
+                  }}
+                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
+                >
+                  <span style={{ color: isWhite ? "#B45309" : "#FBBF24" }} className="text-xs font-black tracking-wide">
+                    📏 累積里程
+                  </span>
                   <div
-                    style={{
-                      backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#000000" : "rgba(255,255,255,0.05)",
-                      borderColor: isWhite ? "#E2E8F0" : isOLED ? "#27272A" : "rgba(255,255,255,0.1)"
-                    }}
-                    className="p-2 rounded-xl border-2 text-center"
+                    style={{ color: isWhite ? "#92400E" : "#F59E0B" }}
+                    className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1.5"
                   >
-                    <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] font-bold block">📏 累計里程</span>
-                    <strong style={{ color: isOLED ? "#F59E0B" : themeStyles.distanceColor }} className="text-lg sm:text-xl font-michroma font-bold block leading-tight mt-0.5">
-                      {displayStats?.totalDistanceKm || "0.00"}
-                    </strong>
-                    <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] font-mono">KM</span>
+                    {displayStats?.totalDistanceKm || "0.00"}
                   </div>
-
-                  <div
-                    style={{
-                      backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#000000" : "rgba(255,255,255,0.05)",
-                      borderColor: isWhite ? "#E2E8F0" : isOLED ? "#27272A" : "rgba(255,255,255,0.1)"
-                    }}
-                    className="p-2 rounded-xl border-2 text-center"
-                  >
-                    <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] font-bold block">⛰️ 當前海拔</span>
-                    <strong style={{ color: isOLED ? "#38BDF8" : themeStyles.altitudeColor }} className="text-lg sm:text-xl font-michroma font-bold block leading-tight mt-0.5">
-                      {displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined ? `${displayStats.currentElevation}m` : (displayStats?.maxElevationM ? `${displayStats.maxElevationM}m` : "--")}
-                    </strong>
-                    <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] font-mono">ALT</span>
-                  </div>
-
-                  <div
-                    style={{
-                      backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#000000" : "rgba(255,255,255,0.05)",
-                      borderColor: isWhite ? "#E2E8F0" : isOLED ? "#27272A" : "rgba(255,255,255,0.1)"
-                    }}
-                    className="p-2 rounded-xl border-2 text-center col-span-2"
-                  >
-                    <div className="flex items-center justify-between px-1">
-                      <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] font-bold">⏱️ 活動總耗時</span>
-                      <span className="text-[10px] font-mono text-emerald-400">
-                        動 {displayStats?.movingTimeFormatted || "00:00:00"} · 休 {displayStats?.stoppedTimeFormatted || "00:00:00"}
-                      </span>
-                    </div>
-                    <strong style={{ color: isOLED ? "#FFFFFF" : themeStyles.chronoColor }} className="text-xl sm:text-2xl font-michroma font-bold block leading-tight mt-0.5">
-                      {displayStats?.durationFormatted || "00:00:00"}
-                    </strong>
-                  </div>
+                  <span style={{ color: isWhite ? "#D97706" : "#F59E0B" }} className="text-[11px] font-mono font-bold">
+                    KM
+                  </span>
                 </div>
 
                 <div
                   style={{
-                    backgroundColor: isWhite ? "#FFFFFF" : isOLED ? "#09090B" : "rgba(255,255,255,0.06)",
-                    borderColor: isWhite ? "#E2E8F0" : isOLED ? "#27272A" : "rgba(255,255,255,0.1)"
+                    backgroundColor: isWhite ? "#F0F9FF" : "#000000",
+                    borderColor: isWhite ? "#BAE6FD" : "#0284C7"
                   }}
-                  className="px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-[11px]"
+                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
                 >
-                  <span style={{ color: themeStyles.textColorMuted }} className="font-mono truncate">
-                    量程 {dialMax} km/h
+                  <span style={{ color: isWhite ? "#0369A1" : "#38BDF8" }} className="text-xs font-black tracking-wide">
+                    ⛰️ 當前海拔
                   </span>
-                  <button
-                    type="button"
-                    onClick={triggerNeedleSweep}
-                    disabled={isSweeping}
-                    className="px-2 py-0.5 rounded-md bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-[10px] cursor-pointer disabled:opacity-50 shrink-0"
+                  <div
+                    style={{ color: isWhite ? "#0C4A6E" : "#38BDF8" }}
+                    className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1.5"
                   >
-                    🏎️ 雙針自檢
-                  </button>
+                    {displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined
+                      ? `${Number(displayStats.currentElevation).toLocaleString()}m`
+                      : (displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : "--")}
+                  </div>
+                  <span style={{ color: isWhite ? "#0284C7" : "#38BDF8" }} className="text-[11px] font-mono font-bold">
+                    MSL 海拔
+                  </span>
                 </div>
               </div>
             </div>
           ) : (
             <>
-              {/* 直向全螢幕模式：裁切下半圓後，252° 扇形儀表板橫向撐滿視覺最大化 */}
+              {/* 直向全螢幕模式：252° 扇形儀表板橫向撐滿視覺最大化 */}
               <div className="flex-1 min-h-0 flex flex-col items-center justify-center py-1">
                 <div 
                   onClick={() => setIsFullscreen(false)}
-                  style={{ width: 'min(94vw, 62dvh)', aspectRatio: '240 / 184' }}
+                  style={{ width: 'min(95vw, 64dvh)', aspectRatio: '224 / 176' }}
                   className="relative flex items-center justify-center cursor-pointer transition-transform hover:scale-102"
                   title="點擊儀表盤縮小離開全螢幕"
                 >
