@@ -454,43 +454,12 @@ export default function CampsiteARModal({
     );
   };
 
-  // Continuous GPS real-time tracking (隨使用者戶外走動/移動即時連續更新距離與方位)
+  // AR 搭帳定位策略：僅在進入「現場 GPS 模式」且尚未取得座標時單次取樣 1 點即關閉 GPS 晶片，避免搭帳期間 GPS 恆開耗電
   useEffect(() => {
     if (!isOpen || locationMode !== 'current') return;
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const newLat = pos.coords.latitude;
-        const newLng = pos.coords.longitude;
-        const newAlt = pos.coords.altitude || null;
-        const accuracy = pos.coords.accuracy;
-
-        setUserCoords((prev) => {
-          if (!prev) {
-            return { lat: newLat, lng: newLng, altitude: newAlt, accuracy };
-          }
-          // 3 公尺動態靈敏度閾值過濾，防止靜止時 GPS 噪訊微幅飄移
-          const distMoved = getDistanceMeters(prev.lat, prev.lng, newLat, newLng);
-          if (distMoved >= 3) {
-            return { lat: newLat, lng: newLng, altitude: newAlt ?? prev.altitude, accuracy };
-          }
-          return prev;
-        });
-      },
-      (err) => {
-        console.warn('GPS continuous watch notice:', err);
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 3000,
-        timeout: 10000
-      }
-    );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
+    if (!userCoords) {
+      handleSwitchToGPS();
+    }
   }, [isOpen, locationMode]);
 
   // Handle smart paste of Google Maps coordinates (e.g. "24.143, 121.272")
