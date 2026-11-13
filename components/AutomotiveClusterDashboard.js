@@ -570,6 +570,33 @@ export default function AutomotiveClusterDashboard({
   const formattedAccelG = `${accelG >= 0 ? '+' : ''}${accelG.toFixed(2)}G`;
   const formattedAccelMs2 = `${accelMs2 >= 0 ? '+' : ''}${accelMs2.toFixed(1)} m/s²`;
 
+  // ⛰️ 即時坡度計算 (% Grade 與 傾角 °)：優先採用 displayStats.currentGradePct，若無則由 elevationProfile 末端路段自動推算
+  const liveGradePct = (() => {
+    if (!isRecording && testSpeed === null && (scrubbedSpeed === null || scrubbedSpeed === undefined)) {
+      return 0;
+    }
+    if (displayStats?.currentGradePct !== undefined && displayStats?.currentGradePct !== null && Number.isFinite(Number(displayStats.currentGradePct))) {
+      return Math.max(-45, Math.min(45, Number(displayStats.currentGradePct)));
+    }
+    const prof = displayStats?.elevationProfile;
+    if (Array.isArray(prof) && prof.length >= 2) {
+      const last = prof[prof.length - 1];
+      const prev = prof[prof.length - 2];
+      const dKm = toSafeNumber(last?.distKm ?? last?.distanceKm ?? last?.distance, 0) - toSafeNumber(prev?.distKm ?? prev?.distanceKm ?? prev?.distance, 0);
+      const dEle = toSafeNumber(last?.ele ?? last?.elevation, NaN) - toSafeNumber(prev?.ele ?? prev?.elevation, NaN);
+      if (dKm > 0.005 && Number.isFinite(dEle)) {
+        const pct = (dEle / (dKm * 1000)) * 100;
+        return Math.max(-45, Math.min(45, Math.round(pct * 10) / 10));
+      }
+    }
+    return 0;
+  })();
+  const liveGradeDeg = (Math.atan(liveGradePct / 100) * 180) / Math.PI;
+  const isUphill = liveGradePct > 1.2;
+  const isDownhill = liveGradePct < -1.2;
+  const formattedGradePct = `${liveGradePct > 0 ? '+' : ''}${liveGradePct.toFixed(1)}%`;
+  const formattedGradeSub = `${liveGradeDeg > 0 ? '+' : ''}${liveGradeDeg.toFixed(1)}° ${isUphill ? '上坡' : isDownhill ? '下坡' : '平路'}`;
+
   const renderSpeedDialSVG = (svgId = gradientId) => (
     <svg viewBox="8 5 224 176" className="w-full h-full overflow-visible">
       <defs>
@@ -852,33 +879,55 @@ export default function AutomotiveClusterDashboard({
       <div className="flex items-center justify-between">
         <span style={{ color: themeStyles.textColorPrimary }} className={`${isCompact ? 'text-[11px]' : 'text-xs sm:text-sm'} font-bold flex items-center gap-1`}>
           <span className={isCompact ? 'text-xs' : 'text-base'}>⚡</span>
-          <span>4 聯速度與加速度遙測陣列</span>
+          <span>4 聯坡度·速度·加速度遙測陣列</span>
         </span>
         <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] font-mono font-bold">
-          km/h · G
+          % · km/h · G
         </span>
       </div>
 
       <div className={`grid ${isCompact && isLandscape ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'} ${isCompact ? 'gap-1.5' : 'gap-2'}`}>
         <div 
           style={{ 
-            backgroundColor: isWhite ? '#FFFFFF' : '#000000', 
-            borderColor: isWhite ? '#E2E8F0' : '#27272A' 
+            backgroundColor: isWhite
+              ? (isUphill ? '#FFFBEB' : isDownhill ? '#ECFDF5' : '#FFFFFF')
+              : '#000000', 
+            borderColor: isWhite
+              ? (isUphill ? '#FDE68A' : isDownhill ? '#A7F3D0' : '#E2E8F0')
+              : (isUphill ? '#D97706' : isDownhill ? '#059669' : '#27272A')
           }}
-          className={`border-2 rounded-xl ${isCompact ? 'p-1.5' : 'p-2.5 rounded-2xl'} flex flex-col justify-between text-center shadow-xs`}
-          title="全程平均時速：總里程 ÷ 總耗時（包含所有休息停頓與拍照時間）"
+          className={`border-2 rounded-xl ${isCompact ? 'p-1.5' : 'p-2.5 rounded-2xl'} flex flex-col justify-between text-center shadow-xs transition-colors`}
+          title="即時路段坡度百分比（每前進 100 公尺之海拔升降高度）與地面傾角"
         >
-          <span style={{ color: themeStyles.textColorSecondary }} className={`${isCompact ? 'text-[10px]' : 'text-xs mb-1'} font-bold block`}>
-            平均時速
+          <span
+            style={{
+              color: isWhite
+                ? (isUphill ? '#B45309' : isDownhill ? '#047857' : themeStyles.textColorSecondary)
+                : (isUphill ? '#FBBF24' : isDownhill ? '#34D399' : themeStyles.textColorSecondary)
+            }}
+            className={`${isCompact ? 'text-[10px]' : 'text-xs mb-1'} font-bold block`}
+          >
+            即時坡度
           </span>
           <div 
-            style={{ color: isWhite ? themeStyles.textColorPrimary : '#FFFFFF' }}
-            className={`${isCompact ? 'text-lg sm:text-xl my-0.5' : 'text-2xl sm:text-3xl my-1'} font-michroma font-bold tracking-tight leading-none`}
+            style={{
+              color: isWhite
+                ? (isUphill ? '#92400E' : isDownhill ? '#065F46' : themeStyles.textColorPrimary)
+                : (isUphill ? '#FBBF24' : isDownhill ? '#34D399' : '#FFFFFF')
+            }}
+            className={`${isCompact ? 'text-base sm:text-lg my-0.5' : 'text-xl sm:text-2xl my-1'} font-michroma font-bold tracking-tight leading-none`}
           >
-            {displayStats?.avgSpeedKmh || '0.0'}
+            {formattedGradePct}
           </div>
-          <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] font-mono font-bold block">
-            km/h
+          <span
+            style={{
+              color: isWhite
+                ? (isUphill ? '#D97706' : isDownhill ? '#059669' : themeStyles.textColorMuted)
+                : (isUphill ? '#F59E0B' : isDownhill ? '#10B981' : themeStyles.textColorMuted)
+            }}
+            className="text-[10px] font-mono font-bold block"
+          >
+            {formattedGradeSub}
           </span>
         </div>
 
