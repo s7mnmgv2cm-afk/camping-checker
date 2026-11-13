@@ -858,6 +858,8 @@ export default function CampsiteGPXTrackerModal({
                       scrubbedSpeed={scrubbedPoint?.speed ?? null}
                       theme={displayTheme}
                       onThemeChange={(newTheme) => setDisplayTheme(newTheme === 'obsidian' ? 'oled' : newTheme)}
+                      onVehicleModeChange={gpxTracker?.setVehicleMode}
+                      onCalibrateElevation={gpxTracker?.calibrateElevation}
                     />
 
                     {/* 📈 高度剖面圖 (Elevation Profile Chart) - 完全對齊使用者上傳的圖表 */}

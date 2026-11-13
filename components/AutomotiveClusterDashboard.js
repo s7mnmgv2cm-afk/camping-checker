@@ -48,9 +48,25 @@ export default function AutomotiveClusterDashboard({
   scrubbedSpeed = null,
   theme = null,
   onThemeChange = null,
-  onVehicleModeChange = null
+  onVehicleModeChange = null,
+  onCalibrateElevation = null
 }) {
   const gradientId = useId();
+  const handleCalibrateElevationClick = (e) => {
+    e?.stopPropagation?.();
+    if (typeof onCalibrateElevation !== 'function' || typeof window === 'undefined') return;
+    const currVal = displayStats?.currentElevation ?? '';
+    const input = window.prompt(
+      '⛰️ 海拔基準校正（消除室內冷啟動或氣壓偏移）\n請輸入您目前所在位置的已知真實海拔高度（公尺）：',
+      currVal !== null && currVal !== undefined ? String(currVal) : '42'
+    );
+    if (input !== null && input.trim() !== '') {
+      const num = Number(input.trim());
+      if (Number.isFinite(num) && num >= -500 && num <= 9000) {
+        onCalibrateElevation(num);
+      }
+    }
+  };
   // 支援三種主題：'white' (首頁純白) | 'oled' (OLED 極黑 0 耗電) | 'obsidian' (曜石賽道)
   const [clusterTheme, setClusterTheme] = useState(theme || 'white');
   const [speedMode, setSpeedMode] = useState('auto'); // 'auto' | 'hike' | 'bike' | 'drive' | 'train' | 'plane'
@@ -1274,17 +1290,42 @@ export default function AutomotiveClusterDashboard({
                 <span className="text-base">⛰️</span>
                 <span>當前海拔高度</span>
               </span>
-              <span 
-                style={{ color: isWhite ? '#1D4ED8' : '#38BDF8' }} 
-                className="font-mono text-[11px] font-bold"
-              >
-                ALTIMETER
-              </span>
+              <div className="flex items-center gap-1.5">
+                {displayStats?.elevationAccuracyM !== null && displayStats?.elevationAccuracyM !== undefined && (
+                  <span
+                    style={{
+                      backgroundColor: displayStats.elevationAccuracyM <= 25 ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                      color: displayStats.elevationAccuracyM <= 25 ? '#10B981' : '#F59E0B'
+                    }}
+                    className="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold"
+                    title="垂直 Z 軸衛星精度誤差（<= 25m 代表 3D 高度已收斂）"
+                  >
+                    ±{displayStats.elevationAccuracyM}m
+                  </span>
+                )}
+                {typeof onCalibrateElevation === 'function' && (
+                  <button
+                    type="button"
+                    onClick={handleCalibrateElevationClick}
+                    style={{
+                      backgroundColor: isWhite ? '#EFF6FF' : '#18181B',
+                      borderColor: isWhite ? '#BFDBFE' : '#27272A',
+                      color: isWhite ? '#1D4ED8' : '#38BDF8'
+                    }}
+                    className="px-2 py-0.5 rounded-lg border text-[10px] font-bold cursor-pointer hover:opacity-85 active:scale-95"
+                    title="點擊輸入已知真實海拔進行基準校正"
+                  >
+                    🎯 校正
+                  </button>
+                )}
+              </div>
             </div>
 
             <div 
+              onClick={typeof onCalibrateElevation === 'function' ? handleCalibrateElevationClick : undefined}
               style={{ color: isWhite ? '#1E40AF' : '#38BDF8' }}
-              className="text-3xl sm:text-4xl font-michroma font-bold tracking-normal leading-none my-2 flex items-baseline justify-center gap-2 text-center"
+              className={`text-3xl sm:text-4xl font-michroma font-bold tracking-normal leading-none my-2 flex items-baseline justify-center gap-2 text-center ${typeof onCalibrateElevation === 'function' ? 'cursor-pointer' : ''}`}
+              title={typeof onCalibrateElevation === 'function' ? '點擊可手動輸入基準海拔進行校正' : undefined}
             >
               <span>{displayStats?.currentElevation !== null ? Number(displayStats.currentElevation).toLocaleString() : '--'}</span>
               <span style={{ color: themeStyles.textColorSecondary }} className="text-xs sm:text-sm font-bold font-michroma">公尺 (m)</span>
@@ -1524,14 +1565,16 @@ export default function AutomotiveClusterDashboard({
                 </div>
 
                 <div
+                  onClick={typeof onCalibrateElevation === 'function' ? handleCalibrateElevationClick : undefined}
                   style={{
                     backgroundColor: isWhite ? "#F0F9FF" : "#000000",
                     borderColor: isWhite ? "#BAE6FD" : "#0284C7"
                   }}
-                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
+                  className={`flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs ${typeof onCalibrateElevation === 'function' ? 'cursor-pointer active:scale-98' : ''}`}
+                  title="點擊可輸入已知真實海拔高度進行校正"
                 >
                   <span style={{ color: isWhite ? "#0369A1" : "#38BDF8" }} className="text-xs font-black tracking-wide">
-                    ⛰️ 當前海拔
+                    ⛰️ 當前海拔 {typeof onCalibrateElevation === 'function' ? '🎯' : ''}
                   </span>
                   <div
                     style={{ color: isWhite ? "#0C4A6E" : "#38BDF8" }}
@@ -1542,7 +1585,9 @@ export default function AutomotiveClusterDashboard({
                       : (displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : "--")}
                   </div>
                   <span style={{ color: isWhite ? "#0284C7" : "#38BDF8" }} className="text-[11px] font-mono font-bold">
-                    MSL 海拔
+                    {displayStats?.elevationAccuracyM !== null && displayStats?.elevationAccuracyM !== undefined
+                      ? `±${displayStats.elevationAccuracyM}m · 點擊校正`
+                      : 'MSL 海拔'}
                   </span>
                 </div>
               </div>
