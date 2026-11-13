@@ -378,6 +378,13 @@ export default function CampsiteGPXTrackerModal({
     }
   };
 
+  // 開啟視窗且處於待機 (STANDBY) 時，立即觸發一次即時海拔與 DEM 地形基準校準，避免顯示上一筆存檔的舊海拔
+  useEffect(() => {
+    if (isOpen && !isRecording && typeof gpxTracker?.refreshInstantElevation === 'function') {
+      gpxTracker.refreshInstantElevation();
+    }
+  }, [isOpen, isRecording]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const displaySource = isRecording 
     ? { stats: currentStats, pointsCount: trackPoints?.length || 0, waypoints: waypoints || [], title: trackName || '本次健行航跡' }
     : (lastFinishedTrack 
@@ -386,7 +393,14 @@ export default function CampsiteGPXTrackerModal({
         ? { stats: activeRoute.stats, pointsCount: activeRoute.points?.length || 0, waypoints: activeRoute.waypoints || [], title: activeRoute.name }
         : { stats: currentStats, pointsCount: 0, waypoints: [], title: trackName || '健行航跡' }));
 
-  const displayStats = displaySource.stats || currentStats;
+  const rawDisplayStats = displaySource.stats || currentStats;
+  const displayStats = (!isRecording && currentStats?.currentElevation !== null && currentStats?.currentElevation !== undefined)
+    ? {
+        ...rawDisplayStats,
+        currentElevation: currentStats.currentElevation,
+        elevationAccuracyM: currentStats.elevationAccuracyM
+      }
+    : rawDisplayStats;
   const displayPointsCount = displaySource.pointsCount || 0;
   const displayWaypoints = displaySource.waypoints || [];
   const displayTitle = displaySource.title;
