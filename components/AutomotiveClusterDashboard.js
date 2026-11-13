@@ -38,6 +38,18 @@ function getModeTitle(dialMax) {
   return { title: '🚶 徒步漫行模式 (Hiking & Trekking)', desc: '深山步道高精度慢速遙測' };
 }
 
+function toSafeNumber(val, fallback = 0) {
+  if (val === null || val === undefined || val === '') return fallback;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function formatElevationValue(val, suffix = '') {
+  if (val === null || val === undefined || val === '') return '--';
+  const n = Number(val);
+  return Number.isFinite(n) ? `${n.toLocaleString()}${suffix}` : '--';
+}
+
 export default function AutomotiveClusterDashboard({
   displayStats,
   isRecording = false,
@@ -234,40 +246,55 @@ export default function AutomotiveClusterDashboard({
   }, [isFullscreen, clusterTheme]);
 
   // Trigger Gauge Sweep (超跑發動雙指針自檢全幅掃描：時速針 + 加速度針同步掃描歸位)
+  const sweepTimersRef = useRef([]);
   const triggerNeedleSweep = () => {
     if (isSweeping) return;
+    sweepTimersRef.current.forEach((id) => clearTimeout(id));
+    sweepTimersRef.current = [];
     setIsSweeping(true);
     setSweepAngle(120);
     setSweepAccelAngle(105);
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
       setSweepAngle(-120);
       setSweepAccelAngle(-105);
-      setTimeout(() => {
+      const t2 = setTimeout(() => {
         setSweepAngle(null);
         setSweepAccelAngle(null);
         setIsSweeping(false);
       }, 550);
+      sweepTimersRef.current.push(t2);
     }, 600);
+    sweepTimersRef.current.push(t1);
   };
 
   useEffect(() => {
     const t = setTimeout(() => {
       triggerNeedleSweep();
     }, 400);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      sweepTimersRef.current.forEach((id) => clearTimeout(id));
+      sweepTimersRef.current = [];
+    };
   }, []);
 
+  // 當開始全新一筆記錄時，自動重置前次殘留的峰值加/減速 G 值
+  useEffect(() => {
+    if (isRecording) {
+      setPeakAccelG(0);
+      setPeakBrakeG(0);
+    }
+  }, [isRecording]);
+
   // Current speed & telemetry metrics
-  const baseCurrentSpeed = parseFloat(displayStats?.currentSpeedKmh || 0);
+  const baseCurrentSpeed = toSafeNumber(displayStats?.currentSpeedKmh, 0);
   const effectiveSpeed = (() => {
-    if (testSpeed !== null) return testSpeed;
-    if (scrubbedSpeed !== null && scrubbedSpeed !== undefined && scrubbedSpeed >= 0) return scrubbedSpeed;
+    if (testSpeed !== null && Number.isFinite(testSpeed)) return testSpeed;
+    if (scrubbedSpeed !== null && scrubbedSpeed !== undefined && Number.isFinite(Number(scrubbedSpeed)) && Number(scrubbedSpeed) >= 0) {
+      return Number(scrubbedSpeed);
+    }
+    // 停止記錄 (STANDBY) 時，主時速錶針與數字一律歸零；僅在記錄中 (REC)、試跑或觸碰高度剖面圖點位時顯示對應速度
     if (isRecording) return baseCurrentSpeed;
-    if (baseCurrentSpeed > 0) return baseCurrentSpeed;
-    const mAvg = parseFloat(displayStats?.movingAvgSpeedKmh || 0);
-    if (mAvg > 0) return mAvg;
-    const avg = parseFloat(displayStats?.avgSpeedKmh || 0);
-    if (avg > 0) return avg;
     return 0;
   })();
 
@@ -275,6 +302,18 @@ export default function AutomotiveClusterDashboard({
   useEffect(() => {
     if (isSweeping) return;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    // 停止記錄且非試跑/剖面點檢視時，清除阻尼計時器並立即雙針歸零
+    if (!isRecording && testSpeed === null && (scrubbedSpeed === null || scrubbedSpeed === undefined)) {
+      if (accelDecayIntervalRef.current) {
+        clearInterval(accelDecayIntervalRef.current);
+        accelDecayIntervalRef.current = null;
+      }
+      setAccelMs2(0);
+      prevSpeedSampleRef.current = { speedKmh: 0, timeMs: now };
+      return;
+    }
+
     const prev = prevSpeedSampleRef.current;
 
     if (prev.speedKmh !== null && prev.timeMs > 0) {
@@ -321,7 +360,7 @@ export default function AutomotiveClusterDashboard({
     return () => {
       clearTimeout(decayStartTimeout);
     };
-  }, [effectiveSpeed, isSweeping]);
+  }, [effectiveSpeed, isSweeping, isRecording, testSpeed, scrubbedSpeed]);
 
   // Cleanup decay interval on unmount
   useEffect(() => {
@@ -332,14 +371,14 @@ export default function AutomotiveClusterDashboard({
     };
   }, []);
 
-  const maxSpeed = parseFloat(displayStats?.maxSpeedKmh || 0);
+  const maxSpeed = toSafeNumber(displayStats?.maxSpeedKmh, 0);
 
   // Dynamic dial scale based on selected mode or automatic detection
   const selectedConfig = SPEED_MODES.find(m => m.id === speedMode);
   const dialMax = selectedConfig?.max || getAutoDialMax(effectiveSpeed, maxSpeed);
   const modeInfo = getModeTitle(dialMax);
 
-  // 🚗 當偵測到車載 HUD 模式 (dialMax >= 120 或開啟全螢幕 HUD) 時，同步通知定位引擎升級為 1Hz 連續都卜勒追蹤並鎖定汽車極速上限
+  // 🚗 當偵測到車載 HUD 模式 (dialMax >= 120 或開啟全螢幕 HUD) 時，同步通知定位引擎升級為 1Hz 連續都卜勒追蹤；退出全螢幕後自動恢復省電模式
   useEffect(() => {
     if (typeof onVehicleModeChange !== 'function') return;
     if (speedMode !== 'auto') {
@@ -348,6 +387,8 @@ export default function AutomotiveClusterDashboard({
       onVehicleModeChange('drive');
     } else if (dialMax >= 50) {
       onVehicleModeChange('bike');
+    } else {
+      onVehicleModeChange('auto');
     }
   }, [speedMode, dialMax, isFullscreen, onVehicleModeChange]);
 
@@ -1349,7 +1390,7 @@ export default function AutomotiveClusterDashboard({
               className={`text-3xl sm:text-4xl font-michroma font-bold tracking-normal leading-none my-2 flex items-baseline justify-center gap-2 text-center ${typeof onCalibrateElevation === 'function' ? 'cursor-pointer' : ''}`}
               title={typeof onCalibrateElevation === 'function' ? '點擊可手動輸入基準海拔進行校正' : undefined}
             >
-              <span>{displayStats?.currentElevation !== null ? Number(displayStats.currentElevation).toLocaleString() : '--'}</span>
+              <span>{formatElevationValue(displayStats?.currentElevation)}</span>
               <span style={{ color: themeStyles.textColorSecondary }} className="text-xs sm:text-sm font-bold font-michroma">公尺 (m)</span>
             </div>
           </div>
@@ -1401,7 +1442,7 @@ export default function AutomotiveClusterDashboard({
           <div className={`pt-2 border-t ${isWhite ? 'border-slate-100' : 'border-zinc-800'} flex items-center justify-between text-xs`}>
             <span style={{ color: themeStyles.textColorSecondary }} className="font-bold">峰谷跨距:</span>
             <span style={{ color: themeStyles.textColorPrimary }} className="font-bold">
-              最低 <strong style={{ color: isWhite ? '#0284C7' : '#38BDF8' }} className="font-michroma font-bold">{displayStats?.minElevationM ? `${Number(displayStats.minElevationM).toLocaleString()}m` : '--'}</strong> ~ 最高 <strong style={{ color: isWhite ? '#E11D48' : '#FB7185' }} className="font-michroma font-bold">{displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : '--'}</strong>
+              最低 <strong style={{ color: isWhite ? '#0284C7' : '#38BDF8' }} className="font-michroma font-bold">{formatElevationValue(displayStats?.minElevationM, 'm')}</strong> ~ 最高 <strong style={{ color: isWhite ? '#E11D48' : '#FB7185' }} className="font-michroma font-bold">{formatElevationValue(displayStats?.maxElevationM, 'm')}</strong>
             </span>
           </div>
         </div>
@@ -1421,7 +1462,7 @@ export default function AutomotiveClusterDashboard({
             paddingLeft: 'max(env(safe-area-inset-left), 10px)',
             paddingRight: 'max(env(safe-area-inset-right), 10px)'
           }}
-          className="fixed inset-0 h-[100dvh] w-screen overflow-hidden flex flex-col justify-between select-none font-sans"
+                    className={`fixed inset-0 h-[100dvh] w-screen ${isLandscape ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain'} flex flex-col justify-between select-none font-sans`}
         >
           {/* 單行極簡頂部列：高度與「縮小 (ESC)」按鈕一致，「縮小 (ESC)」緊靠螢幕最右側 */}
           <div 
@@ -1552,7 +1593,8 @@ export default function AutomotiveClusterDashboard({
                 <div 
                   onClick={() => setIsFullscreen(false)}
                   style={{
-                    height: 'calc(100dvh - 42px)',
+                    height: '100%',
+                    maxHeight: 'calc(100dvh - 60px)',
                     maxWidth: '100%',
                     aspectRatio: '224 / 176'
                   }}
@@ -1602,9 +1644,12 @@ export default function AutomotiveClusterDashboard({
                     style={{ color: isWhite ? "#0C4A6E" : "#38BDF8" }}
                     className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1.5"
                   >
-                    {displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined
-                      ? `${Number(displayStats.currentElevation).toLocaleString()}m`
-                      : (displayStats?.maxElevationM ? `${Number(displayStats.maxElevationM).toLocaleString()}m` : "--")}
+                    {formatElevationValue(
+                      displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined
+                        ? displayStats.currentElevation
+                        : displayStats?.maxElevationM,
+                      'm'
+                    )}
                   </div>
                   <span style={{ color: isWhite ? "#0284C7" : "#38BDF8" }} className="text-[11px] font-mono font-bold">
                     {displayStats?.elevationAccuracyM !== null && displayStats?.elevationAccuracyM !== undefined
@@ -1666,7 +1711,12 @@ export default function AutomotiveClusterDashboard({
                   <div>
                     <span style={{ color: themeStyles.textColorMuted }} className="text-[10px] block">⛰️ 當前海拔</span>
                     <strong style={{ color: isOLED ? "#38BDF8" : themeStyles.altitudeColor }} className="text-sm font-michroma font-bold">
-                      {displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined ? `${displayStats.currentElevation}m` : (displayStats?.maxElevationM ? `${displayStats.maxElevationM}m` : "--")}
+                      {formatElevationValue(
+                        displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined
+                          ? displayStats.currentElevation
+                          : displayStats?.maxElevationM,
+                        'm'
+                      )}
                     </strong>
                   </div>
                   <div className="opacity-20">|</div>
