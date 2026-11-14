@@ -870,6 +870,7 @@ export default function CampsiteGPXTrackerModal({
                       isManuallyResting={isManuallyResting}
                       toggleManualRest={toggleManualRest}
                       scrubbedSpeed={scrubbedPoint?.speed ?? null}
+                      scrubbedSteps={scrubbedPoint?.steps ?? null}
                       theme={displayTheme}
                       onThemeChange={(newTheme) => setDisplayTheme(newTheme === 'obsidian' ? 'oled' : newTheme)}
                       onVehicleModeChange={gpxTracker?.setVehicleMode}
@@ -1154,6 +1155,12 @@ export default function CampsiteGPXTrackerModal({
                                 <span>📅 {new Date(item.finishedAt || Date.now()).toLocaleDateString('zh-TW')}</span>
                                 <span>·</span>
                                 <span className={isOled ? 'text-emerald-400 font-bold' : 'text-emerald-700 font-bold'}>📏 {item.stats?.totalDistanceKm || '0'} km</span>
+                                {item.stats?.totalSteps > 0 && (
+                                  <>
+                                    <span>·</span>
+                                    <span className={isOled ? 'text-amber-400 font-bold' : 'text-amber-700 font-bold'}>👟 {Number(item.stats.totalSteps).toLocaleString()} 步</span>
+                                  </>
+                                )}
                                 <span>·</span>
                                 <span className={isOled ? 'text-sky-400 font-bold' : 'text-sky-600 font-bold'}>⛰️ +{item.stats?.totalAscentM || 0}m</span>
                                 <span>·</span>
