@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useId, useState, useEffect, useRef } from 'react';
+import React, { useId, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -48,6 +48,66 @@ function formatElevationValue(val, suffix = '') {
   if (val === null || val === undefined || val === '') return '--';
   const n = Number(val);
   return Number.isFinite(n) ? `${n.toLocaleString()}${suffix}` : '--';
+}
+
+// 📐 動態自適應數字字級元件：依卡片實際寬度與字數自動縮放，確保 Michroma 寬體字型永不貼邊或超出框線
+function AutoFitMetricValue({
+  value,
+  maxPx = 28,
+  minPx = 12,
+  style = {},
+  className = ''
+}) {
+  const containerRef = useRef(null);
+  const textRef = useRef(null);
+  const textStr = String(value ?? '');
+  const [fontSizePx, setFontSizePx] = useState(maxPx);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const textEl = textRef.current;
+    if (!container || !textEl) return;
+
+    const fit = () => {
+      const availW = container.clientWidth - 8; // 保留左右至少 4px 呼吸安全邊距
+      if (availW <= 0) return;
+
+      // 先以最大字級量測實際寬度，再依比例精準縮放
+      textEl.style.fontSize = `${maxPx}px`;
+      const neededW = textEl.scrollWidth;
+      if (neededW > availW && neededW > 0) {
+        const scaled = Math.max(minPx, Math.floor(maxPx * (availW / neededW) * 0.96));
+        setFontSizePx(scaled);
+        textEl.style.fontSize = `${scaled}px`;
+      } else {
+        setFontSizePx(maxPx);
+        textEl.style.fontSize = `${maxPx}px`;
+      }
+    };
+
+    fit();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => fit());
+      ro.observe(container);
+      return () => ro.disconnect();
+    }
+  }, [textStr, maxPx, minPx]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full overflow-hidden flex items-center justify-center text-center"
+    >
+      <span
+        ref={textRef}
+        style={{ ...style, fontSize: `${fontSizePx}px` }}
+        className={`whitespace-nowrap inline-block ${className}`}
+      >
+        {textStr}
+      </span>
+    </div>
+  );
 }
 
 export default function AutomotiveClusterDashboard({
@@ -329,14 +389,15 @@ export default function AutomotiveClusterDashboard({
       return;
     }
 
-    // 1. 真實 GPS 記錄中（非試跑模擬）：直接採用後端/Hook 以真實衛星時間戳計算之縱向加速度，杜絕 React 渲染延遲假暴衝
-    if (
+    const isTrueGpsSource =
       isRecording &&
       testSpeed === null &&
       (scrubbedSpeed === null || scrubbedSpeed === undefined) &&
       displayStats?.currentAccelMs2 !== undefined &&
-      displayStats?.currentAccelMs2 !== null
-    ) {
+      displayStats?.currentAccelMs2 !== null;
+
+    if (isTrueGpsSource) {
+      // 1. 真實 GPS 記錄中：直接採用真實衛星時間戳計算之縱向加速度，並於 1.1 秒無新變化後自動阻尼歸零
       const trueMs2 = toSafeNumber(displayStats.currentAccelMs2, 0);
       setAccelMs2(trueMs2);
       const truePeakA = toSafeNumber(displayStats?.peakAccelG, 0);
@@ -344,31 +405,30 @@ export default function AutomotiveClusterDashboard({
       if (truePeakA > 0) setPeakAccelG((p) => Math.max(p, truePeakA));
       if (truePeakB > 0) setPeakBrakeG((p) => Math.max(p, truePeakB));
       prevSpeedSampleRef.current = { speedKmh: effectiveSpeed, timeMs: now };
-      return;
-    }
-
-    // 2. 快速試跑 (testSpeed) 或高度剖面檢視 (scrubbedSpeed) 互動模擬
-    const prev = prevSpeedSampleRef.current;
-    if (prev.speedKmh !== null && prev.timeMs > 0) {
-      const dtSec = Math.max(0.45, (now - prev.timeMs) / 1000);
-      if (dtSec <= 15) {
-        const dvMs = (effectiveSpeed - prev.speedKmh) / 3.6;
-        const rawAccel = Math.max(-6.37, Math.min(6.37, dvMs / dtSec));
-        setAccelMs2((oldVal) => {
-          const smoothed = oldVal * 0.35 + rawAccel * 0.65;
-          const gVal = smoothed / 9.80665;
-          if (gVal > 0.01) {
-            setPeakAccelG((p) => Math.max(p, Math.round(gVal * 100) / 100));
-          } else if (gVal < -0.01) {
-            setPeakBrakeG((p) => Math.max(p, Math.round(Math.abs(gVal) * 100) / 100));
-          }
-          return smoothed;
-        });
+    } else {
+      // 2. 快速試跑 (testSpeed) 或高度剖面檢視 (scrubbedSpeed) 互動模擬
+      const prev = prevSpeedSampleRef.current;
+      if (prev.speedKmh !== null && prev.timeMs > 0) {
+        const dtSec = Math.max(0.45, (now - prev.timeMs) / 1000);
+        if (dtSec <= 15) {
+          const dvMs = (effectiveSpeed - prev.speedKmh) / 3.6;
+          const rawAccel = Math.max(-6.37, Math.min(6.37, dvMs / dtSec));
+          setAccelMs2((oldVal) => {
+            const smoothed = oldVal * 0.35 + rawAccel * 0.65;
+            const gVal = smoothed / 9.80665;
+            if (gVal > 0.01) {
+              setPeakAccelG((p) => Math.max(p, Math.round(gVal * 100) / 100));
+            } else if (gVal < -0.01) {
+              setPeakBrakeG((p) => Math.max(p, Math.round(Math.abs(gVal) * 100) / 100));
+            }
+            return smoothed;
+          });
+        }
       }
+      prevSpeedSampleRef.current = { speedKmh: effectiveSpeed, timeMs: now };
     }
 
-    prevSpeedSampleRef.current = { speedKmh: effectiveSpeed, timeMs: now };
-
+    // 無論真實 GPS 記錄或試跑模式，1.1 秒後皆啟動平滑阻尼讓黃針自動回彈至 0.00 G，絕不卡在舊數值
     if (accelDecayIntervalRef.current) {
       clearInterval(accelDecayIntervalRef.current);
       accelDecayIntervalRef.current = null;
@@ -391,7 +451,7 @@ export default function AutomotiveClusterDashboard({
     return () => {
       clearTimeout(decayStartTimeout);
     };
-  }, [effectiveSpeed, isSweeping, isRecording, testSpeed, scrubbedSpeed, displayStats?.currentAccelMs2, displayStats?.peakAccelG, displayStats?.peakBrakeG]);
+  }, [effectiveSpeed, isSweeping, isRecording, testSpeed, scrubbedSpeed, displayStats?.currentAccelMs2, displayStats?.currentAccelSampleMs, displayStats?.peakAccelG, displayStats?.peakBrakeG]);
 
   // Cleanup decay interval on unmount
   useEffect(() => {
@@ -409,19 +469,18 @@ export default function AutomotiveClusterDashboard({
   const dialMax = selectedConfig?.max || getAutoDialMax(effectiveSpeed, maxSpeed);
   const modeInfo = getModeTitle(dialMax);
 
-  // 🚗 當偵測到車載 HUD 模式 (dialMax >= 120 或開啟全螢幕 HUD) 時，同步通知定位引擎升級為 1Hz 連續都卜勒追蹤；退出全螢幕後自動恢復省電模式
+  // 🚗 僅在「使用者手動選擇特定載具量程」或「記錄中實際速度超過步行 (> 10 km/h)」時才通知切換模式；
+  // 開啟全螢幕 HUD 或檢視歷史高速紀錄時，絕不強制跳成 1Hz 高頻取樣
   useEffect(() => {
     if (typeof onVehicleModeChange !== 'function') return;
     if (speedMode !== 'auto') {
       onVehicleModeChange(speedMode);
-    } else if (dialMax >= 120 || isFullscreen) {
-      onVehicleModeChange('drive');
-    } else if (dialMax >= 50) {
-      onVehicleModeChange('bike');
+    } else if (isRecording && effectiveSpeed > 10) {
+      onVehicleModeChange(effectiveSpeed >= 35 ? 'drive' : 'bike');
     } else {
       onVehicleModeChange('auto');
     }
-  }, [speedMode, dialMax, isFullscreen, onVehicleModeChange]);
+  }, [speedMode, isRecording, effectiveSpeed, onVehicleModeChange]);
 
   const speedRatio = Math.min(1, Math.max(0, effectiveSpeed / dialMax));
   
@@ -964,16 +1023,17 @@ export default function AutomotiveClusterDashboard({
           >
             即時坡度
           </span>
-          <div 
+          <AutoFitMetricValue
+            value={formattedGradePct}
+            maxPx={isCompact ? 17 : 22}
+            minPx={11}
             style={{
               color: isWhite
                 ? (isUphill ? '#92400E' : isDownhill ? '#065F46' : themeStyles.textColorPrimary)
                 : (isUphill ? '#FBBF24' : isDownhill ? '#34D399' : '#FFFFFF')
             }}
-            className={`${isCompact ? 'text-base sm:text-lg my-0.5' : 'text-xl sm:text-2xl my-1'} font-michroma font-bold tracking-tight leading-none text-center w-full`}
-          >
-            {formattedGradePct}
-          </div>
+            className={`${isCompact ? 'my-0.5' : 'my-1'} font-michroma font-bold tracking-tight leading-none`}
+          />
           <span
             style={{
               color: isWhite
@@ -997,12 +1057,13 @@ export default function AutomotiveClusterDashboard({
           <span style={{ color: isWhite ? '#15803D' : '#34D399' }} className={`${isCompact ? 'text-[10px]' : 'text-xs mb-1'} font-bold block text-center w-full`}>
             移動均速
           </span>
-          <div 
+          <AutoFitMetricValue
+            value={displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
+            maxPx={isCompact ? 19 : 26}
+            minPx={12}
             style={{ color: isWhite ? '#166534' : '#34D399' }}
-            className={`${isCompact ? 'text-lg sm:text-xl my-0.5' : 'text-2xl sm:text-3xl my-1'} font-michroma font-bold tracking-tight leading-none text-center w-full`}
-          >
-            {displayStats?.movingAvgSpeedKmh || displayStats?.avgSpeedKmh || '0.0'}
-          </div>
+            className={`${isCompact ? 'my-0.5' : 'my-1'} font-michroma font-bold tracking-tight leading-none`}
+          />
           <span style={{ color: isWhite ? '#16A34A' : '#10B981' }} className="text-[10px] font-michroma font-bold block text-center w-full">
             km/h
           </span>
@@ -1019,12 +1080,13 @@ export default function AutomotiveClusterDashboard({
           <span style={{ color: isWhite ? '#BE123C' : '#FB7185' }} className={`${isCompact ? 'text-[10px]' : 'text-xs mb-1'} font-bold block text-center w-full`}>
             最高時速
           </span>
-          <div 
+          <AutoFitMetricValue
+            value={displayStats?.maxSpeedKmh || '0.0'}
+            maxPx={isCompact ? 19 : 26}
+            minPx={12}
             style={{ color: isWhite ? '#9F1239' : '#FB7185' }}
-            className={`${isCompact ? 'text-lg sm:text-xl my-0.5' : 'text-2xl sm:text-3xl my-1'} font-michroma font-bold tracking-tight leading-none text-center w-full`}
-          >
-            {displayStats?.maxSpeedKmh || '0.0'}
-          </div>
+            className={`${isCompact ? 'my-0.5' : 'my-1'} font-michroma font-bold tracking-tight leading-none`}
+          />
           <span style={{ color: isWhite ? '#E11D48' : '#F43F5E' }} className="text-[10px] font-michroma font-bold block text-center w-full">
             km/h
           </span>
@@ -1041,12 +1103,13 @@ export default function AutomotiveClusterDashboard({
           <span style={{ color: isWhite ? (isBraking ? '#B45309' : '#1D4ED8') : (isBraking ? '#FBBF24' : '#38BDF8') }} className={`${isCompact ? 'text-[10px]' : 'text-xs mb-1'} font-bold block text-center w-full`}>
             即時加速度
           </span>
-          <div 
+          <AutoFitMetricValue
+            value={formattedAccelG}
+            maxPx={isCompact ? 15 : 19}
+            minPx={10}
             style={{ color: isWhite ? (isBraking ? '#92400E' : '#1E40AF') : (isBraking ? '#FBBF24' : '#38BDF8') }}
-            className={`${isCompact ? 'text-sm sm:text-base my-0.5' : 'text-lg sm:text-xl my-1'} font-michroma font-bold tracking-tight leading-none text-center w-full`}
-          >
-            {formattedAccelG}
-          </div>
+            className={`${isCompact ? 'my-0.5' : 'my-1'} font-michroma font-bold tracking-tight leading-none`}
+          />
           <span style={{ color: isWhite ? (isBraking ? '#D97706' : '#2563EB') : (isBraking ? '#F59E0B' : '#0284C7') }} className="text-[10px] font-michroma font-bold block text-center w-full">
             {formattedAccelMs2}
           </span>
@@ -1671,18 +1734,19 @@ export default function AutomotiveClusterDashboard({
                     backgroundColor: isWhite ? "#FFF1F2" : "#000000",
                     borderColor: isWhite ? "#FECDD3" : "#E11D48"
                   }}
-                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
+                  className="flex-1 rounded-2xl border-2 px-2 py-2.5 flex flex-col items-center justify-center text-center shadow-xs min-w-0 overflow-hidden"
                 >
                   <span style={{ color: isWhite ? "#BE123C" : "#FB7185" }} className="text-xs font-black tracking-wide">
                     🚀 最高時速
                   </span>
-                  <div
+                  <AutoFitMetricValue
+                    value={displayStats?.maxSpeedKmh || "0.0"}
+                    maxPx={26}
+                    minPx={13}
                     style={{ color: isWhite ? "#9F1239" : "#FB7185" }}
-                    className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1.5"
-                  >
-                    {displayStats?.maxSpeedKmh || "0.0"}
-                  </div>
-                  <span style={{ color: isWhite ? "#E11D48" : "#F43F5E" }} className="text-[11px] font-mono font-bold">
+                    className="font-michroma font-bold tracking-tight leading-none my-1.5"
+                  />
+                  <span style={{ color: isWhite ? "#E11D48" : "#F43F5E" }} className="text-[11px] font-michroma font-bold">
                     km/h
                   </span>
                 </div>
@@ -1692,17 +1756,18 @@ export default function AutomotiveClusterDashboard({
                     backgroundColor: isWhite ? "#EFF6FF" : "#000000",
                     borderColor: isWhite ? "#BFDBFE" : "#0284C7"
                   }}
-                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
+                  className="flex-1 rounded-2xl border-2 px-2 py-2.5 flex flex-col items-center justify-center text-center shadow-xs min-w-0 overflow-hidden"
                 >
                   <span style={{ color: isWhite ? "#1D4ED8" : "#38BDF8" }} className="text-xs font-black tracking-wide">
                     ⚡ 最高加速度
                   </span>
-                  <div
+                  <AutoFitMetricValue
+                    value={`+${Math.max(peakAccelG, toSafeNumber(displayStats?.peakAccelG, 0)).toFixed(2)}G`}
+                    maxPx={22}
+                    minPx={12}
                     style={{ color: isWhite ? "#1E40AF" : "#38BDF8" }}
-                    className="text-xl sm:text-2xl font-michroma font-bold tracking-tight leading-none my-1.5"
-                  >
-                    +{Math.max(peakAccelG, toSafeNumber(displayStats?.peakAccelG, 0)).toFixed(2)}G
-                  </div>
+                    className="font-michroma font-bold tracking-tight leading-none my-1.5"
+                  />
                   <span style={{ color: isWhite ? "#2563EB" : "#0284C7" }} className="text-[11px] font-michroma font-bold">
                     +{(Math.max(peakAccelG, toSafeNumber(displayStats?.peakAccelG, 0)) * 9.80665).toFixed(1)} m/s²
                   </span>
@@ -1733,18 +1798,19 @@ export default function AutomotiveClusterDashboard({
                     backgroundColor: isWhite ? "#FFFBEB" : "#000000",
                     borderColor: isWhite ? "#FDE68A" : "#D97706"
                   }}
-                  className="flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs"
+                  className="flex-1 rounded-2xl border-2 px-2 py-2.5 flex flex-col items-center justify-center text-center shadow-xs min-w-0 overflow-hidden"
                 >
                   <span style={{ color: isWhite ? "#B45309" : "#FBBF24" }} className="text-xs font-black tracking-wide">
                     📏 累積里程
                   </span>
-                  <div
+                  <AutoFitMetricValue
+                    value={displayStats?.totalDistanceKm || "0.00"}
+                    maxPx={26}
+                    minPx={13}
                     style={{ color: isWhite ? "#92400E" : "#F59E0B" }}
-                    className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1.5"
-                  >
-                    {displayStats?.totalDistanceKm || "0.00"}
-                  </div>
-                  <span style={{ color: isWhite ? "#D97706" : "#F59E0B" }} className="text-[11px] font-mono font-bold">
+                    className="font-michroma font-bold tracking-tight leading-none my-1.5"
+                  />
+                  <span style={{ color: isWhite ? "#D97706" : "#F59E0B" }} className="text-[11px] font-michroma font-bold">
                     KM
                   </span>
                 </div>
@@ -1755,24 +1821,25 @@ export default function AutomotiveClusterDashboard({
                     backgroundColor: isWhite ? "#F0F9FF" : "#000000",
                     borderColor: isWhite ? "#BAE6FD" : "#0284C7"
                   }}
-                  className={`flex-1 rounded-2xl border-2 p-2.5 flex flex-col items-center justify-center text-center shadow-xs ${typeof onCalibrateElevation === 'function' ? 'cursor-pointer active:scale-98' : ''}`}
+                  className={`flex-1 rounded-2xl border-2 px-2 py-2.5 flex flex-col items-center justify-center text-center shadow-xs min-w-0 overflow-hidden ${typeof onCalibrateElevation === 'function' ? 'cursor-pointer active:scale-98' : ''}`}
                   title="點擊可輸入已知真實海拔高度進行校正"
                 >
                   <span style={{ color: isWhite ? "#0369A1" : "#38BDF8" }} className="text-xs font-black tracking-wide">
                     ⛰️ 當前海拔 {typeof onCalibrateElevation === 'function' ? '🎯' : ''}
                   </span>
-                  <div
-                    style={{ color: isWhite ? "#0C4A6E" : "#38BDF8" }}
-                    className="text-2xl sm:text-3xl font-michroma font-bold tracking-tight leading-none my-1.5"
-                  >
-                    {formatElevationValue(
+                  <AutoFitMetricValue
+                    value={formatElevationValue(
                       displayStats?.currentElevation !== null && displayStats?.currentElevation !== undefined
                         ? displayStats.currentElevation
                         : displayStats?.maxElevationM,
                       'm'
                     )}
-                  </div>
-                  <span style={{ color: isWhite ? "#0284C7" : "#38BDF8" }} className="text-[11px] font-mono font-bold">
+                    maxPx={26}
+                    minPx={13}
+                    style={{ color: isWhite ? "#0C4A6E" : "#38BDF8" }}
+                    className="font-michroma font-bold tracking-tight leading-none my-1.5"
+                  />
+                  <span style={{ color: isWhite ? "#0284C7" : "#38BDF8" }} className="text-[11px] font-michroma font-bold">
                     {displayStats?.elevationAccuracyM !== null && displayStats?.elevationAccuracyM !== undefined
                       ? `±${displayStats.elevationAccuracyM}m · 點擊校正`
                       : 'MSL 海拔'}
