@@ -1450,6 +1450,7 @@ export default function CampsiteARModal({
     let pendingEvent = null;
     let lastAppliedHeading = null;
     let lastAppliedElev = null;
+    let compassGyroOffset = null;
 
     const processOrientationFrame = () => {
       rafId = null;
@@ -1469,9 +1470,9 @@ export default function CampsiteARModal({
         }
       }
 
-      const rawBeta = e.beta !== null ? e.beta : 0;
-      const rawGamma = e.gamma !== null ? e.gamma : 0;
-      const rawAlpha = e.alpha !== null ? e.alpha : 0;
+      const rawBeta = e.beta !== null && e.beta !== undefined ? e.beta : 0;
+      const rawGamma = e.gamma !== null && e.gamma !== undefined ? e.gamma : 0;
+      const rawAlpha = e.alpha !== null && e.alpha !== undefined ? e.alpha : 0;
 
       // 2. 📐 鏡頭仰角 (camElevation) 嚴謹 3D 空間旋轉矩陣解算：
       const betaRad = (rawBeta * Math.PI) / 180;
@@ -1479,11 +1480,25 @@ export default function CampsiteARModal({
       const vz = -Math.cos(betaRad) * Math.cos(gammaRad);
       const cameraElevation = (Math.asin(Math.max(-1, Math.min(1, vz))) * 180) / Math.PI;
 
-      // 3. 🧭 方位角 (heading)：
-      let currentHeading = 0;
-      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-        currentHeading = (e.webkitCompassHeading + screenAngle) % 360;
-      } else if (e.alpha !== null) {
+      // 3. 🧭 3D 陀螺儀後置鏡頭光軸向量 (V_cam = R * [0, 0, -1]^T) + 真北錨定融合：
+      // 徹底解決 iOS CLHeading / webkitCompassHeading 在仰角超過 45° (beta > 135°, 螢幕朝下進入 .faceDown) 時，
+      // 參考軸由後鏡頭 (-Z) 切換為手機頂端 (+Y) 導致方位角瞬間跳變 180° (例如 126° SE 跳成 303° WNW) 的物理缺陷！
+      let gyroCamAzimuth = null;
+
+      if (typeof e.yaw === 'number' && typeof e.pitch === 'number' && typeof e.roll === 'number') {
+        // 3A. iOS 原生 CoreMotion 6軸/9軸姿態矩陣 (R_z(yaw) * R_x(pitch) * R_y(roll) * [0, 0, -1]^T)
+        const pRad = (e.pitch * Math.PI) / 180;
+        const rRad = (e.roll * Math.PI) / 180;
+        const yRad = (e.yaw * Math.PI) / 180;
+        const cx = -Math.sin(rRad);
+        const cy = Math.sin(pRad) * Math.cos(rRad);
+        const wx = cx * Math.cos(yRad) - cy * Math.sin(yRad);
+        const wy = cx * Math.sin(yRad) + cy * Math.cos(yRad);
+        if (wx * wx + wy * wy > 1e-4) {
+          gyroCamAzimuth = ((Math.atan2(wx, wy) * 180) / Math.PI + 360) % 360;
+        }
+      } else if (e.alpha !== null && e.alpha !== undefined) {
+        // 3B. W3C DeviceOrientation 3D 旋轉矩陣 (R_z(alpha) * R_x(beta) * R_y(gamma) * [0, 0, -1]^T)
         const alphaRad = (rawAlpha * Math.PI) / 180;
         const cA = Math.cos(alphaRad), sA = Math.sin(alphaRad);
         const cB = Math.cos(betaRad), sB = Math.sin(betaRad);
@@ -1493,11 +1508,57 @@ export default function CampsiteARModal({
         const vy = -(sA * sG - cA * sB * cG);
 
         if (vx * vx + vy * vy > 1e-4) {
-          const h = (Math.atan2(vx, vy) * 180) / Math.PI;
-          currentHeading = (h + 360) % 360;
-        } else {
-          currentHeading = (360 - rawAlpha + screenAngle + 360) % 360;
+          gyroCamAzimuth = ((Math.atan2(vx, vy) * 180) / Math.PI + 360) % 360;
         }
+      }
+
+      let currentHeading = lastAppliedHeading !== null ? lastAppliedHeading : 0;
+
+      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null && e.webkitCompassHeading >= 0) {
+        const rawCompass = (e.webkitCompassHeading + screenAngle + 360) % 360;
+        // 當手機仰望星空超過 45° (|rawBeta| > 135°，即重力 +Z 分量 > |Y| 分量)，iOS CLHeading 會進入 .faceDown 模式而反轉 180°
+        const isFaceDownSkyTilt = Math.abs(rawBeta) > 135 || cameraElevation > 45;
+
+        if (gyroCamAzimuth !== null) {
+          if (compassGyroOffset === null) {
+            // 首次初始化：若開啟時手機已抬高超過 45°，自動還原 CLHeading 的 180° 反轉
+            const seedCompass = isFaceDownSkyTilt ? (rawCompass + 180) % 360 : rawCompass;
+            compassGyroOffset = (seedCompass - gyroCamAzimuth + 360) % 360;
+          } else if (cameraElevation >= -35 && cameraElevation <= 36 && Math.abs(rawGamma) <= 35) {
+            // 低仰角安全區 (-35° ~ +36°)：CLHeading 100% 處於直立 .portrait 穩定態，平滑校正陀螺儀真北偏移
+            const targetOffset = ((rawCompass - gyroCamAzimuth + 540) % 360) - 180;
+            const offsetErr = ((targetOffset - compassGyroOffset + 540) % 360) - 180;
+            compassGyroOffset = (compassGyroOffset + offsetErr * 0.15 + 360) % 360;
+          } else if (cameraElevation > 52 && cameraElevation < 78 && Math.abs(rawGamma) <= 35) {
+            // 高仰角觀星區 (52° ~ 78°，已遠離 45° 翻轉臨界區)：自動辨識並解開 180° 反轉後微幅抗漂移校正
+            const predictedH = (gyroCamAzimuth + compassGyroOffset + 360) % 360;
+            const diffRaw = ((rawCompass - predictedH + 540) % 360) - 180;
+            const unwrappedCompass = Math.abs(diffRaw) > 130 ? (rawCompass + 180) % 360 : rawCompass;
+            const targetOffset = ((unwrappedCompass - gyroCamAzimuth + 540) % 360) - 180;
+            const offsetErr = ((targetOffset - compassGyroOffset + 540) % 360) - 180;
+            if (Math.abs(offsetErr) < 35) {
+              compassGyroOffset = (compassGyroOffset + offsetErr * 0.04 + 360) % 360;
+            }
+          }
+          // 在 36° ~ 52° 的 CLHeading 臨界翻轉區間，100% 鎖定使用連續 3D 陀螺儀光軸向量，徹底杜絕 45° -> 46° 瞬間 180° 跳變！
+          currentHeading = (gyroCamAzimuth + compassGyroOffset + 360) % 360;
+        } else {
+          // 若無 3D 陀螺儀向量 (或接近 90° 天頂奇異點)，以無反轉羅盤或前一刻方位維持穩定
+          if (Math.abs(cameraElevation) > 86 && lastAppliedHeading !== null) {
+            currentHeading = lastAppliedHeading;
+          } else if (lastAppliedHeading !== null) {
+            const diffRaw = ((rawCompass - lastAppliedHeading + 540) % 360) - 180;
+            currentHeading = (cameraElevation > 38 && Math.abs(diffRaw) > 130)
+              ? (rawCompass + 180) % 360
+              : rawCompass;
+          } else {
+            currentHeading = isFaceDownSkyTilt ? (rawCompass + 180) % 360 : rawCompass;
+          }
+        }
+      } else if (gyroCamAzimuth !== null) {
+        currentHeading = gyroCamAzimuth;
+      } else if (e.alpha !== null && e.alpha !== undefined) {
+        currentHeading = (360 - rawAlpha + screenAngle + 360) % 360;
       }
 
       // 4. 🏕️ 營位地勢傾角 (Ground Pitch & Roll，平放地面水平儀)：
