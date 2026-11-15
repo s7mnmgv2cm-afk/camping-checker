@@ -956,29 +956,56 @@ export default function CampsiteARModal({
     });
   }, [activeStarDate, lat, lng]);
 
-  // 5. Compute real-time Constellations with Star coordinates, Lines, and Center Points
+  // 5A. 預先計算所有星座頂點恆星之天球地平座標 (Azimuth/Elevation) 與主星去重標記，僅隨時間與地點變動計算 1 次，不在轉動手機時重複跑球面三角函數！
+  const baseConstellations = useMemo(() => {
+    const mainNames = new Set(computedStars.map(t => t.name.split(' (')[0]));
+    const mainIds = new Set(computedStars.map(t => t.id));
+
+    return CONSTELLATIONS.map(c => {
+      const starsWithHorizontal = c.stars.map(s => {
+        const pos = radecToAltAz(s.ra, s.dec, activeStarDate, lat, lng);
+        const shortName = s.name.split(' (')[0];
+        const isMainDuplicate =
+          mainIds.has(s.id) ||
+          mainNames.has(shortName) ||
+          computedStars.some(
+            t => Math.abs(t.azimuth - pos.azimuth) < 0.9 && Math.abs(t.elevation - pos.elevation) < 0.9
+          );
+        return {
+          ...s,
+          azimuth: pos.azimuth,
+          elevation: pos.elevation,
+          isMainDuplicate
+        };
+      });
+      return {
+        ...c,
+        starsWithHorizontal
+      };
+    });
+  }, [activeStarDate, lat, lng, computedStars]);
+
+  // 5B. 隨鏡頭轉動 (heading / camElevation) 僅執行極輕量 2D 螢幕投影加減法
   const computedConstellations = useMemo(() => {
+    if (arViewMode !== 'stars') return [];
     const starFovH = effectiveLandscape ? 52.5 : 38;
     const starFovV = effectiveLandscape ? 20 : 28;
 
-    return CONSTELLATIONS.map(c => {
+    return baseConstellations.map(c => {
       const starMap = {};
       let visSumX = 0;
       let visSumY = 0;
       let visibleStars = 0;
 
-      const starsWithPos = c.stars.map(s => {
-        const pos = radecToAltAz(s.ra, s.dec, activeStarDate, lat, lng);
-        const azDiff = (pos.azimuth - heading + 540) % 360 - 180;
-        const elDiff = pos.elevation - camElevation;
+      const starsWithPos = c.starsWithHorizontal.map(s => {
+        const azDiff = (s.azimuth - heading + 540) % 360 - 180;
+        const elDiff = s.elevation - camElevation;
         const screenX = 50 + (azDiff / starFovH) * 45;
         const screenY = 50 - (elDiff / starFovV) * 40;
-        const inFOV = Math.abs(azDiff) <= starFovH && Math.abs(elDiff) <= starFovV && pos.elevation > -5;
+        const inFOV = Math.abs(azDiff) <= starFovH && Math.abs(elDiff) <= starFovV && s.elevation > -5;
 
         const starObj = {
           ...s,
-          azimuth: pos.azimuth,
-          elevation: pos.elevation,
           screenX: Math.round(screenX * 10) / 10,
           screenY: Math.round(screenY * 10) / 10,
           inFOV
@@ -1005,46 +1032,63 @@ export default function CampsiteARModal({
         centerY
       };
     });
-  }, [activeStarDate, lat, lng, heading, camElevation, effectiveLandscape]);
+  }, [arViewMode, baseConstellations, heading, camElevation, effectiveLandscape]);
 
-  // 6. Detect Star or Constellation locked by Central Reticle
+  // 6. Detect Star or Constellation locked by Central Reticle (以視覺螢幕準心 (50%, 50%) 幾何距離直接判定，指哪鎖哪、零黏滯切換周圍鄰星！)
   const lockedStar = useMemo(() => {
     if (arViewMode !== 'stars') return null;
-    let closest = null;
-    let minSep = 999;
+    const starFovH = effectiveLandscape ? 52.5 : 38;
+    const starFovV = effectiveLandscape ? 20 : 28;
 
-    // Check individual celestial targets (Milky Way core, Polaris, etc.)
+    let closest = null;
+    let minScreenDist = 999;
+
+    // 1. 檢查主天體 (行星、月球、一等亮星、深空星雲)
     for (const star of computedStars) {
       if (star.elevation < -5) continue;
-      const sep = getAngularSeparation(heading, camElevation, star.azimuth, star.elevation);
-      if (sep < minSep) {
-        minSep = sep;
-        closest = star;
+      const azDiff = (star.azimuth - heading + 540) % 360 - 180;
+      const elDiff = star.elevation - camElevation;
+      if (Math.abs(azDiff) > starFovH || Math.abs(elDiff) > starFovV) continue;
+
+      const screenX = 50 + (azDiff / starFovH) * 45;
+      const screenY = 50 - (elDiff / starFovV) * 40;
+      const screenDist = Math.hypot(screenX - 50, screenY - 50);
+
+      if (screenDist < minScreenDist) {
+        minScreenDist = screenDist;
+        closest = {
+          ...star,
+          separation: Math.round(Math.hypot(azDiff, elDiff) * 10) / 10
+        };
       }
     }
 
-    // Check all stars in constellations
+    // 2. 檢查所有星座頂點恆星 (已自動排除與主天體重複之恆星，避免雙重節點搶鎖)
     for (const c of computedConstellations) {
       for (const star of c.starsWithPos) {
-        if (star.elevation < -5) continue;
-        const sep = getAngularSeparation(heading, camElevation, star.azimuth, star.elevation);
-        if (sep < minSep) {
-          minSep = sep;
+        if (!star.inFOV || star.elevation < -5 || star.isMainDuplicate) continue;
+        const screenDist = Math.hypot(star.screenX - 50, star.screenY - 50);
+        if (screenDist < minScreenDist) {
+          minScreenDist = screenDist;
+          const azDiff = (star.azimuth - heading + 540) % 360 - 180;
+          const elDiff = star.elevation - camElevation;
           closest = {
             ...star,
             constellation: c.name,
             icon: c.icon,
-            story: `${c.name}之成員恆星，視星等約 ${star.mag}。${c.story}`
+            story: `${c.name}之成員恆星，視星等約 ${star.mag}。${c.story}`,
+            separation: Math.round(Math.hypot(azDiff, elDiff) * 10) / 10
           };
         }
       }
     }
 
-    if (minSep <= 14) {
-      return { ...closest, separation: Math.round(minSep * 10) / 10 };
+    // 準心捕捉半徑收斂為視覺螢幕半徑 <= 10.5% (約準心圓框範圍內)，移動至鄰近星星時立即乾脆切換不殘留！
+    if (closest && minScreenDist <= 10.5) {
+      return closest;
     }
     return null;
-  }, [arViewMode, computedStars, computedConstellations, heading, camElevation]);
+  }, [arViewMode, computedStars, computedConstellations, heading, camElevation, effectiveLandscape]);
 
   // Active Constellation highlighted by user selection or reticle target lock
   const activeConstellation = useMemo(() => {
@@ -1058,15 +1102,12 @@ export default function CampsiteARModal({
   }, [selectedConstellation, lockedStar, computedConstellations]);
 
   // 🧭 智慧天體仰角引導指針 (Off-Screen Sky Radar Guidance)：
-  // 當使用者水平轉向天體方位 (例如土星 171°)，但垂直仰角不足或過高 (例如土星在 66° 高空但鏡頭平視 15°) 時，
-  // 自動偵測並浮現直覺的向上/向下抬手引導指示，秒速化解「方位對了卻看不到」的疑惑！
   const skyAimGuidance = useMemo(() => {
     if (arViewMode !== 'stars' || lockedStar) return null;
 
     const starFovH = effectiveLandscape ? 52.5 : 38;
     const starFovV = effectiveLandscape ? 20 : 28;
 
-    // 優先順序：1. 使用者手動選中的天體，2. 當前夜空主要行星 (土星、木星、火星、金星) 或月球、一等亮星
     const priorityTargets = selectedStarTarget 
       ? [selectedStarTarget] 
       : computedStars.filter(s => s.type === 'moon' || s.type === 'planet' || s.mag <= 1.2);
@@ -1076,7 +1117,6 @@ export default function CampsiteARModal({
       const azDiff = (target.azimuth - heading + 540) % 360 - 180;
       const elDiff = target.elevation - camElevation;
 
-      // 使用者水平方位已大致對準 (夾角 <= 45°)
       if (Math.abs(azDiff) <= 45) {
         if (elDiff > starFovV) {
           return {
@@ -1099,17 +1139,6 @@ export default function CampsiteARModal({
     }
     return null;
   }, [arViewMode, lockedStar, selectedStarTarget, computedStars, heading, camElevation, effectiveLandscape]);
-
-  // Reset dismissed star when reticle locks onto another star
-  useEffect(() => {
-    if (lockedStar && lockedStar.id !== dismissedStarId) {
-      // 📱 星空模式下，準心掠過星體不自動彈出大字卡遮蔽夜空，維持收合，除非使用者主動選取特定天體
-      setIsStarDrawerCollapsed(true);
-      if (!selectedStarTarget) {
-        setDismissedStarId(lockedStar.id);
-      }
-    }
-  }, [lockedStar?.id, selectedStarTarget]);
 
   // 7. Compute PeakVisor Mountain Peaks & Ridge Lines from observer location
   const computedPeaks = useMemo(() => {
@@ -1413,11 +1442,20 @@ export default function CampsiteARModal({
     };
   }, [isOpen, isCameraOff]);
 
-  // 🧭 陀螺儀與空間感測器生命週期（不論鏡頭開或關，持續以高精密度 3D 矩陣計算空間仰角與方位）
+  // 🧭 陀螺儀與空間感測器生命週期（不論鏡頭開或關，持續以高精密度 3D 矩陣計算空間仰角與方位，並透過 RAF 節流確保密集星群下 60fps 零卡頓）
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleOrientation = (e) => {
+    let rafId = null;
+    let pendingEvent = null;
+    let lastAppliedHeading = null;
+    let lastAppliedElev = null;
+
+    const processOrientationFrame = () => {
+      rafId = null;
+      const e = pendingEvent;
+      if (!e) return;
+
       // 1. 🧭 智慧辨識螢幕旋轉角度 (支援最新 screen.orientation.angle 與舊版 window.orientation 及視窗比例)
       let screenAngle = 0;
       if (typeof window !== 'undefined') {
@@ -1436,12 +1474,6 @@ export default function CampsiteARModal({
       const rawAlpha = e.alpha !== null ? e.alpha : 0;
 
       // 2. 📐 鏡頭仰角 (camElevation) 嚴謹 3D 空間旋轉矩陣解算：
-      // 手機後置鏡頭光軸在裝置本體座標系 (Device Body Frame) 固定為 -Z 軸 = [0, 0, -1]^T。
-      // 依 W3C 規範之 Tait-Bryan Z-X-Y 旋轉矩陣 R = Rz(alpha) * Rx(beta) * Ry(gamma)，
-      // 鏡頭光軸在地球坐標系 (Earth Frame) 之鉛直分量 vz 恆等於：-cos(beta) * cos(gamma)。
-      // 鏡頭相對地平線之精確仰角為：camElevation = arcsin(clamp(vz, -1, 1)) * (180 / PI)。
-      // 此解析封閉解在直立 0°、橫向 90°、橫向 270°、倒立 180° 及任意手持側傾角下皆具備 100% 幾何對稱與連續性，
-      // 徹底根除分段啟發式估算在仰望星空時產生的正負反轉、數值跳變或萬向節鎖死 (Gimbal lock) 缺陷。
       const betaRad = (rawBeta * Math.PI) / 180;
       const gammaRad = (rawGamma * Math.PI) / 180;
       const vz = -Math.cos(betaRad) * Math.cos(gammaRad);
@@ -1450,12 +1482,8 @@ export default function CampsiteARModal({
       // 3. 🧭 方位角 (heading)：
       let currentHeading = 0;
       if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-        // iOS Safari: webkitCompassHeading 傳回手機本體頂部之磁北方位角 (0°~360° 順時針)。
-        // 橫屏手持時，疊加螢幕旋轉角 (screenAngle) 補償，使鏡頭與螢幕正上方精準對齊真實北方：
         currentHeading = (e.webkitCompassHeading + screenAngle) % 360;
       } else if (e.alpha !== null) {
-        // Android / W3C 標準：
-        // 透過三維鏡頭向量在水平面之投影 (vx, vy) 計算光軸真北方位角：
         const alphaRad = (rawAlpha * Math.PI) / 180;
         const cA = Math.cos(alphaRad), sA = Math.sin(alphaRad);
         const cB = Math.cos(betaRad), sB = Math.sin(betaRad);
@@ -1468,7 +1496,6 @@ export default function CampsiteARModal({
           const h = (Math.atan2(vx, vy) * 180) / Math.PI;
           currentHeading = (h + 360) % 360;
         } else {
-          // 天頂或天底極點奇異點備援
           currentHeading = (360 - rawAlpha + screenAngle + 360) % 360;
         }
       }
@@ -1490,13 +1517,31 @@ export default function CampsiteARModal({
         groundRoll = Math.round(rawGamma);
       }
 
-      const roundedElev = Math.round(cameraElevation) || 0;
-      setHeading((Math.round(currentHeading) % 360 + 360) % 360);
-      setPitch(groundPitch || 0);
-      setRoll(groundRoll || 0);
-      setCamElevation(Math.max(-90, Math.min(90, roundedElev)));
-      setPermissionGranted(true);
-      setHasGyroscope(true);
+      // 0.2° 細膩平滑角度解析度 + 0.15° 手震死區過濾：解決整數 1° 跳格造成密集星群難以微調對準鄰星的問題，同時避免靜止微震重複渲染
+      const normH = ((currentHeading % 360) + 360) % 360;
+      const smoothH = Math.round(normH * 5) / 5;
+      const smoothEl = Math.max(-90, Math.min(90, Math.round((cameraElevation || 0) * 5) / 5));
+
+      const hDiff = lastAppliedHeading === null ? 999 : Math.abs(((smoothH - lastAppliedHeading + 540) % 360) - 180);
+      const elDiff = lastAppliedElev === null ? 999 : Math.abs(smoothEl - lastAppliedElev);
+
+      if (hDiff >= 0.18 || elDiff >= 0.18) {
+        lastAppliedHeading = smoothH;
+        lastAppliedElev = smoothEl;
+        setHeading(smoothH);
+        setCamElevation(smoothEl);
+        setPitch(groundPitch || 0);
+        setRoll(groundRoll || 0);
+      }
+      setPermissionGranted(prev => (prev ? prev : true));
+      setHasGyroscope(prev => (prev ? prev : true));
+    };
+
+    const handleOrientation = (e) => {
+      pendingEvent = e;
+      if (rafId === null && typeof window !== 'undefined') {
+        rafId = window.requestAnimationFrame(processOrientationFrame);
+      }
     };
 
     // 🍏 支援 Xcode iOS 原生 CoreMotion + CLHeading 橋接推播 (nativeOrientationUpdate)
@@ -1532,6 +1577,9 @@ export default function CampsiteARModal({
     }
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       window.removeEventListener('deviceorientation', handleOrientation);
       if (typeof window !== 'undefined') {
         window.removeEventListener('nativeOrientationUpdate', handleNativeOrientation);
@@ -2077,15 +2125,15 @@ export default function CampsiteARModal({
               
               {/* Integrated Center HUD Marker: 純透明微光琥珀指示標籤 (徹底消除純黑方塊，100% 透明透光) */}
               <div className="absolute z-10 px-2 sm:px-2.5 py-0.5 rounded-full bg-black/15 backdrop-blur-none border border-amber-400/40 text-[11px] sm:text-xs font-mono font-black text-amber-300 flex items-center gap-1 sm:gap-1.5 shadow-[0_0_12px_rgba(245,158,11,0.2)] pointer-events-none">
-                <span className="text-amber-400 font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">▲ {heading}°</span>
+                <span className="text-amber-400 font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">▲ {Math.round(heading)}°</span>
                 <span className="text-[10px] sm:text-[11px] font-sans font-bold text-amber-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{getHeadingDirectionName(heading)}</span>
                 <span className="text-amber-400/40">|</span>
-                <span className="text-[10px] sm:text-[11px] font-sans font-semibold text-sky-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">仰角 {camElevation}°</span>
+                <span className="text-[10px] sm:text-[11px] font-sans font-semibold text-sky-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">仰角 {Math.round(camElevation)}°</span>
               </div>
 
               <div
-                className="absolute left-1/2 top-0 bottom-0 flex items-center pointer-events-none transition-transform ease-out duration-75"
-                style={{ transform: `translateX(${-heading * 4}px)` }}
+                className="absolute left-1/2 top-0 bottom-0 flex items-center pointer-events-none will-change-transform"
+                style={{ transform: `translate3d(${-heading * 4}px, 0, 0)` }}
               >
                 {[-360, 0, 360].map(offset => (
                   <div key={offset} className="absolute inset-y-0 flex items-center" style={{ left: `${offset * 4}px`, width: '1440px' }}>
@@ -2156,7 +2204,7 @@ export default function CampsiteARModal({
                 {isAligned ? (
                   <div>
                     <div className="flex items-center justify-center gap-1.5 text-emerald-400 font-extrabold text-xs sm:text-sm">
-                      <span>🎯 完美搭帳朝向（{heading}°）</span>
+                      <span>🎯 完美搭帳朝向（{Math.round(heading)}°）</span>
                     </div>
                     <p className="text-xs text-emerald-200/90 mt-0.5 leading-tight">
                       ✨ 帳門對此方位！06:00~07:30 晨曬在背後不熱醒，避開主風向
@@ -2295,15 +2343,6 @@ export default function CampsiteARModal({
             {/* 3B. SKYVIEW CONSTELLATION LINES (SVG) */}
             {arViewMode === 'stars' && showConstellationLines && (
               <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
-                <defs>
-                  <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="2.5" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
                 {computedConstellations.map(c => {
                   const isHigh = activeConstellation?.id === c.id;
                   return (
@@ -2326,8 +2365,7 @@ export default function CampsiteARModal({
                             stroke={c.color}
                             strokeWidth={isHigh ? 2.8 : (c.isAsterism ? 1.5 : 2.0)}
                             strokeDasharray={c.isAsterism ? '5,4' : 'none'}
-                            strokeOpacity={isHigh ? 0.95 : 0.65}
-                            filter="url(#neon-glow)"
+                            strokeOpacity={isHigh ? 0.95 : 0.7}
                           />
                         );
                       })}
@@ -2346,10 +2384,10 @@ export default function CampsiteARModal({
                   key={`constell-label-${c.id}`}
                   style={{ left: `${c.centerX}%`, top: `${Math.max(10, c.centerY - 9)}%` }}
                   onClick={() => setSelectedConstellation(prev => (prev?.id === c.id ? null : c))}
-                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-full text-xs font-black shadow-xl backdrop-blur-md cursor-pointer pointer-events-auto transition-all duration-200 border flex items-center gap-1.5 ${
+                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-full text-xs font-black shadow-xl cursor-pointer pointer-events-auto border flex items-center gap-1.5 ${
                     isHigh
-                      ? 'bg-indigo-950/95 text-white border-amber-400 scale-110 shadow-[0_0_20px_rgba(245,158,11,0.6)] z-30 ring-2 ring-amber-400/50 animate-pulse'
-                      : 'bg-slate-950/85 text-slate-200 border-white/30 hover:border-sky-400 hover:text-white z-20'
+                      ? 'bg-indigo-950/95 text-white border-amber-400 scale-110 shadow-[0_0_20px_rgba(245,158,11,0.6)] z-30 ring-2 ring-amber-400/50'
+                      : 'bg-slate-950/90 text-slate-200 border-white/30 hover:border-sky-400 hover:text-white z-20'
                   }`}
                 >
                   <span>{c.icon}</span>
@@ -2381,18 +2419,18 @@ export default function CampsiteARModal({
               return (
                 <div
                   key={star.id}
-                  className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-auto cursor-pointer transition-all duration-150 animate-in fade-in zoom-in-75"
+                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-auto cursor-pointer ${isLocked ? 'z-30' : 'z-20'}`}
                   style={{ left: `${screenX}%`, top: `${screenY}%` }}
                   onClick={() => setSelectedStarTarget(star)}
                 >
                   {/* Special Rendering for Moon, Planets, Deep-Sky, and Stars */}
                   {star.type === 'moon' ? (
                     <div className="relative flex items-center justify-center">
-                      <div className="w-16 h-16 rounded-full bg-amber-200/25 blur-md animate-pulse absolute"></div>
+                      <div className="w-16 h-16 rounded-full bg-amber-200/25 blur-md absolute"></div>
                       {isLocked && (
                         <div className="w-14 h-14 rounded-full bg-amber-300/40 animate-ping absolute"></div>
                       )}
-                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                      <div className={`rounded-full flex items-center justify-center ${
                         isLocked
                           ? 'w-12 h-12 bg-amber-200 text-slate-950 font-black shadow-[0_0_30px_#fef08a] border-2 border-white scale-110'
                           : 'w-11 h-11 bg-gradient-to-tr from-slate-200 via-amber-100 to-yellow-50 text-slate-950 shadow-[0_0_20px_rgba(254,240,138,0.9)] border-2 border-amber-200/80'
@@ -2405,7 +2443,7 @@ export default function CampsiteARModal({
                       {isLocked && (
                         <div className="w-12 h-12 rounded-full bg-amber-400/30 animate-ping absolute"></div>
                       )}
-                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                      <div className={`rounded-full flex items-center justify-center ${
                         isLocked
                           ? 'w-10 h-10 bg-amber-400 text-slate-950 font-black shadow-[0_0_25px_#f59e0b] scale-110'
                           : 'w-9 h-9 bg-gradient-to-tr from-amber-400 via-yellow-200 to-amber-100 text-slate-950 shadow-[0_0_18px_rgba(245,158,11,0.8)] border border-amber-300'
@@ -2415,7 +2453,7 @@ export default function CampsiteARModal({
                     </div>
                   ) : isDeepSky ? (
                     <div className="relative flex items-center justify-center">
-                      <div className="w-32 h-16 rounded-full bg-gradient-to-r from-purple-600/30 via-pink-500/40 to-amber-400/30 blur-md animate-pulse absolute"></div>
+                      <div className="w-32 h-16 rounded-full bg-gradient-to-r from-purple-600/30 via-pink-500/40 to-amber-400/30 blur-md absolute"></div>
                       <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-purple-700 via-pink-600 to-amber-400 border-2 border-purple-200 shadow-[0_0_25px_#ec4899] flex items-center justify-center text-2xl z-10">
                         {star.icon || '🌌'}
                       </div>
@@ -2425,9 +2463,9 @@ export default function CampsiteARModal({
                       {isLocked && (
                         <div className="w-10 h-10 rounded-full bg-indigo-400/30 animate-ping absolute"></div>
                       )}
-                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                      <div className={`rounded-full flex items-center justify-center ${
                         isLocked
-                          ? 'w-9 h-9 bg-indigo-400 text-slate-950 font-black shadow-[0_0_20px_#818cf8]'
+                          ? 'w-9 h-9 bg-indigo-400 text-slate-950 font-black shadow-[0_0_20px_#818cf8] scale-110'
                           : 'w-8 h-8 bg-gradient-to-tr from-indigo-500 via-purple-400 to-pink-300 text-white shadow-[0_0_14px_rgba(129,140,248,0.7)] border border-indigo-300/40'
                       }`}>
                         <span className="text-sm">{star.icon}</span>
@@ -2438,9 +2476,9 @@ export default function CampsiteARModal({
                       {isLocked && (
                         <div className="w-10 h-10 rounded-full bg-emerald-400/30 animate-ping absolute"></div>
                       )}
-                      <div className={`rounded-full flex items-center justify-center transition-all ${
+                      <div className={`rounded-full flex items-center justify-center ${
                         isLocked 
-                          ? 'w-9 h-9 bg-emerald-400 text-slate-950 font-black shadow-[0_0_20px_#10b981]' 
+                          ? 'w-9 h-9 bg-emerald-400 text-slate-950 font-black shadow-[0_0_20px_#10b981] scale-110' 
                           : star.mag < 0.5 
                             ? 'w-8 h-8 bg-gradient-to-tr from-amber-300 to-yellow-100 text-slate-950 shadow-[0_0_15px_#fde047]' 
                             : star.mag < 1.8
@@ -2452,11 +2490,11 @@ export default function CampsiteARModal({
                     </div>
                   )}
 
-                  {/* Star Badge Card: 精簡單行透明玻璃膠囊 (移除多餘的仰角/方位，避免星體重疊遮擋) */}
-                  <div className={`px-2 py-0.5 rounded-full text-xs font-bold shadow-md backdrop-blur-md mt-1 text-center whitespace-nowrap border transition-all ${
+                  {/* Star Badge Card: 精簡單行膠囊 (移除 backdrop-blur-md 避免 40+ 個即時高斯模糊圖層在轉動時造成卡頓) */}
+                  <div className={`px-2 py-0.5 rounded-full text-xs font-bold shadow-md mt-1 text-center whitespace-nowrap border ${
                     isLocked 
-                      ? 'bg-emerald-950/70 border-emerald-400 text-emerald-100 shadow-[0_0_12px_#10b981]' 
-                      : 'bg-black/35 border-white/20 text-white hover:bg-black/55'
+                      ? 'bg-emerald-950/90 border-emerald-400 text-emerald-100 shadow-[0_0_12px_#10b981]' 
+                      : 'bg-slate-950/80 border-white/20 text-white hover:bg-slate-900'
                   }`}>
                     <div className="flex items-center gap-1 justify-center">
                       <span className={isLocked ? 'text-emerald-300 font-black' : 'text-amber-200 font-bold'}>
@@ -2496,16 +2534,14 @@ export default function CampsiteARModal({
             {arViewMode === 'stars' && showConstellationLines && computedConstellations.map(c => (
               <React.Fragment key={`c-stars-${c.id}`}>
                 {c.starsWithPos.map(star => {
-                  if (!star.inFOV) return null;
-                  const isMainTarget = computedStars.some(t => t.id === star.id);
-                  if (isMainTarget) return null;
+                  if (!star.inFOV || star.isMainDuplicate) return null;
 
                   const isStarLocked = lockedStar?.id === star.id;
 
                   return (
                     <div
                       key={`c-star-dot-${c.id}-${star.id}`}
-                      className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-auto cursor-pointer transition-all duration-150 animate-in fade-in"
+                      className={`absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-auto cursor-pointer ${isStarLocked ? 'z-30' : 'z-15'}`}
                       style={{ left: `${star.screenX}%`, top: `${star.screenY}%` }}
                       onClick={() => setSelectedStarTarget({
                         ...star,
@@ -2519,9 +2555,9 @@ export default function CampsiteARModal({
                           <div className="w-8 h-8 rounded-full bg-emerald-400/30 animate-ping absolute"></div>
                         )}
                         <div
-                          className={`rounded-full transition-all ${
+                          className={`rounded-full ${
                             isStarLocked
-                              ? 'w-6 h-6 bg-emerald-400 shadow-[0_0_15px_#10b981]'
+                              ? 'w-6 h-6 bg-emerald-400 shadow-[0_0_15px_#10b981] scale-110'
                               : star.mag < 2.0
                                 ? 'w-4 h-4 bg-sky-200 shadow-[0_0_8px_#38bdf8]'
                                 : 'w-3 h-3 bg-white/90 shadow-[0_0_5px_#fff]'
@@ -2530,7 +2566,11 @@ export default function CampsiteARModal({
                           <div className="w-1 h-1 rounded-full bg-white"></div>
                         </div>
                       </div>
-                      <span className="text-[11px] text-sky-200 font-mono mt-0.5 bg-black/35 backdrop-blur-md px-1.5 py-0.2 rounded-full border border-white/20 whitespace-nowrap">
+                      <span className={`text-[11px] font-mono mt-0.5 px-1.5 py-0.2 rounded-full border whitespace-nowrap ${
+                        isStarLocked
+                          ? 'bg-emerald-950/90 text-emerald-200 border-emerald-400 font-bold shadow-[0_0_10px_#10b981]'
+                          : 'bg-slate-950/80 text-sky-200 border-white/20'
+                      }`}>
                         {star.name.split(' (')[0]}
                       </span>
                     </div>
@@ -2877,7 +2917,7 @@ export default function CampsiteARModal({
 
                 {/* Target Locked Floating Card */}
                 {lockedStar && (
-                  <div className="absolute -top-12 px-3 py-1 bg-emerald-500 text-slate-950 font-black text-xs rounded-full shadow-xl animate-bounce flex items-center gap-1.5">
+                  <div className="absolute -top-12 px-3 py-1 bg-emerald-500 text-slate-950 font-black text-xs rounded-full shadow-xl flex items-center gap-1.5 whitespace-nowrap">
                     <span>✨ 已鎖定：{lockedStar.name}</span>
                     <span className="bg-slate-950 text-emerald-300 px-1.5 py-0.2 rounded-full text-xs">
                       {lockedStar.elevation}° 仰角
