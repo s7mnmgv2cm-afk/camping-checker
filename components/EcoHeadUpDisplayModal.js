@@ -95,6 +95,89 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
   const [tripSeconds, setTripSeconds] = useState(0);
   const [maxSpeedKmh, setMaxSpeedKmh] = useState(0);
 
+  // 📱 橫向 Landscape 與 直向 Portrait 監聽 (用於 iOS 動態島 / 安全區域最佳避讓)
+  const [isLandscape, setIsLandscape] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia ? window.matchMedia('(orientation: landscape)') : null;
+    const checkLandscape = () => {
+      const mqlLand = mql ? mql.matches : false;
+      const ratioLand = window.innerWidth > window.innerHeight;
+      const winOrient =
+        typeof window.orientation !== 'undefined'
+          ? Math.abs(window.orientation) === 90 || Math.abs(window.orientation) === 270
+          : false;
+      const screenAngle = window.screen?.orientation?.angle;
+      const angleLand = screenAngle === 90 || screenAngle === 270;
+      setIsLandscape(Boolean(mqlLand || ratioLand || winOrient || angleLand));
+    };
+    checkLandscape();
+    window.addEventListener('resize', checkLandscape);
+    window.addEventListener('orientationchange', checkLandscape);
+    if (mql?.addEventListener) mql.addEventListener('change', checkLandscape);
+    if (window.screen?.orientation?.addEventListener) {
+      window.screen.orientation.addEventListener('change', checkLandscape);
+    }
+    return () => {
+      window.removeEventListener('resize', checkLandscape);
+      window.removeEventListener('orientationchange', checkLandscape);
+      if (mql?.removeEventListener) mql.removeEventListener('change', checkLandscape);
+      if (window.screen?.orientation?.removeEventListener) {
+        window.screen.orientation.removeEventListener('change', checkLandscape);
+      }
+    };
+  }, []);
+
+  // 🌙 iOS 頂部狀態列純黑化 (防止白底或色差與 HUD 衝突)
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return;
+    const origBodyBg = document.body.style.backgroundColor;
+    const origHtmlBg = document.documentElement.style.backgroundColor;
+    const origColorScheme = document.documentElement.style.colorScheme;
+
+    document.body.style.backgroundColor = '#000000';
+    document.documentElement.style.backgroundColor = '#000000';
+    document.documentElement.style.colorScheme = 'dark';
+
+    const existingThemeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+    const prevThemeContent = existingThemeMetas[0]?.getAttribute('content') || '#f8fafc';
+    existingThemeMetas.forEach((m) => m.parentNode?.removeChild(m));
+    const freshThemeMeta = document.createElement('meta');
+    freshThemeMeta.name = 'theme-color';
+    freshThemeMeta.content = '#000000';
+    document.head.appendChild(freshThemeMeta);
+
+    return () => {
+      document.body.style.backgroundColor = origBodyBg;
+      document.documentElement.style.backgroundColor = origHtmlBg;
+      document.documentElement.style.colorScheme = origColorScheme;
+      const currentMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+      currentMetas.forEach((m) => m.parentNode?.removeChild(m));
+      const restoreMeta = document.createElement('meta');
+      restoreMeta.name = 'theme-color';
+      restoreMeta.content = prevThemeContent;
+      document.head.appendChild(restoreMeta);
+    };
+  }, [isOpen]);
+
+  // 🤖 Android / 跨平台 HTML5 Fullscreen API 支援（自動進入沉浸式滿版，自動隱藏 Android 系統狀態列與三鍵虛擬導航列）
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    try {
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    } catch (e) {}
+
+    return () => {
+      try {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      } catch (e) {}
+    };
+  }, [isOpen]);
+
   // 內部運算與濾波 Refs
   const watchIdRef = useRef(null);
   const wakeLockRef = useRef(null);
@@ -332,6 +415,18 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
       style={{
         zIndex: 999999,
         backgroundColor: '#000000', // 嚴格 0 功耗 OLED 純黑
+        paddingTop: isLandscape
+          ? 'max(calc(env(safe-area-inset-top, 0px) + 6px), 10px)'
+          : 'max(calc(env(safe-area-inset-top, 0px) + 12px), 54px)',
+        paddingBottom: isLandscape
+          ? 'max(calc(env(safe-area-inset-bottom, 0px) + 6px), 10px)'
+          : 'max(calc(env(safe-area-inset-bottom, 0px) + 12px), 20px)',
+        paddingLeft: isLandscape
+          ? 'max(calc(env(safe-area-inset-left, 0px) + 12px), 16px)'
+          : 'max(calc(env(safe-area-inset-left, 0px) + 6px), 14px)',
+        paddingRight: isLandscape
+          ? 'max(calc(env(safe-area-inset-right, 0px) + 12px), 16px)'
+          : 'max(calc(env(safe-area-inset-right, 0px) + 6px), 14px)',
         transform:
           mirrorMode === 'vertical'
             ? 'scaleY(-1)'
@@ -340,7 +435,7 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
             : 'none',
         transition: 'transform 0.25s ease-in-out'
       }}
-      className="fixed inset-0 w-screen h-[100dvh] overflow-hidden select-none flex flex-col justify-between p-4 sm:p-6 font-sans text-white"
+      className="fixed inset-0 w-screen h-[100dvh] overflow-hidden select-none flex flex-col justify-between font-sans text-white"
     >
       {/* 🌲 頂部列：左側海拔，右側快捷控制（鏡像、色彩、常亮、關閉） */}
       <div className="flex items-center justify-between w-full shrink-0 z-20">
