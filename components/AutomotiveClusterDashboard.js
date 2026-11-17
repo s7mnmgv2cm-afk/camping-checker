@@ -1669,6 +1669,7 @@ export default function AutomotiveClusterDashboard({
 
       {isFullscreen && typeof document !== 'undefined' && createPortal(
         <div 
+          onClick={(e) => e.stopPropagation()}
           style={{
             zIndex: 99999,
             background: themeStyles.wrapperBg,
@@ -1855,18 +1856,15 @@ export default function AutomotiveClusterDashboard({
               {/* 正中央：滿版撐滿上下高度的 252° 扇形雙針儀表盤（零上下留黑） */}
               <div className="h-full flex items-center justify-center min-w-0 overflow-hidden">
                 <div 
-                  onClick={() => {
-                    userExitedFullscreenRef.current = true;
-                    setIsFullscreen(false);
-                  }}
+                  onClick={triggerNeedleSweep}
                   style={{
                     height: '100%',
                     maxHeight: 'calc(100dvh - 60px)',
                     maxWidth: '100%',
                     aspectRatio: '224 / 176'
                   }}
-                  className="relative flex items-center justify-center cursor-pointer"
-                  title="點擊儀表盤縮小離開全螢幕"
+                  className="relative flex items-center justify-center cursor-pointer active:scale-98 transition-transform"
+                  title="點擊儀表盤進行雙針自檢掃描 (Needle Sweep)"
                 >
                   {renderSpeedDialSVG(`${gradientId}-fs-land`)}
                 </div>
@@ -1933,13 +1931,10 @@ export default function AutomotiveClusterDashboard({
               {/* 直向全螢幕模式：252° 扇形儀表板橫向撐滿視覺最大化 */}
               <div className="flex-1 min-h-0 flex flex-col items-center justify-center py-1">
                 <div 
-                  onClick={() => {
-                    userExitedFullscreenRef.current = true;
-                    setIsFullscreen(false);
-                  }}
+                  onClick={triggerNeedleSweep}
                   style={{ width: 'min(95vw, 64dvh)', aspectRatio: '224 / 176' }}
-                  className="relative flex items-center justify-center cursor-pointer transition-transform hover:scale-102"
-                  title="點擊儀表盤縮小離開全螢幕"
+                  className="relative flex items-center justify-center cursor-pointer transition-transform hover:scale-102 active:scale-98"
+                  title="點擊儀表盤進行雙針自檢掃描 (Needle Sweep)"
                 >
                   {renderSpeedDialSVG(`${gradientId}-fs`)}
                 </div>
