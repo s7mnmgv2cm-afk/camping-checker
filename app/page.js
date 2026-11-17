@@ -19,6 +19,7 @@ import CampsiteWeatherModal from '../components/CampsiteWeatherModal';
 import CampsiteSafeRouteModal from '../components/CampsiteSafeRouteModal';
 import CampsiteARModal from '../components/CampsiteARModal';
 import CampsiteGPXTrackerModal from '../components/CampsiteGPXTrackerModal';
+import EcoHeadUpDisplayModal from '../components/EcoHeadUpDisplayModal';
 import { useGPXTracker } from '../lib/useGPXTracker';
 
 const MapWithNoSSR = dynamic(() => import('../components/CampsiteMap'), {
@@ -243,6 +244,9 @@ export default function Home() {
   // 🧭 GPX 戶外路徑記錄器 & 離線防迷導航 State
   const gpxTracker = useGPXTracker();
   const [showGpxModal, setShowGpxModal] = useState(false);
+
+  // ⚡ 極簡節能車載抬頭顯示器 (Eco HUD) State
+  const [showEcoHudModal, setShowEcoHudModal] = useState(false);
 
   // 📋 快速對照表展開／收合與過濾狀態 (手機版預設收合，避免過長)
   const [isTableExpanded, setIsTableExpanded] = useState(false);
@@ -721,8 +725,19 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 右側：個人收藏與札記快捷膠囊 (Quick Vault Pill) */}
-        <div className="flex items-center gap-1.5 self-start sm:self-auto bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
+        {/* 右側：⚡ 省電 HUD 快捷鍵 + 個人收藏與札記快捷膠囊 (Quick Vault Pill) */}
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowEcoHudModal(true)}
+            className="px-3 py-1.5 text-xs font-bold rounded-2xl bg-zinc-950 hover:bg-zinc-900 text-emerald-400 border border-emerald-500/40 hover:border-emerald-400/80 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            title="開啟極簡節能車載抬頭顯示器 (Eco HUD)：不存軌跡、OLED 極限省電、巨幅車速、支援擋風玻璃鏡像投影"
+          >
+            <span>⚡</span>
+            <span>省電 HUD</span>
+          </button>
+
+          <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
           <button
             onClick={() => {
               setShowOnlyFavorites(!showOnlyFavorites);
@@ -792,6 +807,7 @@ export default function Home() {
               🗑️
             </button>
           )}
+          </div>
         </div>
       </header>
 
@@ -855,11 +871,11 @@ export default function Home() {
               <span>立即體驗 AR 實境</span>
             </button>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={handleGenerateAIPrompt}
-                className="px-2.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/20 hover:border-white/30 transition-all flex items-center justify-center gap-1 shadow-sm"
+                className="px-2.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/20 hover:border-white/30 transition-all flex items-center justify-center gap-1 shadow-sm cursor-pointer"
               >
                 <span>🤖</span>
                 <span>AI 顧問</span>
@@ -868,7 +884,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setShowGpxModal(true)}
-                className={`px-2.5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1 shadow-sm border ${
+                className={`px-2.5 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1 shadow-sm border cursor-pointer ${
                   gpxTracker.isRecording
                     ? 'bg-rose-500/25 text-rose-200 border-rose-400/50 ring-1 ring-rose-400/50'
                     : 'bg-white/10 hover:bg-white/15 text-white border-white/20'
@@ -881,8 +897,18 @@ export default function Home() {
 
               <button
                 type="button"
+                onClick={() => setShowEcoHudModal(true)}
+                className="px-2.5 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold text-xs border border-emerald-400/40 hover:border-emerald-400/60 transition-all flex items-center justify-center gap-1 shadow-sm cursor-pointer"
+                title="極簡節能車載抬頭顯示器 (Eco HUD)：不存軌跡、OLED 極限省電、巨幅車速、支援擋風玻璃鏡像投影"
+              >
+                <span>⚡</span>
+                <span>省電 HUD</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowArGuideModal(true)}
-                className="px-2.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs border border-white/15 hover:border-white/25 transition-all flex items-center justify-center gap-1 shadow-sm"
+                className="px-2.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-bold text-xs border border-white/15 hover:border-white/25 transition-all flex items-center justify-center gap-1 shadow-sm cursor-pointer"
               >
                 <span>📖</span>
                 <span>指南</span>
@@ -2012,6 +2038,16 @@ export default function Home() {
         isOpen={showGpxModal}
         onClose={() => setShowGpxModal(false)}
         gpxTracker={gpxTracker}
+        onOpenEcoHud={() => {
+          setShowGpxModal(false);
+          setShowEcoHudModal(true);
+        }}
+      />
+
+      {/* ⚡ 極簡節能車載抬頭顯示器 (Eco HUD) - 零 GPX 負擔、OLED 純黑、巨幅車速、支援擋風玻璃鏡像投影 */}
+      <EcoHeadUpDisplayModal
+        isOpen={showEcoHudModal}
+        onClose={() => setShowEcoHudModal(false)}
       />
 
       {/* 🔴 GPX 背景記錄 / 離線導航懸浮膠囊 (在關閉 AR 後持續顯示於主頁底端) */}
