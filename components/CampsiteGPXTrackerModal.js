@@ -10,7 +10,8 @@ export default function CampsiteGPXTrackerModal({
   campsite,
   isOpen,
   onClose,
-  gpxTracker
+  gpxTracker,
+  onOpenEcoHud
 }) {
   const {
     isRecording,
@@ -462,8 +463,25 @@ export default function CampsiteGPXTrackerModal({
               </div>
             </div>
 
-            {/* Header Right Actions: OLED Theme Toggle + Close Button */}
+            {/* Header Right Actions: Eco HUD + OLED Theme Toggle + Close Button */}
             <div className="flex items-center gap-2 shrink-0">
+              {/* ⚡ 極簡節能 HUD 快捷跳轉按鈕 */}
+              {typeof onOpenEcoHud === 'function' && (
+                <button
+                  type="button"
+                  onClick={onOpenEcoHud}
+                  className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold border transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
+                    isOled
+                      ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                  }`}
+                  title="切換至極簡節能抬頭顯示器 (Eco HUD)：不存航跡、OLED 極致省電、巨幅車速"
+                >
+                  <span>⚡</span>
+                  <span className="hidden xs:inline">省電 HUD</span>
+                </button>
+              )}
+
               {/* 🌙 OLED 0 耗電純黑 ⇄ ☀️ 首頁純白快速切換鈕 */}
               <button
                 type="button"
