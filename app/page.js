@@ -725,19 +725,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 右側：⚡ 省電 HUD 快捷鍵 + 個人收藏與札記快捷膠囊 (Quick Vault Pill) */}
-        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-          <button
-            type="button"
-            onClick={() => setShowEcoHudModal(true)}
-            className="px-3 py-1.5 text-xs font-bold rounded-2xl bg-zinc-950 hover:bg-zinc-900 text-emerald-400 border border-emerald-500/40 hover:border-emerald-400/80 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-            title="開啟極簡節能車載抬頭顯示器 (Eco HUD)：不存軌跡、OLED 極限省電、巨幅車速、支援擋風玻璃鏡像投影"
-          >
-            <span>⚡</span>
-            <span>省電 HUD</span>
-          </button>
-
-          <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
+        {/* 右側：個人收藏與札記快捷膠囊 (Quick Vault Pill) */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
           <button
             onClick={() => {
               setShowOnlyFavorites(!showOnlyFavorites);
@@ -807,7 +796,6 @@ export default function Home() {
               🗑️
             </button>
           )}
-          </div>
         </div>
       </header>
 
