@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   radecToAltAz,
+  projectHorizontalToScreen3D,
   calculateSolarPosition,
   getMoonPhaseInfo,
   CELESTIAL_TARGETS,
@@ -105,6 +106,7 @@ const CUSTOM_GPS_PRESETS = [
 export default function CampsiteARModal({
   campsite,
   isOpen,
+  isPaused = false,
   onClose,
   windDir: propWindDir,
   windSpeed: propWindSpeed,
@@ -186,7 +188,7 @@ export default function CampsiteARModal({
   const [windTableTab, setWindTableTab] = useState('summary'); // 'summary' | 'full'
 
   // PeakVisor Mountain Ridge Mode State
-  const [peakMaxDistance, setPeakMaxDistance] = useState(60); // 25km, 50km, 80km
+  const [peakMaxDistance, setPeakMaxDistance] = useState(80); // 預設 80km 涵蓋全台百岳與中級山大景 (可切換 30km / 60km / 100km)
   const [showRidgeLines, setShowRidgeLines] = useState(true);
   const [selectedPeak, setSelectedPeak] = useState(null);
   const [dismissedPeakId, setDismissedPeakId] = useState(null); // 📱 隱藏鎖定山峰字卡
@@ -408,8 +410,12 @@ export default function CampsiteARModal({
       : campLng;
   const activeElevation = locationMode === 'custom' && customCoords?.elevation !== undefined
     ? Number(customCoords.elevation)
-    : (locationMode === 'current' && userCoords?.altitude)
-      ? Number(userCoords.altitude)
+    : locationMode === 'current'
+      ? (userCoords?.altitude !== null && userCoords?.altitude !== undefined
+          ? Number(userCoords.altitude)
+          : (gpxTracker?.currentCoords?.ele !== null && gpxTracker?.currentCoords?.ele !== undefined
+              ? Number(gpxTracker.currentCoords.ele)
+              : 120))
       : campElevation;
 
   // Handle GPS location request
@@ -919,7 +925,17 @@ export default function CampsiteARModal({
     return 250;
   }, [windDir, windSpeed]);
 
-  // 2. Active observation date for Stargazing
+  // 2. Active observation date for Stargazing (即時每 30 秒同步最新天球時間，解決元件預掛載導致時間凍結在進站瞬間的問題)
+  const [starClockTick, setStarClockTick] = useState(0);
+  useEffect(() => {
+    if (!isOpen || isPaused || arViewMode !== 'stars' || simStarHour !== 'now') return;
+    setStarClockTick(t => t + 1);
+    const id = setInterval(() => {
+      setStarClockTick(t => t + 1);
+    }, 30000);
+    return () => clearInterval(id);
+  }, [isOpen, isPaused, arViewMode, simStarHour]);
+
   const activeStarDate = useMemo(() => {
     const now = new Date();
     if (simStarHour === 'now') return now;
@@ -936,16 +952,16 @@ export default function CampsiteARModal({
       if (now.getHours() > 4) d.setDate(d.getDate() + 1);
     }
     return d;
-  }, [simStarHour]);
+  }, [simStarHour, starClockTick, isOpen, arViewMode]);
 
   // 3. Moon Phase Information for active observation date
   const moonInfo = useMemo(() => {
     return getMoonPhaseInfo(activeStarDate);
   }, [activeStarDate]);
 
-  // 4. Compute real-time horizontal coordinates (Azimuth & Elevation) for all observable targets (Planets + Stars + Galaxies)
+  // 4. Compute real-time horizontal coordinates (Azimuth & Elevation) for all observable targets (Topocentric Moon + Planets + Stars + Galaxies)
   const computedStars = useMemo(() => {
-    const allTargets = getRealtimeCelestialTargets(activeStarDate);
+    const allTargets = getRealtimeCelestialTargets(activeStarDate, lat, lng);
     return allTargets.map(target => {
       const pos = radecToAltAz(target.ra, target.dec, activeStarDate, lat, lng);
       return {
@@ -958,8 +974,9 @@ export default function CampsiteARModal({
 
   // 5A. 預先計算所有星座頂點恆星之天球地平座標 (Azimuth/Elevation) 與主星去重標記，僅隨時間與地點變動計算 1 次，不在轉動手機時重複跑球面三角函數！
   const baseConstellations = useMemo(() => {
-    const mainNames = new Set(computedStars.map(t => t.name.split(' (')[0]));
-    const mainIds = new Set(computedStars.map(t => t.id));
+    const fixedMainStars = computedStars.filter(t => t.type !== 'moon' && t.type !== 'planet');
+    const mainNames = new Set(fixedMainStars.map(t => t.name.split(' (')[0]));
+    const mainIds = new Set(fixedMainStars.map(t => t.id));
 
     return CONSTELLATIONS.map(c => {
       const starsWithHorizontal = c.stars.map(s => {
@@ -968,7 +985,7 @@ export default function CampsiteARModal({
         const isMainDuplicate =
           mainIds.has(s.id) ||
           mainNames.has(shortName) ||
-          computedStars.some(
+          fixedMainStars.some(
             t => Math.abs(t.azimuth - pos.azimuth) < 0.9 && Math.abs(t.elevation - pos.elevation) < 0.9
           );
         return {
@@ -985,11 +1002,9 @@ export default function CampsiteARModal({
     });
   }, [activeStarDate, lat, lng, computedStars]);
 
-  // 5B. 隨鏡頭轉動 (heading / camElevation) 僅執行極輕量 2D 螢幕投影加減法
+  // 5B. 隨鏡頭轉動 (heading / camElevation) 執行 3D 針孔相機切平面投影 (消除高仰角 cos(elevation) 球面失真與直向 FOV 比例顛倒)
   const computedConstellations = useMemo(() => {
     if (arViewMode !== 'stars') return [];
-    const starFovH = effectiveLandscape ? 52.5 : 38;
-    const starFovV = effectiveLandscape ? 20 : 28;
 
     return baseConstellations.map(c => {
       const starMap = {};
@@ -998,23 +1013,20 @@ export default function CampsiteARModal({
       let visibleStars = 0;
 
       const starsWithPos = c.starsWithHorizontal.map(s => {
-        const azDiff = (s.azimuth - heading + 540) % 360 - 180;
-        const elDiff = s.elevation - camElevation;
-        const screenX = 50 + (azDiff / starFovH) * 45;
-        const screenY = 50 - (elDiff / starFovV) * 40;
-        const inFOV = Math.abs(azDiff) <= starFovH && Math.abs(elDiff) <= starFovV && s.elevation > -5;
+        const proj = projectHorizontalToScreen3D(s.azimuth, s.elevation, heading, camElevation, effectiveLandscape);
+        const inFOV = proj.inFOV && s.elevation > -5;
 
         const starObj = {
           ...s,
-          screenX: Math.round(screenX * 10) / 10,
-          screenY: Math.round(screenY * 10) / 10,
+          screenX: Math.round(proj.screenX * 10) / 10,
+          screenY: Math.round(proj.screenY * 10) / 10,
           inFOV
         };
         starMap[s.id] = starObj;
 
         if (inFOV) {
-          visSumX += screenX;
-          visSumY += screenY;
+          visSumX += proj.screenX;
+          visSumY += proj.screenY;
           visibleStars++;
         }
         return starObj;
@@ -1034,11 +1046,9 @@ export default function CampsiteARModal({
     });
   }, [arViewMode, baseConstellations, heading, camElevation, effectiveLandscape]);
 
-  // 6. Detect Star or Constellation locked by Central Reticle (以視覺螢幕準心 (50%, 50%) 幾何距離直接判定，指哪鎖哪、零黏滯切換周圍鄰星！)
+  // 6. Detect Star or Constellation locked by Central Reticle (以 3D 針孔投影之螢幕準心 (50%, 50%) 幾何距離直接判定)
   const lockedStar = useMemo(() => {
     if (arViewMode !== 'stars') return null;
-    const starFovH = effectiveLandscape ? 52.5 : 38;
-    const starFovV = effectiveLandscape ? 20 : 28;
 
     let closest = null;
     let minScreenDist = 999;
@@ -1046,19 +1056,17 @@ export default function CampsiteARModal({
     // 1. 檢查主天體 (行星、月球、一等亮星、深空星雲)
     for (const star of computedStars) {
       if (star.elevation < -5) continue;
-      const azDiff = (star.azimuth - heading + 540) % 360 - 180;
-      const elDiff = star.elevation - camElevation;
-      if (Math.abs(azDiff) > starFovH || Math.abs(elDiff) > starFovV) continue;
+      const proj = projectHorizontalToScreen3D(star.azimuth, star.elevation, heading, camElevation, effectiveLandscape);
+      if (!proj.inFOV) continue;
 
-      const screenX = 50 + (azDiff / starFovH) * 45;
-      const screenY = 50 - (elDiff / starFovV) * 40;
-      const screenDist = Math.hypot(screenX - 50, screenY - 50);
+      const screenDist = Math.hypot(proj.screenX - 50, proj.screenY - 50);
 
       if (screenDist < minScreenDist) {
         minScreenDist = screenDist;
+        const sep = getAngularSeparation(heading, camElevation, star.azimuth, star.elevation);
         closest = {
           ...star,
-          separation: Math.round(Math.hypot(azDiff, elDiff) * 10) / 10
+          separation: Math.round(sep * 10) / 10
         };
       }
     }
@@ -1070,14 +1078,13 @@ export default function CampsiteARModal({
         const screenDist = Math.hypot(star.screenX - 50, star.screenY - 50);
         if (screenDist < minScreenDist) {
           minScreenDist = screenDist;
-          const azDiff = (star.azimuth - heading + 540) % 360 - 180;
-          const elDiff = star.elevation - camElevation;
+          const sep = getAngularSeparation(heading, camElevation, star.azimuth, star.elevation);
           closest = {
             ...star,
             constellation: c.name,
             icon: c.icon,
             story: `${c.name}之成員恆星，視星等約 ${star.mag}。${c.story}`,
-            separation: Math.round(Math.hypot(azDiff, elDiff) * 10) / 10
+            separation: Math.round(sep * 10) / 10
           };
         }
       }
@@ -1141,19 +1148,29 @@ export default function CampsiteARModal({
   }, [arViewMode, lockedStar, selectedStarTarget, computedStars, heading, camElevation, effectiveLandscape]);
 
   // 7. Compute PeakVisor Mountain Peaks & Ridge Lines from observer location
+  // 預先快取觀測點周圍山峰之球面方位與視線仰角，避免手機每轉動 0.2° 就重複計算 150+ 座山的 Haversine 三角函數
+  const basePeaks = useMemo(() => {
+    if (arViewMode !== 'mountain') return [];
+    return computePeaksFromLocation(lat, lng, activeElevation, peakMaxDistance).map(p => ({
+      ...p,
+      distKm: p.distKm || p.distanceKm,
+      desc: p.desc || p.story,
+      azimuthDir: getHeadingDirectionName(p.azimuth)
+    }));
+  }, [arViewMode, lat, lng, activeElevation, peakMaxDistance]);
+
   const computedPeaks = useMemo(() => {
     if (arViewMode !== 'mountain') return [];
-    const peaks = computePeaksFromLocation(lat, lng, activeElevation, peakMaxDistance);
     const fovH = effectiveLandscape ? 105 : 65; // Horizontal Field of View: 105° ultra-wide in landscape panorama
     const fovV = effectiveLandscape ? 40 : 55; // Vertical Field of View
 
-    const projected = peaks.map(p => {
-      let azDiff = (p.azimuth - heading + 540) % 360 - 180;
-      let elDiff = p.apparentElevation - camElevation;
+    const projected = basePeaks.map(p => {
+      const azDiff = (p.azimuth - heading + 540) % 360 - 180;
+      const elDiff = p.apparentElevation - camElevation;
 
       const screenX = 50 + (azDiff / (fovH / 2)) * 50;
       const screenY = 50 - (elDiff / (fovV / 2)) * 50;
-      const isVisible = screenX >= -20 && screenX <= 120 && screenY >= -20 && screenY <= 120;
+      const isVisible = screenX >= -20 && screenX <= 120 && screenY >= -25 && screenY <= 125;
       const inView = screenX >= 0 && screenX <= 100 && screenY >= 0 && screenY <= 100;
 
       return {
@@ -1161,53 +1178,87 @@ export default function CampsiteARModal({
         screenX,
         screenY,
         isVisible,
-        inView,
-        distKm: p.distKm || p.distanceKm,
-        desc: p.desc || p.story,
-        azimuthDir: getHeadingDirectionName(p.azimuth)
+        inView
       };
     });
 
-    // 🎯 智慧多層錯位避讓 (Multi-Tier Collision Avoidance Layout, 仿 PeakFinder / PeakVisor):
-    // 1. 先將可見山峰依距離排序（近景優先佔據第 0 層基準高度）
-    // 2. 當鄰近山峰水平距離 < 8.5% 時，自動指派至高一層 (Tier 1: +14px, Tier 2: +28px) 錯開高度
-    // 3. 超過 3 層且水平重疊者轉為極簡微標籤 (isCompact)，達成 100% 零遮蔽、全名清晰可見
+    // 🎯 8 層階梯錯位避讓 (8-Tier Staggered Skyline Layout, 仿 PeakFinder / PeakVisor):
+    // 解決過去僅 3 層且第 4 座山起全部強制塞回 Tier 0 導致密集山區 (如五峰尖石、雪霸聖稜線) 70% 山頭互相重疊蓋住的問題！
+    // 1. 先將可見山峰依距離排序（近景優先佔據低層，遠方高山自動向上階梯堆疊，符合真實遠近透視）
+    // 2. 共提供 Tier 0 ~ Tier 7 八層高度（每層垂直間距 24px），超過 3 層時自動切換為精巧膠囊 (isCompact)
+    // 3. 若單一極窄方位超過 8 座山，自動循環高度並微調水平偏移 (offsetX)，達成 100% 零重疊覆蓋、每座山皆清晰可見！
     const visibleList = projected.filter(p => p.isVisible);
     const sorted = [...visibleList].sort((a, b) => (a.distKm || 999) - (b.distKm || 999));
 
+    const MAX_TIERS = 8;
     const occupiedTiers = [];
     const tierMap = new Map();
+    const threshold = effectiveLandscape ? 7.2 : 9.0; // 水平避讓門檻 (%)
 
     sorted.forEach(p => {
-      let chosenTier = 0;
+      let chosenTier = -1;
       let isCompact = false;
-      const threshold = 8.5; // 水平避讓門檻 (%)
+      let offsetX = 0;
 
-      for (let t = 0; t <= 2; t++) {
+      for (let t = 0; t < MAX_TIERS; t++) {
         const conflict = occupiedTiers.some(occ => occ.tier === t && Math.abs(occ.screenX - p.screenX) < threshold);
         if (!conflict) {
           chosenTier = t;
+          if (t >= 3) isCompact = true;
           break;
-        }
-        if (t === 2) {
-          chosenTier = 0;
-          isCompact = true;
         }
       }
 
-      occupiedTiers.push({ screenX: p.screenX, tier: chosenTier });
-      tierMap.set(p.id, { tier: chosenTier, isCompact });
+      if (chosenTier === -1) {
+        const nearCount = occupiedTiers.filter(occ => Math.abs(occ.screenX - p.screenX) < threshold).length;
+        chosenTier = nearCount % MAX_TIERS;
+        isCompact = true;
+        offsetX = ((nearCount % 2 === 0 ? 1 : -1) * Math.min(3.6, Math.ceil(nearCount / MAX_TIERS) * 1.8));
+      }
+
+      occupiedTiers.push({ screenX: p.screenX + offsetX, tier: chosenTier });
+      tierMap.set(p.id, { tier: chosenTier, isCompact, offsetX });
     });
 
     return projected.map(p => {
-      const info = tierMap.get(p.id) || { tier: 0, isCompact: false };
+      const info = tierMap.get(p.id) || { tier: 0, isCompact: false, offsetX: 0 };
       return {
         ...p,
         tier: info.tier,
-        isCompact: info.isCompact
+        isCompact: info.isCompact,
+        offsetX: info.offsetX || 0
       };
     });
-  }, [arViewMode, lat, lng, activeElevation, peakMaxDistance, heading, camElevation, effectiveLandscape]);
+  }, [arViewMode, basePeaks, heading, camElevation, effectiveLandscape]);
+
+  // 🧭 遠山地平線仰角引導雷達 (Mountain Horizon Aim Guidance)：
+  // 由於真實山峰視線仰角集中在 -2° ~ +6° (地平線附近)，當使用者手機拿太高 (如星空姿勢 >20°) 或太低 (<-18°) 時主動提示放平手機
+  const mountainAimGuidance = useMemo(() => {
+    if (arViewMode !== 'mountain' || computedPeaks.length === 0) return null;
+    const anyInView = computedPeaks.some(p => p.inView);
+    if (anyInView) return null;
+
+    // 找出目前水平視野 (±45°) 內的山峰平均仰角，若無則取最近山峰
+    const sectorPeaks = computedPeaks.filter(p => {
+      const azDiff = (p.azimuth - heading + 540) % 360 - 180;
+      return Math.abs(azDiff) <= 45;
+    });
+    const refPeak = sectorPeaks[0] || computedPeaks[0];
+    const targetElev = Math.round(refPeak?.apparentElevation ?? 2);
+    const elDiff = targetElev - camElevation;
+
+    if (Math.abs(elDiff) >= 14) {
+      return {
+        peak: refPeak,
+        countInSector: sectorPeaks.length,
+        totalCount: computedPeaks.length,
+        direction: elDiff > 0 ? 'up' : 'down',
+        degreeDiff: Math.round(Math.abs(elDiff)),
+        targetElev
+      };
+    }
+    return null;
+  }, [arViewMode, computedPeaks, heading, camElevation]);
 
   // Compute Mountain Ridges connecting member peaks
   const computedRidges = useMemo(() => {
@@ -1294,22 +1345,24 @@ export default function CampsiteARModal({
     };
   }, [arViewMode, showRidgeLines, computedPeaks]);
 
-  // Detect Mountain Peak locked by Central Reticle
+  // Detect Mountain Peak locked by Central Reticle (2D 螢幕準心視覺半徑鎖定，消除橫向 105°x40° 長寬比造成的球面角距偏移)
   const lockedPeak = useMemo(() => {
     if (arViewMode !== 'mountain') return null;
     let closest = null;
-    let minSep = 999;
+    let minScreenDist = 999;
 
     for (const p of computedPeaks) {
-      const sep = getAngularSeparation(heading, camElevation, p.azimuth, p.apparentElevation);
-      if (sep < minSep) {
-        minSep = sep;
-        closest = p;
+      if (!p.inView) continue;
+      const screenDist = Math.hypot((p.screenX + (p.offsetX || 0)) - 50, p.screenY - 50);
+      if (screenDist < minScreenDist) {
+        minScreenDist = screenDist;
+        const sep = getAngularSeparation(heading, camElevation, p.azimuth, p.apparentElevation);
+        closest = { ...p, separation: Math.round(sep * 10) / 10 };
       }
     }
 
-    if (minSep <= 12) {
-      return { ...closest, separation: Math.round(minSep * 10) / 10 };
+    if (closest && minScreenDist <= 10.5) {
+      return closest;
     }
     return null;
   }, [arViewMode, computedPeaks, heading, camElevation]);
@@ -1340,22 +1393,24 @@ export default function CampsiteARModal({
     }));
   }, [arViewMode, lat, lng, activeElevation, poiMaxDistance, poiCategory, poiSpots, heading, camElevation, effectiveLandscape]);
 
-  // Detect POI locked by Central Reticle
+  // Detect POI locked by Central Reticle (2D 螢幕準心視覺半徑鎖定)
   const lockedPoi = useMemo(() => {
     if (arViewMode !== 'spots') return null;
     let closest = null;
-    let minSep = 999;
+    let minScreenDist = 999;
 
     for (const p of computedPOIs) {
-      const sep = getAngularSeparation(heading, camElevation, p.azimuth, p.apparentElevation);
-      if (sep < minSep) {
-        minSep = sep;
-        closest = p;
+      if (!p.isVisible) continue;
+      const screenDist = Math.hypot(p.screenX - 50, p.screenY - 50);
+      if (screenDist < minScreenDist) {
+        minScreenDist = screenDist;
+        const sep = getAngularSeparation(heading, camElevation, p.azimuth, p.apparentElevation);
+        closest = { ...p, separation: Math.round(sep * 10) / 10 };
       }
     }
 
-    if (minSep <= 12) {
-      return { ...closest, separation: Math.round(minSep * 10) / 10 };
+    if (closest && minScreenDist <= 10.5) {
+      return closest;
     }
     return null;
   }, [arViewMode, computedPOIs, heading, camElevation]);
@@ -1426,9 +1481,9 @@ export default function CampsiteARModal({
     });
   };
 
-  // 📷 相機生命週期獨立管理：僅隨 isOpen 與 isCameraOff 聯動，絕不受螢幕旋轉打斷重連
+  // 📷 相機生命週期獨立管理：當 GPX 儀表板覆蓋於上層 (isPaused) 時自動暫停鏡頭，避免背景搶佔硬體與主執行緒
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || isPaused) {
       stopCameraHardware();
       return;
     }
@@ -1440,11 +1495,11 @@ export default function CampsiteARModal({
     return () => {
       stopCameraHardware();
     };
-  }, [isOpen, isCameraOff]);
+  }, [isOpen, isPaused, isCameraOff]);
 
-  // 🧭 陀螺儀與空間感測器生命週期（不論鏡頭開或關，持續以高精密度 3D 矩陣計算空間仰角與方位，並透過 RAF 節流確保密集星群下 60fps 零卡頓）
+  // 🧭 陀螺儀與空間感測器生命週期（不論直向或橫向旋轉皆保持連續不重置，當 GPX 儀表板開啟 isPaused 時自動暫停 30Hz 推播以防 UI 卡頓）
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || isPaused) return;
 
     let rafId = null;
     let pendingEvent = null;
@@ -1457,7 +1512,11 @@ export default function CampsiteARModal({
       const e = pendingEvent;
       if (!e) return;
 
-      // 1. 🧭 智慧辨識螢幕旋轉角度 (支援最新 screen.orientation.angle 與舊版 window.orientation 及視窗比例)
+      const rawBeta = e.beta !== null && e.beta !== undefined ? e.beta : 0;
+      const rawGamma = e.gamma !== null && e.gamma !== undefined ? e.gamma : 0;
+      const rawAlpha = e.alpha !== null && e.alpha !== undefined ? e.alpha : 0;
+
+      // 1. 🧭 智慧辨識螢幕旋轉角度 (支援最新 screen.orientation.angle 與舊版 window.orientation 及視窗比例，並依據重力區分左橫 90° 與右橫 270°)
       let screenAngle = 0;
       if (typeof window !== 'undefined') {
         if (window.screen?.orientation?.angle !== undefined) {
@@ -1465,28 +1524,23 @@ export default function CampsiteARModal({
         } else if (typeof window.orientation !== 'undefined') {
           const o = Number(window.orientation);
           screenAngle = o < 0 ? o + 360 : o;
-        } else if (isDeviceLandscape || window.innerWidth > window.innerHeight) {
-          screenAngle = 90;
+        } else if (window.innerWidth > window.innerHeight) {
+          screenAngle = rawGamma > 0 ? 270 : 90;
         }
       }
 
-      const rawBeta = e.beta !== null && e.beta !== undefined ? e.beta : 0;
-      const rawGamma = e.gamma !== null && e.gamma !== undefined ? e.gamma : 0;
-      const rawAlpha = e.alpha !== null && e.alpha !== undefined ? e.alpha : 0;
-
-      // 2. 📐 鏡頭仰角 (camElevation) 嚴謹 3D 空間旋轉矩陣解算：
+      // 2. 📐 鏡頭仰角 (camElevation) 嚴謹 3D 空間旋轉矩陣解算 (直向與橫向皆不變)：
       const betaRad = (rawBeta * Math.PI) / 180;
       const gammaRad = (rawGamma * Math.PI) / 180;
       const vz = -Math.cos(betaRad) * Math.cos(gammaRad);
       const cameraElevation = (Math.asin(Math.max(-1, Math.min(1, vz))) * 180) / Math.PI;
 
       // 3. 🧭 3D 陀螺儀後置鏡頭光軸向量 (V_cam = R * [0, 0, -1]^T) + 真北錨定融合：
-      // 徹底解決 iOS CLHeading / webkitCompassHeading 在仰角超過 45° (beta > 135°, 螢幕朝下進入 .faceDown) 時，
-      // 參考軸由後鏡頭 (-Z) 切換為手機頂端 (+Y) 導致方位角瞬間跳變 180° (例如 126° SE 跳成 303° WNW) 的物理缺陷！
       let gyroCamAzimuth = null;
 
       if (typeof e.yaw === 'number' && typeof e.pitch === 'number' && typeof e.roll === 'number') {
-        // 3A. iOS 原生 CoreMotion 6軸/9軸姿態矩陣 (R_z(yaw) * R_x(pitch) * R_y(roll) * [0, 0, -1]^T)
+        // 3A. iOS 原生 CoreMotion 6軸/9軸姿態矩陣 (.xTrueNorthZVertical 為 NWU 座標系：+X=North, +Y=West, -Y=East)
+        // 因此順時針羅盤方位角為 atan2(East, North) = atan2(-wy, wx)，且對直向/橫向旋轉 100% 幾何不變！
         const pRad = (e.pitch * Math.PI) / 180;
         const rRad = (e.roll * Math.PI) / 180;
         const yRad = (e.yaw * Math.PI) / 180;
@@ -1495,10 +1549,10 @@ export default function CampsiteARModal({
         const wx = cx * Math.cos(yRad) - cy * Math.sin(yRad);
         const wy = cx * Math.sin(yRad) + cy * Math.cos(yRad);
         if (wx * wx + wy * wy > 1e-4) {
-          gyroCamAzimuth = ((Math.atan2(wx, wy) * 180) / Math.PI + 360) % 360;
+          gyroCamAzimuth = ((Math.atan2(-wy, wx) * 180) / Math.PI + 360) % 360;
         }
       } else if (e.alpha !== null && e.alpha !== undefined) {
-        // 3B. W3C DeviceOrientation 3D 旋轉矩陣 (R_z(alpha) * R_x(beta) * R_y(gamma) * [0, 0, -1]^T)
+        // 3B. W3C DeviceOrientation 3D 旋轉矩陣 (ENU 座標系：+X=East, +Y=North)
         const alphaRad = (rawAlpha * Math.PI) / 180;
         const cA = Math.cos(alphaRad), sA = Math.sin(alphaRad);
         const cB = Math.cos(betaRad), sB = Math.sin(betaRad);
@@ -1515,17 +1569,40 @@ export default function CampsiteARModal({
       let currentHeading = lastAppliedHeading !== null ? lastAppliedHeading : 0;
 
       if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null && e.webkitCompassHeading >= 0) {
-        const rawCompass = (e.webkitCompassHeading + screenAngle + 360) % 360;
-        // 當手機仰望星空超過 45° (|rawBeta| > 135°，即重力 +Z 分量 > |Y| 分量)，iOS CLHeading 會進入 .faceDown 模式而反轉 180°
-        const isFaceDownSkyTilt = Math.abs(rawBeta) > 135 || cameraElevation > 45;
+        // 若使用者開啟 iOS 直向鎖定 (screenAngle === 0) 但實體手機橫拿 (|rawGamma| > 55°)，自動補償 CLHeading 的 ±90° 實體軸偏移
+        const effectiveCompassAngle =
+          (screenAngle === 0 && Math.abs(rawGamma) > 55)
+            ? (rawGamma < 0 ? 90 : 270)
+            : screenAngle;
+        // 純網頁 Safari 的 webkitCompassHeading 為磁北 (Magnetic North)，在台灣區域套用 WMM 地磁偏角 (-4.5°) 校正為地理真北；原生橋接已在 Swift 端完成真北轉換
+        const isWebMagneticCompass = typeof e.yaw !== 'number';
+        const magDeclinationOffset = isWebMagneticCompass ? -4.5 : 0;
+        const rawCompass = (e.webkitCompassHeading + magDeclinationOffset + effectiveCompassAngle + 360) % 360;
+
+        // 僅當 3D 鏡頭仰角真正超過 45° (g_z = vz > sin(45°)) 時，iOS CLHeading 才會進入 .faceDown 反轉 180°
+        // 修正：移除 Math.abs(rawBeta) > 135，因為橫向模式 (Landscape) 下 g_y ≈ 0，只要仰角 > 0° 即會導致 |rawBeta| ≈ 180° 而誤翻轉 180°！
+        const isFaceDownSkyTilt = cameraElevation > 45;
+
+        // 判斷手機是否處於穩定的直立或橫向低仰角安全校正區
+        const isStablePortrait =
+          cameraElevation >= -35 &&
+          cameraElevation <= 36 &&
+          Math.abs(rawGamma) <= 35 &&
+          (effectiveCompassAngle === 0 || effectiveCompassAngle === 180);
+        const gyAbs = Math.abs(Math.sin(betaRad) * Math.cos(gammaRad));
+        const isStableLandscape =
+          cameraElevation >= -30 &&
+          cameraElevation <= 30 &&
+          Math.abs(rawGamma) >= 55 &&
+          gyAbs <= 0.25 &&
+          ((effectiveCompassAngle === 90 && rawGamma < -55) || (effectiveCompassAngle === 270 && rawGamma > 55));
 
         if (gyroCamAzimuth !== null) {
           if (compassGyroOffset === null) {
-            // 首次初始化：若開啟時手機已抬高超過 45°，自動還原 CLHeading 的 180° 反轉
             const seedCompass = isFaceDownSkyTilt ? (rawCompass + 180) % 360 : rawCompass;
             compassGyroOffset = (seedCompass - gyroCamAzimuth + 360) % 360;
-          } else if (cameraElevation >= -35 && cameraElevation <= 36 && Math.abs(rawGamma) <= 35) {
-            // 低仰角安全區 (-35° ~ +36°)：CLHeading 100% 處於直立 .portrait 穩定態，平滑校正陀螺儀真北偏移
+          } else if (isStablePortrait || isStableLandscape) {
+            // 直立或橫向低仰角安全區：平滑校正陀螺儀與真北的偏移量
             const targetOffset = ((rawCompass - gyroCamAzimuth + 540) % 360) - 180;
             const offsetErr = ((targetOffset - compassGyroOffset + 540) % 360) - 180;
             compassGyroOffset = (compassGyroOffset + offsetErr * 0.15 + 360) % 360;
@@ -1543,7 +1620,6 @@ export default function CampsiteARModal({
           // 在 36° ~ 52° 的 CLHeading 臨界翻轉區間，100% 鎖定使用連續 3D 陀螺儀光軸向量，徹底杜絕 45° -> 46° 瞬間 180° 跳變！
           currentHeading = (gyroCamAzimuth + compassGyroOffset + 360) % 360;
         } else {
-          // 若無 3D 陀螺儀向量 (或接近 90° 天頂奇異點)，以無反轉羅盤或前一刻方位維持穩定
           if (Math.abs(cameraElevation) > 86 && lastAppliedHeading !== null) {
             currentHeading = lastAppliedHeading;
           } else if (lastAppliedHeading !== null) {
@@ -1556,7 +1632,9 @@ export default function CampsiteARModal({
           }
         }
       } else if (gyroCamAzimuth !== null) {
-        currentHeading = gyroCamAzimuth;
+        currentHeading = (compassGyroOffset !== null)
+          ? (gyroCamAzimuth + compassGyroOffset + 360) % 360
+          : gyroCamAzimuth;
       } else if (e.alpha !== null && e.alpha !== undefined) {
         currentHeading = (360 - rawAlpha + screenAngle + 360) % 360;
       }
@@ -1578,7 +1656,7 @@ export default function CampsiteARModal({
         groundRoll = Math.round(rawGamma);
       }
 
-      // 0.2° 細膩平滑角度解析度 + 0.15° 手震死區過濾：解決整數 1° 跳格造成密集星群難以微調對準鄰星的問題，同時避免靜止微震重複渲染
+      // 0.2° 細膩平滑角度解析度 + 0.15° 手震死區過濾
       const normH = ((currentHeading % 360) + 360) % 360;
       const smoothH = Math.round(normH * 5) / 5;
       const smoothEl = Math.max(-90, Math.min(90, Math.round((cameraElevation || 0) * 5) / 5));
@@ -1649,7 +1727,7 @@ export default function CampsiteARModal({
         } catch (err) {}
       }
     };
-  }, [isOpen, isDeviceLandscape, permissionGranted]);
+  }, [isOpen, isPaused, permissionGranted]);
 
   const handleRequestMotionPermission = () => {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -1786,7 +1864,7 @@ export default function CampsiteARModal({
                 type="button"
                 onClick={() => {
                   setArViewMode('mountain');
-                  if (camElevation > 20 || camElevation < -5) setCamElevation(5);
+                  if (!hasGyroscope && (camElevation > 20 || camElevation < -5)) setCamElevation(5);
                 }}
                 className={`py-1.5 rounded-lg font-black transition-all flex items-center justify-center gap-1 ${arViewMode === 'mountain' ? 'bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950 shadow-md ring-1 ring-teal-300/50' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
               >
@@ -1797,7 +1875,7 @@ export default function CampsiteARModal({
                 type="button"
                 onClick={() => {
                   setArViewMode('spots');
-                  if (camElevation > 15 || camElevation < -10) setCamElevation(0);
+                  if (!hasGyroscope && (camElevation > 15 || camElevation < -10)) setCamElevation(0);
                 }}
                 className={`py-1.5 rounded-lg font-black transition-all flex items-center justify-center gap-1 ${arViewMode === 'spots' ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 shadow-md ring-1 ring-cyan-300/50' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
               >
@@ -1808,7 +1886,7 @@ export default function CampsiteARModal({
                 type="button"
                 onClick={() => {
                   setArViewMode('stars');
-                  if (camElevation < 20) setCamElevation(40);
+                  if (!hasGyroscope && camElevation < 20) setCamElevation(40);
                 }}
                 className={`py-1.5 rounded-lg font-black transition-all flex items-center justify-center gap-1 ${arViewMode === 'stars' ? 'bg-gradient-to-r from-purple-400 to-indigo-500 text-white shadow-md ring-1 ring-purple-300/50' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
               >
@@ -2462,17 +2540,18 @@ export default function CampsiteARModal({
               );
             })}
 
-            {/* 3D. STARS MODE: Celestial Objects & Milky Way Core */}
+            {/* 3D. STARS MODE: Celestial Objects & Milky Way Core (3D 針孔相機切平面投影) */}
             {arViewMode === 'stars' && computedStars.map(star => {
-              const starFovH = effectiveLandscape ? 52.5 : 38;
-              const starFovV = effectiveLandscape ? 20 : 28;
-              const azDiff = (star.azimuth - heading + 540) % 360 - 180;
-              const elDiff = star.elevation - camElevation;
-              const inFOV = Math.abs(azDiff) <= starFovH && Math.abs(elDiff) <= starFovV;
-              const screenX = 50 + (azDiff / starFovH) * 45;
-              const screenY = 50 - (elDiff / starFovV) * 40;
+              if (star.elevation < -5) return null;
+              const { screenX, screenY, inFOV } = projectHorizontalToScreen3D(
+                star.azimuth,
+                star.elevation,
+                heading,
+                camElevation,
+                effectiveLandscape
+              );
 
-              if (!inFOV || star.elevation < -5) return null;
+              if (!inFOV) return null;
 
               const isLocked = lockedStar?.id === star.id;
               const isDeepSky = star.type === 'deepsky';
@@ -2741,15 +2820,17 @@ export default function CampsiteARModal({
               </div>
             )}
 
-            {/* 3G. MOUNTAIN PEAK PINS & BADGES */}
+            {/* 3G. MOUNTAIN PEAK PINS & BADGES (8 層階梯錯位展開，零重疊覆蓋) */}
             {arViewMode === 'mountain' && computedPeaks.map(peak => {
               if (!peak.isVisible) return null;
               const isLocked = lockedPeak?.id === peak.id;
               const isSelected = selectedPeak?.id === peak.id;
               const isFocus = isLocked || isSelected;
-              // 當山頂靠近螢幕上方時 (screenY < 28%)，標籤自動改為垂掛在山頂下方，避免頂部遮蔽
-              const isFlipped = peak.screenY < 28;
-              const needleHeight = peak.tier === 2 ? 'h-7' : peak.tier === 1 ? 'h-5' : 'h-2.5';
+              // 當山頂靠近螢幕上方時 (screenY < 24%)，標籤自動改為垂掛在山頂下方，避免頂部遮蔽
+              const isFlipped = peak.screenY < 24;
+              // 8 層垂直階梯針高 (10px ~ 178px)，確保密集山系同方位多座山峰完全錯開不重疊
+              const needleHeightPx = isFocus ? 14 : (10 + (peak.tier || 0) * 24);
+              const displayX = peak.screenX + (isFocus ? 0 : (peak.offsetX || 0));
 
               return (
                 <div
@@ -2757,59 +2838,90 @@ export default function CampsiteARModal({
                   data-testid="peak-pin"
                   data-peak-id={peak.id}
                   style={{
-                    left: `${peak.screenX}%`,
+                    left: `${displayX}%`,
                     top: `${peak.screenY}%`,
                     transform: isFlipped ? 'translate(-50%, 0%)' : 'translate(-50%, -100%)'
                   }}
                   onClick={() => setSelectedPeak(prev => (prev?.id === peak.id ? null : peak))}
-                  className={`absolute flex flex-col items-center pointer-events-auto cursor-pointer transition-all duration-200 z-20 ${
-                    isFocus ? 'scale-110 z-30' : 'opacity-90 hover:opacity-100 hover:scale-105'
+                  className={`absolute flex flex-col items-center pointer-events-auto cursor-pointer ${
+                    isFocus ? 'scale-110 z-30' : 'opacity-95 hover:opacity-100 z-20'
                   }`}
                 >
                   {/* 若山峰靠近頂部 (isFlipped)，先顯示山頂定錨點與針線，標籤垂掛下方 */}
                   {isFlipped && (
                     <>
                       <div className={`w-1.5 h-1.5 rounded-full ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-white'}`}></div>
-                      <div className={`w-0.5 ${needleHeight} ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-400/60'}`}></div>
+                      <div
+                        style={{ height: `${needleHeightPx}px` }}
+                        className={`w-0.5 ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-emerald-300/60'}`}
+                      ></div>
                     </>
                   )}
 
-                  {/* Peak Pin Badge (高對比度半透明防遮蔽膠囊) */}
+                  {/* Peak Pin Badge (高對比度防遮蔽膠囊，移除 backdrop-blur 提升轉動流暢度) */}
                   {peak.isCompact && !isFocus ? (
-                    <div className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-black/75 text-slate-200 border border-white/20 backdrop-blur-sm shadow-md flex items-center gap-1 hover:scale-110 hover:bg-emerald-950/80 hover:border-emerald-400 transition-all">
-                      <span className="text-[9px]">{peak.icon || '⛰️'}</span>
-                      <span className="max-w-[72px] truncate">{peak.name}</span>
-                      <span className="font-mono text-emerald-300 text-[9px]">{peak.altitudeM}m</span>
+                    <div className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-950/90 text-slate-100 border border-emerald-400/35 shadow-md flex items-center gap-1 hover:scale-105 hover:bg-emerald-950 hover:border-emerald-400 whitespace-nowrap">
+                      <span className="text-[10px]">{peak.icon || '⛰️'}</span>
+                      <span>{peak.name}</span>
+                      <span className="font-mono text-emerald-300 text-[10px]">{peak.altitudeM}m</span>
                     </div>
                   ) : (
                     <>
-                      <div className={`px-2.5 py-1 rounded-full text-xs font-black shadow-xl backdrop-blur-md flex items-center gap-1.5 border transition-all ${
+                      <div className={`px-2.5 py-0.5 rounded-full text-xs font-black shadow-xl flex items-center gap-1.5 border whitespace-nowrap ${
                         isFocus
-                          ? 'bg-emerald-950/85 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
-                          : 'bg-black/60 text-slate-100 border-white/25 hover:border-emerald-400/70 shadow-md'
+                          ? 'bg-emerald-950/95 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
+                          : 'bg-slate-950/85 text-slate-100 border-white/30 hover:border-emerald-400/70 shadow-md'
                       }`}>
                         <span>{peak.icon || '⛰️'}</span>
                         <span>{peak.name}</span>
                         <span className="text-[10px] font-mono text-emerald-300 font-bold">{peak.altitudeM}m</span>
                       </div>
 
-                      {/* Distance Sub-label */}
-                      <div className="mt-0.5 px-1.5 py-0.2 rounded bg-black/50 backdrop-blur-sm border border-white/15 text-[10px] font-mono text-emerald-300 font-bold">
-                        {peak.distanceKm} km · {peak.azimuth}°
-                      </div>
+                      {/* Distance Sub-label (僅在鎖定/選取或第 0~1 層主峰顯示，避免多層堆疊時遮擋下層山名) */}
+                      {(isFocus || (peak.tier || 0) <= 1) && (
+                        <div className="mt-0.5 px-1.5 py-0.1 rounded bg-slate-950/85 border border-white/15 text-[10px] font-mono text-emerald-300 font-bold whitespace-nowrap">
+                          {peak.distanceKm} km · {peak.azimuth}°
+                        </div>
+                      )}
                     </>
                   )}
 
                   {/* 若為標準山峰 (!isFlipped)，標籤在上方，針線向下延伸至山頂定錨點 */}
                   {!isFlipped && (
                     <>
-                      <div className={`w-0.5 ${needleHeight} mt-0.5 ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-slate-400/60'}`}></div>
+                      <div
+                        style={{ height: `${needleHeightPx}px` }}
+                        className={`w-0.5 mt-0.5 ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-emerald-300/60'}`}
+                      ></div>
                       <div className={`w-1.5 h-1.5 rounded-full ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-white'}`}></div>
                     </>
                   )}
                 </div>
               );
             })}
+
+            {/* 3G-B. MOUNTAIN HORIZON GUIDANCE INDICATOR (當手機拿太高或太低偏離地平線時主動引導) */}
+            {arViewMode === 'mountain' && mountainAimGuidance && (
+              <div
+                onClick={() => setCamElevation(mountainAimGuidance.targetElev)}
+                className={`absolute left-1/2 -translate-x-1/2 z-30 pointer-events-auto cursor-pointer ${
+                  mountainAimGuidance.direction === 'up' ? 'top-14' : 'bottom-16'
+                }`}
+                title="點擊或將手機放平對準地平線山稜"
+              >
+                <div className="px-3.5 py-1.5 rounded-full bg-emerald-950/95 text-emerald-200 font-black text-xs shadow-[0_0_20px_rgba(16,185,129,0.6)] flex items-center gap-1.5 border border-emerald-400/80 whitespace-nowrap">
+                  <span>⛰️</span>
+                  <span>
+                    周邊共 {mountainAimGuidance.totalCount} 座山峰位於地平線（仰角約 {mountainAimGuidance.targetElev}°）
+                  </span>
+                  <span className="bg-emerald-400 text-slate-950 px-2 py-0.5 rounded-full text-[11px] font-mono font-black">
+                    {mountainAimGuidance.direction === 'up'
+                      ? `👆 抬高 +${mountainAimGuidance.degreeDiff}°`
+                      : `👇 放平 -${mountainAimGuidance.degreeDiff}°`}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* 3H. GOOGLE AI OVERVIEW POI PINS & BADGES */}
             {arViewMode === 'spots' && computedPOIs.map(poi => {
@@ -3064,9 +3176,9 @@ export default function CampsiteARModal({
               </div>
             ) : arViewMode === 'mountain' ? (
               <div 
-                onClick={() => setPeakMaxDistance(d => d === 25 ? 50 : d === 50 ? 80 : 25)}
+                onClick={() => setPeakMaxDistance(d => d === 25 ? 50 : d === 50 ? 80 : d === 80 ? 100 : 25)}
                 className="bg-black/35 backdrop-blur-md border border-white/20 p-2 sm:p-2.5 rounded-2xl text-xs space-y-0.5 shadow-lg max-w-[50%] text-right cursor-pointer hover:border-emerald-400 transition-all pointer-events-auto"
-                title="點擊切換視野距離 (25km / 50km / 80km)"
+                title="點擊切換視野距離 (25km / 50km / 80km / 100km)"
               >
                 <div className="text-emerald-300 font-bold flex items-center justify-end gap-1.5 truncate text-[11px]">
                   <span>⛰️</span>
@@ -3609,7 +3721,8 @@ export default function CampsiteARModal({
                   {[
                     { dist: 25, label: '近景 25km' },
                     { dist: 50, label: '中景 50km' },
-                    { dist: 80, label: '遠眺 80km' }
+                    { dist: 80, label: '遠眺 80km' },
+                    { dist: 100, label: '全景 100km' }
                   ].map(item => (
                     <button
                       key={item.dist}

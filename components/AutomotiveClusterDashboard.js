@@ -60,6 +60,7 @@ function AutoFitMetricValue({
 }) {
   const containerRef = useRef(null);
   const textRef = useRef(null);
+  const lastWidthRef = useRef(0);
   const textStr = String(value ?? '');
   const [fontSizePx, setFontSizePx] = useState(maxPx);
 
@@ -68,8 +69,12 @@ function AutoFitMetricValue({
     const textEl = textRef.current;
     if (!container || !textEl) return;
 
-    const fit = () => {
-      const availW = container.clientWidth - 8; // 保留左右至少 4px 呼吸安全邊距
+    const fit = (force = false) => {
+      const w = container.clientWidth;
+      if (!force && Math.abs(w - lastWidthRef.current) < 1) return;
+      lastWidthRef.current = w;
+
+      const availW = w - 8; // 保留左右至少 4px 呼吸安全邊距
       if (availW <= 0) return;
 
       // 先以最大字級量測實際寬度，再依比例精準縮放
@@ -77,18 +82,18 @@ function AutoFitMetricValue({
       const neededW = textEl.scrollWidth;
       if (neededW > availW && neededW > 0) {
         const scaled = Math.max(minPx, Math.floor(maxPx * (availW / neededW) * 0.96));
-        setFontSizePx(scaled);
+        setFontSizePx(prev => (prev === scaled ? prev : scaled));
         textEl.style.fontSize = `${scaled}px`;
       } else {
-        setFontSizePx(maxPx);
+        setFontSizePx(prev => (prev === maxPx ? prev : maxPx));
         textEl.style.fontSize = `${maxPx}px`;
       }
     };
 
-    fit();
+    fit(true);
 
     if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => fit());
+      const ro = new ResizeObserver(() => fit(false));
       ro.observe(container);
       return () => ro.disconnect();
     }
@@ -122,6 +127,7 @@ export default function AutomotiveClusterDashboard({
   theme = null,
   onThemeChange = null,
   onVehicleModeChange = null,
+  onSetGpsPollingMode = null,
   onCalibrateElevation = null
 }) {
   const gradientId = useId();
@@ -160,15 +166,24 @@ export default function AutomotiveClusterDashboard({
 
   // ⚡ 同軸加速度副指針狀態 (縱向加速度 m/s² 與 G 值)
   const [accelMs2, setAccelMs2] = useState(0);
-  const [peakAccelG, setPeakAccelG] = useState(0);
-  const [peakBrakeG, setPeakBrakeG] = useState(0);
+  const [peakAccelG, setPeakAccelG] = useState(() => toSafeNumber(displayStats?.peakAccelG, 0));
+  const [peakBrakeG, setPeakBrakeG] = useState(() => toSafeNumber(displayStats?.peakBrakeG, 0));
   const prevSpeedSampleRef = useRef({ speedKmh: null, timeMs: 0 });
   const accelDecayIntervalRef = useRef(null);
+
+  // 同步外部 displayStats 的歷史峰值加速度，確保旋轉螢幕或重新掛載時 100% 完整保留
+  useEffect(() => {
+    const pG = toSafeNumber(displayStats?.peakAccelG, 0);
+    if (pG > 0) setPeakAccelG((prev) => Math.max(prev, pG));
+    const pB = toSafeNumber(displayStats?.peakBrakeG, 0);
+    if (pB > 0) setPeakBrakeG((prev) => Math.max(prev, pB));
+  }, [displayStats?.peakAccelG, displayStats?.peakBrakeG]);
 
   // 📱 橫向模式 (Landscape) 偵測與車載 HUD 防休眠常亮開關
   const [isLandscape, setIsLandscape] = useState(false);
   const [keepScreenAwake, setKeepScreenAwake] = useState(false); // 使用者可自由選擇是否保持螢幕常亮不休眠
   const wakeLockSentinelRef = useRef(null);
+  const userExitedFullscreenRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -176,18 +191,38 @@ export default function AutomotiveClusterDashboard({
     const checkLandscape = () => {
       const mqlLand = mql ? mql.matches : false;
       const ratioLand = window.innerWidth > window.innerHeight;
-      setIsLandscape(Boolean(mqlLand || ratioLand));
+      const winOrient = typeof window.orientation !== 'undefined' ? (Math.abs(window.orientation) === 90 || Math.abs(window.orientation) === 270) : false;
+      const screenAngle = window.screen?.orientation?.angle;
+      const angleLand = screenAngle === 90 || screenAngle === 270;
+      setIsLandscape(Boolean(mqlLand || ratioLand || winOrient || angleLand));
     };
     checkLandscape();
     window.addEventListener('resize', checkLandscape);
     window.addEventListener('orientationchange', checkLandscape);
     if (mql?.addEventListener) mql.addEventListener('change', checkLandscape);
+    if (window.screen?.orientation?.addEventListener) {
+      window.screen.orientation.addEventListener('change', checkLandscape);
+    }
     return () => {
       window.removeEventListener('resize', checkLandscape);
       window.removeEventListener('orientationchange', checkLandscape);
       if (mql?.removeEventListener) mql.removeEventListener('change', checkLandscape);
+      if (window.screen?.orientation?.removeEventListener) {
+        window.screen.orientation.removeEventListener('change', checkLandscape);
+      }
     };
   }, []);
+
+  // 當使用者在車載支架上轉為橫向 Landscape 時，自動展開滿版全螢幕車載 HUD；轉回直向則重置手動退出鎖
+  useEffect(() => {
+    if (isLandscape) {
+      if (!userExitedFullscreenRef.current) {
+        setIsFullscreen(true);
+      }
+    } else {
+      userExitedFullscreenRef.current = false;
+    }
+  }, [isLandscape]);
 
   // ☀️ 螢幕防休眠控制：僅在「全螢幕車載 HUD + 橫向 Landscape 模式 + 使用者開啟常亮」時生效；離開全螢幕或轉直向立即恢復正常休眠省電
   useEffect(() => {
@@ -255,6 +290,7 @@ export default function AutomotiveClusterDashboard({
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        userExitedFullscreenRef.current = true;
         setIsFullscreen(false);
       }
     };
@@ -265,19 +301,10 @@ export default function AutomotiveClusterDashboard({
     const origBodyBg = document.body.style.backgroundColor;
     const origHtmlBg = document.documentElement.style.backgroundColor;
     const origColorScheme = document.documentElement.style.colorScheme;
-    const mainEl = document.querySelector('main');
-    const origMainVis = mainEl ? mainEl.style.visibility : '';
-    const origMainBg = mainEl ? mainEl.style.backgroundColor : '';
-    const savedScrollY = window.scrollY;
 
     document.body.style.backgroundColor = fsHex;
     document.documentElement.style.backgroundColor = fsHex;
     document.documentElement.style.colorScheme = fsColorScheme;
-    if (mainEl) {
-      mainEl.style.backgroundColor = fsHex;
-      mainEl.style.visibility = 'hidden';
-    }
-    window.scrollTo(0, 0);
 
     const existingThemeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
     const prevThemeContent = existingThemeMetas[0]?.getAttribute('content') || '#f8fafc';
@@ -292,11 +319,6 @@ export default function AutomotiveClusterDashboard({
       document.body.style.backgroundColor = origBodyBg;
       document.documentElement.style.backgroundColor = origHtmlBg;
       document.documentElement.style.colorScheme = origColorScheme;
-      if (mainEl) {
-        mainEl.style.visibility = origMainVis;
-        mainEl.style.backgroundColor = origMainBg;
-      }
-      window.scrollTo(0, savedScrollY);
       const currentMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
       currentMetas.forEach((m) => m.parentNode?.removeChild(m));
       const restoreMeta = document.createElement('meta');
@@ -339,12 +361,14 @@ export default function AutomotiveClusterDashboard({
     };
   }, []);
 
-  // 當開始全新一筆記錄時，自動重置前次殘留的峰值加/減速 G 值
+  // 僅在由「未記錄」切換至「開始記錄全新一筆」時才歸零，避免組件重新掛載或旋轉螢幕時洗掉峰值
+  const prevIsRecordingRef = useRef(isRecording);
   useEffect(() => {
-    if (isRecording) {
+    if (!prevIsRecordingRef.current && isRecording) {
       setPeakAccelG(0);
       setPeakBrakeG(0);
     }
+    prevIsRecordingRef.current = isRecording;
   }, [isRecording]);
 
   // Current speed & telemetry metrics
@@ -400,6 +424,12 @@ export default function AutomotiveClusterDashboard({
       // 1. 真實 GPS 記錄中：直接採用真實衛星時間戳計算之縱向加速度，並於 1.1 秒無新變化後自動阻尼歸零
       const trueMs2 = toSafeNumber(displayStats.currentAccelMs2, 0);
       setAccelMs2(trueMs2);
+      const currentG = trueMs2 / 9.80665;
+      if (currentG > 0.01) {
+        setPeakAccelG((p) => Math.max(p, Number(currentG.toFixed(2))));
+      } else if (currentG < -0.01) {
+        setPeakBrakeG((p) => Math.max(p, Number(Math.abs(currentG).toFixed(2))));
+      }
       const truePeakA = toSafeNumber(displayStats?.peakAccelG, 0);
       const truePeakB = toSafeNumber(displayStats?.peakBrakeG, 0);
       if (truePeakA > 0) setPeakAccelG((p) => Math.max(p, truePeakA));
@@ -469,18 +499,21 @@ export default function AutomotiveClusterDashboard({
   const dialMax = selectedConfig?.max || getAutoDialMax(effectiveSpeed, maxSpeed);
   const modeInfo = getModeTitle(dialMax);
 
-  // 🚗 僅在「使用者手動選擇特定載具量程」或「記錄中實際速度超過步行 (> 10 km/h)」時才通知切換模式；
-  // 開啟全螢幕 HUD 或檢視歷史高速紀錄時，絕不強制跳成 1Hz 高頻取樣
+  // 🚗 當使用者手動選擇特定載具量程、記錄中速度 > 10 km/h、或開啟「全螢幕車載 HUD」時，自動啟用 1Hz 即時連續更新，確保全螢幕 HUD 絕不因 20 秒輪詢休眠而停滯！
   useEffect(() => {
-    if (typeof onVehicleModeChange !== 'function') return;
-    if (speedMode !== 'auto') {
-      onVehicleModeChange(speedMode);
-    } else if (isRecording && effectiveSpeed > 10) {
-      onVehicleModeChange(effectiveSpeed >= 35 ? 'drive' : 'bike');
-    } else {
-      onVehicleModeChange('auto');
+    if (typeof onVehicleModeChange === 'function') {
+      if (speedMode !== 'auto') {
+        onVehicleModeChange(speedMode);
+      } else if (isRecording && effectiveSpeed > 10) {
+        onVehicleModeChange(effectiveSpeed >= 35 ? 'drive' : 'bike');
+      } else {
+        onVehicleModeChange('auto');
+      }
     }
-  }, [speedMode, isRecording, effectiveSpeed, onVehicleModeChange]);
+    if (isRecording && isFullscreen && typeof onSetGpsPollingMode === 'function') {
+      onSetGpsPollingMode('continuous_1s');
+    }
+  }, [speedMode, isRecording, isFullscreen, effectiveSpeed, onVehicleModeChange, onSetGpsPollingMode]);
 
   const speedRatio = Math.min(1, Math.max(0, effectiveSpeed / dialMax));
   
@@ -1111,7 +1144,7 @@ export default function AutomotiveClusterDashboard({
             className={`${isCompact ? 'my-0.5' : 'my-1'} font-michroma font-bold tracking-tight leading-none`}
           />
           <span style={{ color: isWhite ? (isBraking ? '#D97706' : '#2563EB') : (isBraking ? '#F59E0B' : '#0284C7') }} className="text-[10px] font-michroma font-bold block text-center w-full">
-            {formattedAccelMs2}
+            最高 +{Math.max(peakAccelG, toSafeNumber(displayStats?.peakAccelG, 0)).toFixed(2)}G
           </span>
         </div>
       </div>
@@ -1665,6 +1698,48 @@ export default function AutomotiveClusterDashboard({
               }`}>
                 {isRecording ? "REC" : "STANDBY"}
               </span>
+
+              {/* ⏱️ 全景 HUD 即時秒表與移動/休息狀態膠囊：確保橫向全螢幕 HUD 下每秒鐘皆有動態計時回饋，不會誤以為畫面凍結 */}
+              <span
+                style={{
+                  backgroundColor: isWhite ? '#F1F5F9' : isOLED ? '#18181B' : 'rgba(255,255,255,0.08)',
+                  borderColor: isWhite ? '#CBD5E1' : isOLED ? '#3F3F46' : 'rgba(255,255,255,0.15)',
+                  color: isWhite ? '#0F172A' : '#FFFFFF'
+                }}
+                className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold border shrink-0 flex items-center gap-1"
+              >
+                <span>⏱️</span>
+                <span>{displayStats?.durationFormatted || "00:00:00"}</span>
+              </span>
+
+              {isRecording && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border shrink-0 hidden sm:inline-flex items-center gap-1 ${
+                    displayStats?.isCurrentlyMoving && !isManuallyResting
+                      ? (isWhite ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50')
+                      : (isWhite ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-amber-950/90 text-amber-300 border-amber-500/50')
+                  }`}
+                >
+                  <span>
+                    {displayStats?.isCurrentlyMoving && !isManuallyResting
+                      ? `🟢 移動 ${displayStats?.movingDurationFormatted || '00:00:00'}`
+                      : `⏸️ 休息 ${displayStats?.stoppedDurationFormatted || '00:00:00'}`}
+                  </span>
+                </span>
+              )}
+
+              {effectiveSteps > 0 && (
+                <span
+                  style={{
+                    backgroundColor: isWhite ? '#ECFDF5' : isOLED ? '#052E16' : 'rgba(16,185,129,0.15)',
+                    borderColor: isWhite ? '#A7F3D0' : '#059669',
+                    color: isWhite ? '#047857' : '#34D399'
+                  }}
+                  className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border shrink-0 hidden md:inline-flex items-center gap-1"
+                >
+                  <span>👟 {effectiveSteps.toLocaleString()} 步</span>
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0 ml-auto">
@@ -1711,7 +1786,10 @@ export default function AutomotiveClusterDashboard({
 
               <button
                 type="button"
-                onClick={() => setIsFullscreen(false)}
+                onClick={() => {
+                  userExitedFullscreenRef.current = true;
+                  setIsFullscreen(false);
+                }}
                 className="px-2.5 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-md active:scale-95 transition-all cursor-pointer shrink-0"
                 title="離開全螢幕 (ESC)"
               >
@@ -1777,7 +1855,10 @@ export default function AutomotiveClusterDashboard({
               {/* 正中央：滿版撐滿上下高度的 252° 扇形雙針儀表盤（零上下留黑） */}
               <div className="h-full flex items-center justify-center min-w-0 overflow-hidden">
                 <div 
-                  onClick={() => setIsFullscreen(false)}
+                  onClick={() => {
+                    userExitedFullscreenRef.current = true;
+                    setIsFullscreen(false);
+                  }}
                   style={{
                     height: '100%',
                     maxHeight: 'calc(100dvh - 60px)',
@@ -1811,7 +1892,7 @@ export default function AutomotiveClusterDashboard({
                     className="font-michroma font-bold tracking-tight leading-none my-1.5"
                   />
                   <span style={{ color: isWhite ? "#D97706" : "#F59E0B" }} className="text-[11px] font-michroma font-bold">
-                    KM
+                    KM · ⏱️ {displayStats?.durationFormatted || "00:00:00"}
                   </span>
                 </div>
 
@@ -1852,7 +1933,10 @@ export default function AutomotiveClusterDashboard({
               {/* 直向全螢幕模式：252° 扇形儀表板橫向撐滿視覺最大化 */}
               <div className="flex-1 min-h-0 flex flex-col items-center justify-center py-1">
                 <div 
-                  onClick={() => setIsFullscreen(false)}
+                  onClick={() => {
+                    userExitedFullscreenRef.current = true;
+                    setIsFullscreen(false);
+                  }}
                   style={{ width: 'min(95vw, 64dvh)', aspectRatio: '224 / 176' }}
                   className="relative flex items-center justify-center cursor-pointer transition-transform hover:scale-102"
                   title="點擊儀表盤縮小離開全螢幕"

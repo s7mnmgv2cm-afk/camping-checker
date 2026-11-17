@@ -72,10 +72,10 @@ export default function CampsiteGPXTrackerModal({
   const pocketSingleTapTimeoutRef = useRef(null);
   const lastPocketTapTimeRef = useRef(0);
 
-  // ⚡ 當視窗關閉或處於「口袋模式」時，自動暫停每秒 React State 畫面重繪 (0% GPU/DOM 負載)
+  // ⚡ 僅在處於「口袋熄屏模式」時暫停每秒 React State 畫面重繪；當視窗關閉時維持每秒時鐘與里程同步，避免首頁懸浮膠囊與 AR HUD 畫面凍結
   useEffect(() => {
     if (typeof setIsUiSuspended === 'function') {
-      const shouldSuspend = !isOpen || (isPocketMode && !isPocketAwake && !pocketAlwaysDim);
+      const shouldSuspend = Boolean(isOpen && isPocketMode && !isPocketAwake && !pocketAlwaysDim);
       setIsUiSuspended(shouldSuspend);
     }
   }, [isOpen, isPocketMode, isPocketAwake, pocketAlwaysDim, setIsUiSuspended]);
@@ -874,6 +874,7 @@ export default function CampsiteGPXTrackerModal({
                       theme={displayTheme}
                       onThemeChange={(newTheme) => setDisplayTheme(newTheme === 'obsidian' ? 'oled' : newTheme)}
                       onVehicleModeChange={gpxTracker?.setVehicleMode}
+                      onSetGpsPollingMode={setGpsPollingMode}
                       onCalibrateElevation={gpxTracker?.calibrateElevation}
                     />
 
