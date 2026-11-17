@@ -1994,6 +1994,7 @@ export default function Home() {
       <CampsiteARModal
         campsite={arModalCamp}
         isOpen={!!arModalCamp}
+        isPaused={showGpxModal}
         onClose={() => {
           setArModalCamp(null);
           setArModalWind(null);
