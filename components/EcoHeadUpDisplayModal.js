@@ -79,8 +79,9 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
   const [themeKey, setThemeKey] = useState('green');
   const theme = THEMES[themeKey] || THEMES.green;
 
-  // 🪞 擋風玻璃鏡像模式 (Mirror Flip)
-  const [isMirror, setIsMirror] = useState(false);
+  // 🪞 擋風玻璃鏡像模式 ('off' | 'vertical' | 'horizontal')
+  // 光學原理：手機螢幕面朝上平放於儀表板時，若螢幕頂端朝擋風玻璃，反射在傾斜擋風玻璃上的像是「上下顛倒」而非左右反轉，故最自然平放應使用 scaleY(-1)
+  const [mirrorMode, setMirrorMode] = useState('off'); // 'off' | 'vertical' | 'horizontal'
 
   // ☀️ 螢幕常亮狀態
   const [keepAwake, setKeepAwake] = useState(true);
@@ -331,7 +332,12 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
       style={{
         zIndex: 999999,
         backgroundColor: '#000000', // 嚴格 0 功耗 OLED 純黑
-        transform: isMirror ? 'scaleX(-1)' : 'none',
+        transform:
+          mirrorMode === 'vertical'
+            ? 'scaleY(-1)'
+            : mirrorMode === 'horizontal'
+            ? 'scaleX(-1)'
+            : 'none',
         transition: 'transform 0.25s ease-in-out'
       }}
       className="fixed inset-0 w-screen h-[100dvh] overflow-hidden select-none flex flex-col justify-between p-4 sm:p-6 font-sans text-white"
@@ -359,7 +365,7 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
           </div>
 
           {/* 鏡像模式啟用提醒膠囊 */}
-          {isMirror && (
+          {mirrorMode !== 'off' && (
             <span
               style={{
                 borderColor: theme.badgeBorder,
@@ -368,27 +374,41 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
               }}
               className="px-2 py-1 rounded-lg text-[10px] font-black tracking-wide border flex items-center gap-1 animate-pulse"
             >
-              <span>🪞 擋風玻璃投影中</span>
+              <span>
+                {mirrorMode === 'vertical'
+                  ? '🪞 擋風玻璃投影 (垂直翻轉·頂端朝前)'
+                  : '🪞 擋風玻璃投影 (水平翻轉·頂端朝後)'}
+              </span>
             </span>
           )}
         </div>
 
         {/* 右側：快捷工具列 */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* 🪞 鏡像切換按鈕 */}
+          {/* 🪞 鏡像切換按鈕 (支援自然平放 scaleY(-1) 與倒放 scaleX(-1)) */}
           <button
             type="button"
-            onClick={() => setIsMirror((prev) => !prev)}
+            onClick={() => {
+              setMirrorMode((prev) =>
+                prev === 'off' ? 'vertical' : prev === 'vertical' ? 'horizontal' : 'off'
+              );
+            }}
             style={{
-              backgroundColor: isMirror ? theme.accent : '#121212',
-              borderColor: isMirror ? theme.accent : '#27272A',
-              color: isMirror ? '#000000' : '#E4E4E7'
+              backgroundColor: mirrorMode !== 'off' ? theme.accent : '#121212',
+              borderColor: mirrorMode !== 'off' ? theme.accent : '#27272A',
+              color: mirrorMode !== 'off' ? '#000000' : '#E4E4E7'
             }}
             className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
-            title="擋風玻璃投影鏡像模式：將手機平放儀表板反射時，可左右鏡像反轉使駕駛看到正像"
+            title="點擊切換投影模式：[垂直翻轉 (手機頂部朝前擋平放)] ➔ [水平翻轉 (手機頂部朝駕駛平放)] ➔ [關閉投影 (正常觀看)]"
           >
             <span>🪞</span>
-            <span className="hidden sm:inline">{isMirror ? '鏡像開' : '鏡像關'}</span>
+            <span className="hidden sm:inline">
+              {mirrorMode === 'vertical'
+                ? '垂直翻轉 (正放)'
+                : mirrorMode === 'horizontal'
+                ? '水平翻轉 (倒放)'
+                : '投影: 關'}
+            </span>
           </button>
 
           {/* 🎨 主題切換 */}
