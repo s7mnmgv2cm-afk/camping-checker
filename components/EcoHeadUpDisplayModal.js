@@ -388,13 +388,26 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // 🔄 里程與計時手動重設
-  const handleResetTrip = () => {
+  // 🔄 手動重設當前所有狀態 (All States Reset: 車速、極速、里程、計時、坡度、加速度全歸零)
+  const [isResetting, setIsResetting] = useState(false);
+  const handleResetAll = () => {
     tripDistanceRef.current = 0;
     maxSpeedRef.current = 0;
+    prevPointRef.current = null;
+    recentPointsRef.current = [];
+    prevSpeedRef.current = { speedKmh: 0, timestamp: 0 };
+
+    setCurrentSpeedKmh(0);
+    setMaxSpeedKmh(0);
     setTripDistanceM(0);
     setTripSeconds(0);
-    setMaxSpeedKmh(0);
+    setGradePercent(0.0);
+    setAccelG(0.0);
+
+    setIsResetting(true);
+    setTimeout(() => {
+      setIsResetting(false);
+    }, 1200);
   };
 
   // 格式化耗時
@@ -540,14 +553,35 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
             <span>{keepAwake ? '☀️' : '💤'}</span>
           </button>
 
-          {/* ✕ 關閉 HUD */}
+          {/* 🔄 重設所有狀態按鈕 */}
+          <button
+            type="button"
+            onClick={handleResetAll}
+            style={{
+              borderColor: isResetting ? theme.accent : theme.dimAccent,
+              backgroundColor: isResetting ? theme.badgeBg : '#121212',
+              color: isResetting ? theme.accent : '#D4D4D8'
+            }}
+            className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
+            title="一鍵重設當前所有行車狀態（車速、極速、里程、計時、坡度、加速度全歸零）"
+          >
+            <span className={isResetting ? 'animate-spin' : ''}>🔄</span>
+            <span className="hidden sm:inline">{isResetting ? '已歸零' : '重設'}</span>
+          </button>
+
+          {/* ✕ 關閉 HUD (淡紅色低眩光) */}
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-md"
+            style={{
+              backgroundColor: 'rgba(225, 29, 72, 0.16)', // 淡紅低亮底色
+              borderColor: 'rgba(251, 113, 133, 0.35)',     // 淡紅邊框
+              color: '#FDA4AF'                             // 柔和淡玫瑰粉/淡紅文字
+            }}
+            className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 hover:bg-rose-950/60 active:scale-95 transition-all cursor-pointer shadow-xs"
             title="退出抬頭顯示器 (ESC)"
           >
-            <span>✕</span>
+            <span className="opacity-80">✕</span>
             <span>ESC</span>
           </button>
         </div>
@@ -675,9 +709,9 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
             </span>
             <button
               type="button"
-              onClick={handleResetTrip}
+              onClick={handleResetAll}
               className="text-[9px] text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
-              title="里程與計時歸零"
+              title="一鍵重設當前所有狀態"
             >
               🔄
             </button>
