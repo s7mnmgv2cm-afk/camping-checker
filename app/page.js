@@ -699,9 +699,9 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 py-8 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
+    <main className="min-h-screen bg-slate-50 pt-2 pb-6 px-4 sm:px-8 max-w-6xl mx-auto font-sans">
       {/* 🌲 1. 專業現代品牌導航列 (Clean Glass Navbar) */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-2">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3.5 pb-1">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2.5">
             <span className="text-3xl filter drop-shadow-sm">🏕️</span>
@@ -725,8 +725,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 右側：個人收藏與札記快捷膠囊 (Quick Vault Pill) */}
-        <div className="flex items-center gap-1.5 self-start sm:self-auto bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
+        {/* 右側：個人收藏與札記快捷膠囊 (Quick Vault Pill) - 置中顯示 */}
+        <div className="flex items-center justify-center gap-1.5 self-center sm:self-auto mx-auto sm:mx-0 bg-white/95 backdrop-blur-md p-1 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
           <button
             onClick={() => {
               setShowOnlyFavorites(!showOnlyFavorites);
@@ -800,49 +800,30 @@ export default function Home() {
       </header>
 
       {/* 🌄 2. 旗艦級戶外封面 (Editorial Outdoor Glassmorphism Hero) */}
-      <div className="relative mb-6 rounded-3xl overflow-hidden shadow-2xl border border-slate-800/80 bg-slate-950 text-white">
+      <div className="relative mb-4 rounded-3xl overflow-hidden shadow-2xl border border-slate-800/80 bg-slate-950 text-white">
         {/* 微光環境光暈與山稜線氛圍漸層 */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/70 pointer-events-none"></div>
         <div className="absolute -top-12 -right-12 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-12 -left-12 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
         {/* 精緻山稜線背景向量裝飾 */}
-        <div className="absolute inset-x-0 bottom-0 h-28 opacity-15 pointer-events-none overflow-hidden">
+        <div className="absolute inset-x-0 bottom-0 h-24 opacity-15 pointer-events-none overflow-hidden">
           <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="w-full h-full text-emerald-400 fill-current">
             <path d="M0 120 L0 80 Q 150 20 300 60 T 600 30 T 900 70 T 1200 40 L 1200 120 Z"></path>
           </svg>
         </div>
 
-        <div className="relative z-10 p-5 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          {/* 左側：品牌標語與核心特色 */}
-          <div className="max-w-2xl space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-bold tracking-wide">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <span>四合一 WebAR · 日照搭帳 ✕ 遠山稜線 ✕ 秘境景點 ✕ 天文星空</span>
+        <div className="relative z-10 p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+          {/* 左側：品牌標語與核心特色（去冗長廢話、單行排版） */}
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-bold tracking-wide">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span>四合一 WebAR ＋ 車用 HUD 整合</span>
             </div>
 
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
-              探索全台營地 · 頂級智慧戶外指南
+            <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight leading-snug whitespace-nowrap">
+              探索全台營地 · 智慧戶外指南
             </h2>
-
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl font-normal">
-              結合即時數值氣象預報、大氣日照模型與 PeakVisor 群山稜線，在草地上 1 秒找出避晨曬、破側風的最佳帳門方位。
-            </p>
-
-            {/* 核心數據統計亮點 */}
-            <div className="flex items-center gap-3.5 pt-1 text-xs text-slate-400 font-medium flex-wrap">
-              <span className="flex items-center gap-1.5">
-                <span className="text-emerald-400 font-bold font-mono">2,300+</span> 處全台營地
-              </span>
-              <span className="text-slate-600">·</span>
-              <span className="flex items-center gap-1.5">
-                <span className="text-sky-400 font-bold font-mono">100%</span> 即時風向透視
-              </span>
-              <span className="text-slate-600">·</span>
-              <span className="flex items-center gap-1.5">
-                <span className="text-amber-400 font-bold font-mono">360°</span> 百岳天際線辨識
-              </span>
-            </div>
           </div>
 
           {/* 右側：旗艦行動呼籲 (Action Hub) */}
