@@ -1,13 +1,16 @@
 {
   "name": "camping-checker",
-  "version": "3.0.0",
+  "version": "3.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "scrape": "node enrich_campsite.js"
+    "scrape": "node enrich_campsite.js",
+    "enrich:peaks": "node scripts/enrich_peaks_google_overview.js",
+    "crawl:biji": "node scripts/crawl_hiking_biji_peaks.js",
+    "crawl:all": "node scripts/crawl_hiking_biji_peaks.js --all"
   },
   "dependencies": {
     "@google/generative-ai": "^0.22.0",
