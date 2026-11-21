@@ -30,47 +30,59 @@ function calcHaversineMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// 主題色彩配置 (皆基於 #000000 OLED 極致純黑)
+// 主題色彩配置 (皆基於 #000000 OLED 極致純黑，並提供擋風玻璃超亮高對比螢光色票)
 const THEMES = {
   green: {
     id: 'green',
     name: '戰機綠',
     icon: '🟢',
-    accent: '#10B981', // 經典螢光綠
+    accent: '#22FF88',
+    maxAccent: '#00FF66',
+    maxCore: '#DCFFE8',
     dimAccent: '#065F46',
-    subText: '#6EE7B7',
-    badgeBorder: '#059669',
-    badgeBg: '#022C22'
+    subText: '#86EFAC',
+    badgeBorder: '#10B981',
+    badgeBg: '#022C22',
+    maxGlow: '0 0 8px rgba(255,255,255,0.8), 0 0 22px #00FF66, 0 0 46px rgba(0,255,102,0.85)'
   },
   amber: {
     id: 'amber',
     name: '航空金',
     icon: '🟡',
-    accent: '#F59E0B', // 航空琥珀橘
+    accent: '#FFBE0B',
+    maxAccent: '#FFE600',
+    maxCore: '#FFFAD1',
     dimAccent: '#78350F',
-    subText: '#FCD34D',
-    badgeBorder: '#D97706',
-    badgeBg: '#451A03'
+    subText: '#FDE047',
+    badgeBorder: '#F59E0B',
+    badgeBg: '#451A03',
+    maxGlow: '0 0 8px rgba(255,255,255,0.8), 0 0 22px #FFE600, 0 0 46px rgba(255,230,0,0.85)'
   },
   cyan: {
     id: 'cyan',
     name: '冰川藍',
     icon: '🔵',
-    accent: '#06B6D4', // 霓虹冰川藍
+    accent: '#00E5FF',
+    maxAccent: '#00FFFF',
+    maxCore: '#E0FFFF',
     dimAccent: '#164E63',
     subText: '#67E8F9',
-    badgeBorder: '#0891B2',
-    badgeBg: '#083344'
+    badgeBorder: '#06B6D4',
+    badgeBg: '#083344',
+    maxGlow: '0 0 8px rgba(255,255,255,0.85), 0 0 22px #00FFFF, 0 0 46px rgba(0,255,255,0.85)'
   },
   white: {
     id: 'white',
     name: '極致白',
     icon: '⚪',
-    accent: '#F8FAFC', // 高對比冷白
-    dimAccent: '#334155',
-    subText: '#94A3B8',
-    badgeBorder: '#64748B',
-    badgeBg: '#0F172A'
+    accent: '#FFFFFF',
+    maxAccent: '#FFFFFF',
+    maxCore: '#FFFFFF',
+    dimAccent: '#475569',
+    subText: '#E2E8F0',
+    badgeBorder: '#94A3B8',
+    badgeBg: '#0F172A',
+    maxGlow: '0 0 10px rgba(255,255,255,0.95), 0 0 26px rgba(255,255,255,0.9), 0 0 50px rgba(255,255,255,0.65)'
   }
 };
 
@@ -83,8 +95,29 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
   // 光學原理：手機螢幕面朝上平放於儀表板時，若螢幕頂端朝擋風玻璃，反射在傾斜擋風玻璃上的像是「上下顛倒」而非左右反轉，故最自然平放應使用 scaleY(-1)
   const [mirrorMode, setMirrorMode] = useState('off'); // 'off' | 'vertical' | 'horizontal'
 
-  // ☀️ 螢幕常亮狀態
-  const [keepAwake, setKeepAwake] = useState(true);
+  // 🔆 三段式玻璃投影亮度模式 ('max' 超亮投影 | 'high' 標準明亮 | 'night' 夜間柔光防眩)
+  const [brightnessMode, setBrightnessMode] = useState('high');
+  const [hudNotice, setHudNotice] = useState(null);
+  const hudNoticeTimerRef = useRef(null);
+
+  const showHudNotice = (msg) => {
+    setHudNotice(msg);
+    if (hudNoticeTimerRef.current) {
+      clearTimeout(hudNoticeTimerRef.current);
+    }
+    hudNoticeTimerRef.current = setTimeout(() => {
+      setHudNotice(null);
+      hudNoticeTimerRef.current = null;
+    }, 3500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hudNoticeTimerRef.current) {
+        clearTimeout(hudNoticeTimerRef.current);
+      }
+    };
+  }, []);
 
   // 🏎️ 即時行車數據 (純記憶體暫存)
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0);
@@ -201,13 +234,13 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
     };
   }, [isOpen]);
 
-  // ☀️ Screen Wake Lock API & iOS Native Keep-Awake 橋接
+  // ☀️ Screen Wake Lock API & iOS Native Keep-Awake 橋接（進入省電 HUD 時恆常防休眠）
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return;
 
     let cancelled = false;
     const requestWakeLock = async () => {
-      if (keepAwake && 'wakeLock' in navigator && !wakeLockRef.current) {
+      if ('wakeLock' in navigator && !wakeLockRef.current) {
         try {
           const sentinel = await navigator.wakeLock.request('screen');
           if (cancelled) {
@@ -219,21 +252,18 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
             });
           }
         } catch (e) {}
-      } else if (!keepAwake && wakeLockRef.current) {
-        wakeLockRef.current.release().catch(() => {});
-        wakeLockRef.current = null;
       }
 
       // iOS Native App 橋接
       try {
-        window.webkit?.messageHandlers?.keepAwakeHandler?.postMessage(keepAwake);
+        window.webkit?.messageHandlers?.keepAwakeHandler?.postMessage(true);
       } catch (e) {}
     };
 
     requestWakeLock();
 
     const handleVis = () => {
-      if (document.visibilityState === 'visible' && keepAwake) {
+      if (document.visibilityState === 'visible') {
         requestWakeLock();
       }
     };
@@ -250,7 +280,24 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
         window.webkit?.messageHandlers?.keepAwakeHandler?.postMessage(false);
       } catch (e) {}
     };
-  }, [isOpen, keepAwake]);
+  }, [isOpen]);
+
+  // 🔆 iOS Native 原生螢幕亮度增亮橋接 (max 模式自動將硬體背光拉滿 100%，離開時自動復原)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const shouldBoost = isOpen && brightnessMode === 'max';
+    try {
+      window.webkit?.messageHandlers?.hudBrightnessHandler?.postMessage(
+        shouldBoost ? { boost: true, level: 1.0 } : { boost: false }
+      );
+    } catch (e) {}
+
+    return () => {
+      try {
+        window.webkit?.messageHandlers?.hudBrightnessHandler?.postMessage({ boost: false });
+      } catch (e) {}
+    };
+  }, [isOpen, brightnessMode]);
 
   // 🧭 輕量 GPS Geolocation 監聽 (純記憶體累加，零硬碟 I/O)
   useEffect(() => {
@@ -422,6 +469,107 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
   if (!isOpen) return null;
   if (typeof document === 'undefined') return null;
 
+  const isMax = brightnessMode === 'max';
+  const isNight = brightnessMode === 'night';
+  const activeAccent = isMax ? theme.maxAccent : theme.accent;
+  const activeCore = isMax ? theme.maxCore : theme.accent;
+  const activeSubText = isMax ? '#FFFFFF' : theme.subText;
+  const activeUnitColor = isMax ? '#E4E4E7' : isNight ? '#52525B' : '#71717A';
+  const cardBg = isMax ? '#000000' : '#090909';
+  const cardBorder = isMax ? '#141414' : '#1E1E1E';
+  const dataOpacity = isNight ? 0.52 : 1;
+
+  const handleToggleMirror = () => {
+    const nextMirror =
+      mirrorMode === 'off' ? 'vertical' : mirrorMode === 'vertical' ? 'horizontal' : 'off';
+    setMirrorMode(nextMirror);
+    if (mirrorMode === 'off' && nextMirror === 'vertical') {
+      setBrightnessMode('max');
+    } else if (nextMirror === 'off') {
+      setBrightnessMode('high');
+    }
+  };
+
+  const handleCycleBrightness = () => {
+    const order = ['max', 'high', 'night'];
+    const nextMode = order[(order.indexOf(brightnessMode) + 1) % order.length];
+    setBrightnessMode(nextMode);
+
+    const hasNativeBrightness =
+      typeof window !== 'undefined' &&
+      Boolean(window.webkit?.messageHandlers?.hudBrightnessHandler);
+
+    if (nextMode === 'max') {
+      showHudNotice(
+        hasNativeBrightness
+          ? '🔆 超亮投影 · 螢幕亮度 100%'
+          : '🔆 超亮投影 · 請同時將手機系統亮度調至最大'
+      );
+    } else if (nextMode === 'high') {
+      showHudNotice('☀️ 標準明亮模式');
+    } else {
+      showHudNotice('🌙 夜間柔光防眩模式');
+    }
+  };
+
+  const gradeColor =
+    gradePercent > 1.5
+      ? isMax
+        ? '#FF5C7C'
+        : '#F43F5E'
+      : gradePercent < -1.5
+      ? isMax
+        ? '#22FF88'
+        : '#10B981'
+      : activeCore;
+
+  const accelColor =
+    accelG > 0.05
+      ? activeCore
+      : accelG < -0.05
+      ? isMax
+        ? '#FF6B8B'
+        : '#FB7185'
+      : isMax
+      ? '#FFFFFF'
+      : '#A1A1AA';
+
+  const metricCards = [
+    {
+      id: 'grade',
+      label: '📐 坡度',
+      enLabel: ' (GRADE)',
+      valueText: gradePercent > 0 ? `+${gradePercent.toFixed(1)}` : `${gradePercent.toFixed(1)}`,
+      unit: '%',
+      valueColor: gradeColor,
+      strokeColor: gradePercent > 1.5 ? '#FF2E5B' : activeAccent,
+      subLabel: gradePercent > 1.5 ? '▲ 爬坡' : gradePercent < -1.5 ? '▼ 下坡' : '━ 平路',
+      subMono: false
+    },
+    {
+      id: 'accel',
+      label: '⚡ 加速度',
+      enLabel: ' (G-FORCE)',
+      valueText: accelG > 0 ? `+${accelG.toFixed(2)}` : `${accelG.toFixed(2)}`,
+      unit: 'G',
+      valueColor: accelColor,
+      strokeColor: accelG < -0.05 ? '#FF4D79' : activeAccent,
+      subLabel: accelG > 0.08 ? '🚀 加速' : accelG < -0.08 ? '🛑 減速' : '🏎️ 等速',
+      subMono: false
+    },
+    {
+      id: 'trip',
+      label: '📏 里程',
+      enLabel: ' (TRIP)',
+      valueText: (tripDistanceM / 1000).toFixed(2),
+      unit: 'KM',
+      valueColor: activeCore,
+      strokeColor: activeAccent,
+      subLabel: `⏱️ ${formatTime(tripSeconds)}`,
+      subMono: true
+    }
+  ];
+
   return createPortal(
     <div
       onClick={(e) => e.stopPropagation()}
@@ -450,63 +598,49 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
       }}
       className="fixed inset-0 w-screen h-[100dvh] overflow-hidden select-none flex flex-col justify-between font-sans text-white"
     >
-      {/* 🌲 頂部列：左側海拔，右側快捷控制（鏡像、色彩、常亮、關閉） */}
-      <div className="flex items-center justify-between w-full shrink-0 z-20">
+      {/* 🌲 頂部列：左側海拔，右側精簡 5 顆快捷控制（零長字擠壓、ESC 永不截斷） */}
+      <div className="flex items-center justify-between gap-1.5 sm:gap-2 w-full shrink-0 z-20">
         {/* 左側：海拔高度 */}
-        <div className="flex items-center gap-2">
-          <div
-            style={{
-              borderColor: theme.dimAccent,
-              backgroundColor: '#0A0A0A'
-            }}
-            className="px-3 py-1.5 rounded-xl border flex items-center gap-2 shadow-xs"
-          >
-            <span className="text-sm">⛰️</span>
-            <div className="flex flex-col text-left leading-none">
-              <span style={{ color: theme.subText }} className="text-[10px] font-bold tracking-wider">
-                ALTITUDE
-              </span>
-              <span className="font-michroma font-bold text-sm tracking-tight text-white mt-0.5">
-                {altitudeM !== null ? `${altitudeM} m` : '-- m'}
-              </span>
-            </div>
-          </div>
-
-          {/* 鏡像模式啟用提醒膠囊 */}
-          {mirrorMode !== 'off' && (
+        <div
+          style={{
+            borderColor: isMax ? theme.badgeBorder : theme.dimAccent,
+            backgroundColor: isMax ? '#000000' : '#0A0A0A',
+            opacity: dataOpacity
+          }}
+          className="px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 shadow-xs shrink-0"
+        >
+          <span className="text-sm">⛰️</span>
+          <div className="flex flex-col text-left leading-none">
+            <span
+              style={{ color: activeSubText }}
+              className="text-[10px] font-bold tracking-wider whitespace-nowrap"
+            >
+              ALTITUDE
+            </span>
             <span
               style={{
-                borderColor: theme.badgeBorder,
-                backgroundColor: theme.badgeBg,
-                color: theme.accent
+                color: '#FFFFFF',
+                textShadow: isMax ? `0 0 10px ${theme.maxAccent}` : 'none'
               }}
-              className="px-2 py-1 rounded-lg text-[10px] font-black tracking-wide border flex items-center gap-1 animate-pulse"
+              className="font-michroma font-bold text-sm tracking-tight mt-0.5 whitespace-nowrap"
             >
-              <span>
-                {mirrorMode === 'vertical'
-                  ? '🪞 擋風玻璃投影 (垂直翻轉·頂端朝前)'
-                  : '🪞 擋風玻璃投影 (水平翻轉·頂端朝後)'}
-              </span>
+              {altitudeM !== null ? `${altitudeM} m` : '-- m'}
             </span>
-          )}
+          </div>
         </div>
 
-        {/* 右側：快捷工具列 */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* 右側：5 顆精巧快捷工具列 */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* 🪞 鏡像切換按鈕 (支援自然平放 scaleY(-1) 與倒放 scaleX(-1)) */}
           <button
             type="button"
-            onClick={() => {
-              setMirrorMode((prev) =>
-                prev === 'off' ? 'vertical' : prev === 'vertical' ? 'horizontal' : 'off'
-              );
-            }}
+            onClick={handleToggleMirror}
             style={{
-              backgroundColor: mirrorMode !== 'off' ? theme.accent : '#121212',
-              borderColor: mirrorMode !== 'off' ? theme.accent : '#27272A',
+              backgroundColor: mirrorMode !== 'off' ? activeAccent : '#121212',
+              borderColor: mirrorMode !== 'off' ? activeAccent : '#27272A',
               color: mirrorMode !== 'off' ? '#000000' : '#E4E4E7'
             }}
-            className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
+            className="px-2 sm:px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
             title="點擊切換投影模式：[垂直翻轉 (手機頂部朝前擋平放)] ➔ [水平翻轉 (手機頂部朝駕駛平放)] ➔ [關閉投影 (正常觀看)]"
           >
             <span>🪞</span>
@@ -528,29 +662,33 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
               setThemeKey(keys[nextIdx]);
             }}
             style={{
-              borderColor: theme.dimAccent,
+              borderColor: isMax ? theme.badgeBorder : theme.dimAccent,
               backgroundColor: '#121212'
             }}
-            className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
+            className="px-2 sm:px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
             title="切換 HUD 抬頭顯示器螢光色彩"
           >
             <span>{theme.icon}</span>
             <span className="hidden sm:inline">{theme.name}</span>
           </button>
 
-          {/* ☀️ 螢幕常亮開關 */}
+          {/* 🔆 三段式亮度/玻璃反射增亮切換按鈕 (超亮 ➔ 標準 ➔ 夜間防眩) */}
           <button
             type="button"
-            onClick={() => setKeepAwake((prev) => !prev)}
+            onClick={handleCycleBrightness}
             style={{
-              borderColor: keepAwake ? theme.dimAccent : '#27272A',
-              backgroundColor: keepAwake ? '#121212' : '#0A0A0A',
-              color: keepAwake ? theme.accent : '#71717A'
+              borderColor: isMax ? theme.maxAccent : isNight ? '#27272A' : theme.dimAccent,
+              backgroundColor: isMax ? theme.badgeBg : isNight ? '#0A0A0A' : '#121212',
+              color: isMax ? theme.maxCore : isNight ? '#71717A' : activeAccent,
+              boxShadow: isMax ? `0 0 12px ${theme.maxAccent}66` : 'none'
             }}
-            className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
-            title="保持螢幕常亮不休眠"
+            className="px-2 sm:px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
+            title="切換玻璃投影亮度：[🔆 超亮投影] ➔ [☀️ 標準明亮] ➔ [🌙 夜間防眩]"
           >
-            <span>{keepAwake ? '☀️' : '💤'}</span>
+            <span>{isMax ? '🔆' : isNight ? '🌙' : '☀️'}</span>
+            <span className="hidden sm:inline">
+              {isMax ? '超亮' : isNight ? '夜間' : '明亮'}
+            </span>
           </button>
 
           {/* 🔄 重設所有狀態按鈕 */}
@@ -558,27 +696,27 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
             type="button"
             onClick={handleResetAll}
             style={{
-              borderColor: isResetting ? theme.accent : theme.dimAccent,
+              borderColor: isResetting ? activeAccent : theme.dimAccent,
               backgroundColor: isResetting ? theme.badgeBg : '#121212',
-              color: isResetting ? theme.accent : '#D4D4D8'
+              color: isResetting ? activeAccent : '#D4D4D8'
             }}
-            className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
+            className="px-2 sm:px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
             title="一鍵重設當前所有行車狀態（車速、極速、里程、計時、坡度、加速度全歸零）"
           >
             <span className={isResetting ? 'animate-spin' : ''}>🔄</span>
             <span className="hidden sm:inline">{isResetting ? '已歸零' : '重設'}</span>
           </button>
 
-          {/* ✕ 關閉 HUD (淡紅色低眩光) */}
+          {/* ✕ 關閉 HUD (淡紅色低眩光，永遠完整保留在右上角) */}
           <button
             type="button"
             onClick={onClose}
             style={{
-              backgroundColor: 'rgba(225, 29, 72, 0.16)', // 淡紅低亮底色
-              borderColor: 'rgba(251, 113, 133, 0.35)',     // 淡紅邊框
-              color: '#FDA4AF'                             // 柔和淡玫瑰粉/淡紅文字
+              backgroundColor: 'rgba(225, 29, 72, 0.16)',
+              borderColor: 'rgba(251, 113, 133, 0.35)',
+              color: '#FDA4AF'
             }}
-            className="px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 hover:bg-rose-950/60 active:scale-95 transition-all cursor-pointer shadow-xs"
+            className="px-2 sm:px-2.5 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1 hover:bg-rose-950/60 active:scale-95 transition-all cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
             title="退出抬頭顯示器 (ESC)"
           >
             <span className="opacity-80">✕</span>
@@ -587,14 +725,22 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
         </div>
       </div>
 
-      {/* 🚀 中央英雄區：超大純粹數位車速（全黑 OLED 零負擔、視覺最大化） */}
-      <div className="flex-1 flex flex-col items-center justify-center min-h-0 w-full relative z-10 my-auto">
+      {/* 🚀 中央英雄區：超大純粹數位車速（支援白心加粗微描邊與高流明發光，玻璃反射極度清晰） */}
+      <div
+        style={{ opacity: dataOpacity }}
+        className="flex-1 flex flex-col items-center justify-center min-h-0 w-full relative z-10 my-auto transition-opacity duration-200"
+      >
         <div className="flex flex-col items-center justify-center text-center">
           {/* 巨幅車速數字 */}
           <span
             style={{
-              color: theme.accent,
-              textShadow: `0 0 28px ${theme.accent}40`,
+              color: activeCore,
+              WebkitTextStroke: isMax ? `1.8px ${theme.maxAccent}` : 'none',
+              textShadow: isMax
+                ? theme.maxGlow
+                : isNight
+                ? 'none'
+                : `0 0 28px ${theme.accent}45`,
               fontVariantNumeric: 'tabular-nums'
             }}
             className="font-michroma font-black text-[30vw] sm:text-[26vh] leading-none tracking-tighter select-none"
@@ -602,135 +748,107 @@ export default function EcoHeadUpDisplayModal({ isOpen, onClose }) {
             {currentSpeedKmh}
           </span>
 
-          {/* 單位標籤 */}
+          {/* 單位標籤與極速 */}
           <div className="flex items-center gap-3 mt-1 sm:mt-2">
             <span
               style={{
-                borderColor: theme.dimAccent,
-                color: theme.subText,
-                backgroundColor: '#09090B'
+                borderColor: isMax ? theme.badgeBorder : theme.dimAccent,
+                color: activeSubText,
+                backgroundColor: isMax ? '#000000' : '#09090B',
+                textShadow: isMax ? `0 0 8px ${theme.maxAccent}` : 'none'
               }}
-              className="px-3 py-0.5 rounded-full border text-xs sm:text-sm font-michroma font-bold tracking-widest"
+              className="px-3 py-0.5 rounded-full border text-xs sm:text-sm font-michroma font-bold tracking-widest whitespace-nowrap"
             >
               KM / H
             </span>
 
-            {/* 極速標示 */}
             {maxSpeedKmh > 0 && (
-              <span style={{ color: '#71717A' }} className="text-[11px] font-mono">
-                MAX: <strong style={{ color: theme.accent }}>{maxSpeedKmh}</strong>
+              <span
+                style={{ color: activeUnitColor }}
+                className="text-[11px] font-mono whitespace-nowrap"
+              >
+                MAX:{' '}
+                <strong
+                  style={{
+                    color: activeCore,
+                    textShadow: isMax ? `0 0 8px ${theme.maxAccent}` : 'none'
+                  }}
+                >
+                  {maxSpeedKmh}
+                </strong>
               </span>
             )}
           </div>
+
+          {/* 🪞 獨立置中單行狀態 / 亮度提示膠囊（絕不折行、不干擾頂部列） */}
+          {(hudNotice || mirrorMode !== 'off') && (
+            <div
+              style={{
+                borderColor: isMax ? theme.maxAccent : theme.badgeBorder,
+                backgroundColor: isMax ? '#000000' : theme.badgeBg,
+                color: activeCore,
+                textShadow: isMax ? `0 0 8px ${theme.maxAccent}` : 'none'
+              }}
+              className="mt-2.5 sm:mt-3 px-3 py-1 rounded-full border text-[11px] font-bold tracking-wide whitespace-nowrap shadow-xs"
+            >
+              {hudNotice ||
+                (mirrorMode === 'vertical'
+                  ? '🪞 垂直翻轉 · 頂端朝前'
+                  : '🪞 水平翻轉 · 頂端朝後')}
+            </div>
+          )}
         </div>
       </div>
 
       {/* 📊 底部極簡三欄狀態：坡度 (左)、加速度 (中)、累積里程 (右) */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4 w-full shrink-0 z-20 items-stretch">
-        {/* 左側：坡度 (Grade) */}
-        <div
-          style={{
-            borderColor: '#1E1E1E',
-            backgroundColor: '#090909'
-          }}
-          className="rounded-2xl border px-3 py-2 flex flex-col items-center justify-center text-center shadow-xs"
-        >
-          <span style={{ color: theme.subText }} className="text-[10px] font-bold tracking-wide">
-            📐 坡度 (GRADE)
-          </span>
-          <div className="flex items-baseline gap-1 my-1">
+      <div
+        style={{ opacity: dataOpacity }}
+        className="grid grid-cols-3 gap-2 sm:gap-4 w-full shrink-0 z-20 items-stretch transition-opacity duration-200"
+      >
+        {metricCards.map((card) => (
+          <div
+            key={card.id}
+            style={{
+              borderColor: cardBorder,
+              backgroundColor: cardBg
+            }}
+            className="rounded-2xl border px-2 sm:px-3 py-2 flex flex-col items-center justify-center text-center shadow-xs"
+          >
             <span
               style={{
-                color:
-                  gradePercent > 1.5
-                    ? '#F43F5E' // 陡上坡 (紅粉)
-                    : gradePercent < -1.5
-                    ? '#10B981' // 陡下坡 (綠)
-                    : theme.accent
+                color: activeSubText,
+                textShadow: isMax ? `0 0 6px ${theme.maxAccent}88` : 'none'
               }}
-              className="text-xl sm:text-2xl font-michroma font-bold tracking-tight"
+              className="text-[10px] font-bold tracking-wide whitespace-nowrap"
             >
-              {gradePercent > 0 ? `+${gradePercent.toFixed(1)}` : `${gradePercent.toFixed(1)}`}
+              {card.label}
+              <span className="hidden sm:inline">{card.enLabel}</span>
             </span>
-            <span style={{ color: '#71717A' }} className="text-[11px] font-bold">
-              %
-            </span>
-          </div>
-          <span style={{ color: '#71717A' }} className="text-[9px] font-medium truncate">
-            {gradePercent > 1.5 ? '▲ 爬坡' : gradePercent < -1.5 ? '▼ 下坡' : '━ 平路'}
-          </span>
-        </div>
-
-        {/* 正中：即時加速度 (G-Force) */}
-        <div
-          style={{
-            borderColor: '#1E1E1E',
-            backgroundColor: '#090909'
-          }}
-          className="rounded-2xl border px-3 py-2 flex flex-col items-center justify-center text-center shadow-xs"
-        >
-          <span style={{ color: theme.subText }} className="text-[10px] font-bold tracking-wide">
-            ⚡ 加速度 (G-FORCE)
-          </span>
-          <div className="flex items-baseline gap-1 my-1">
+            <div className="flex items-baseline gap-1 my-1">
+              <span
+                style={{
+                  color: card.valueColor,
+                  WebkitTextStroke: isMax ? `0.6px ${card.strokeColor}` : 'none',
+                  textShadow: isMax ? `0 0 12px ${card.valueColor}` : 'none'
+                }}
+                className="text-xl sm:text-2xl font-michroma font-bold tracking-tight whitespace-nowrap"
+              >
+                {card.valueText}
+              </span>
+              <span style={{ color: activeUnitColor }} className="text-[11px] font-bold">
+                {card.unit}
+              </span>
+            </div>
             <span
-              style={{
-                color:
-                  accelG > 0.05
-                    ? theme.accent
-                    : accelG < -0.05
-                    ? '#FB7185' // 減速 / 煞車亮粉紅
-                    : '#A1A1AA'
-              }}
-              className="text-xl sm:text-2xl font-michroma font-bold tracking-tight"
+              style={{ color: activeUnitColor }}
+              className={`text-[9px] whitespace-nowrap ${
+                card.subMono ? 'font-mono' : 'font-medium'
+              }`}
             >
-              {accelG > 0 ? `+${accelG.toFixed(2)}` : `${accelG.toFixed(2)}`}
-            </span>
-            <span style={{ color: '#71717A' }} className="text-[11px] font-bold">
-              G
+              {card.subLabel}
             </span>
           </div>
-          <span style={{ color: '#71717A' }} className="text-[9px] font-medium truncate">
-            {accelG > 0.08 ? '🚀 加速' : accelG < -0.08 ? '🛑 減速' : '🏎️ 等速'}
-          </span>
-        </div>
-
-        {/* 右側：累積里程 (Trip Distance & Time) */}
-        <div
-          style={{
-            borderColor: '#1E1E1E',
-            backgroundColor: '#090909'
-          }}
-          className="rounded-2xl border px-3 py-2 flex flex-col items-center justify-center text-center shadow-xs relative group"
-        >
-          <div className="flex items-center justify-center gap-1.5 w-full">
-            <span style={{ color: theme.subText }} className="text-[10px] font-bold tracking-wide">
-              📏 里程 (TRIP)
-            </span>
-            <button
-              type="button"
-              onClick={handleResetAll}
-              className="text-[9px] text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
-              title="一鍵重設當前所有狀態"
-            >
-              🔄
-            </button>
-          </div>
-          <div className="flex items-baseline gap-1 my-1">
-            <span
-              style={{ color: theme.accent }}
-              className="text-xl sm:text-2xl font-michroma font-bold tracking-tight"
-            >
-              {(tripDistanceM / 1000).toFixed(2)}
-            </span>
-            <span style={{ color: '#71717A' }} className="text-[11px] font-bold">
-              KM
-            </span>
-          </div>
-          <span style={{ color: '#71717A' }} className="text-[9px] font-mono">
-            ⏱️ {formatTime(tripSeconds)}
-          </span>
-        </div>
+        ))}
       </div>
     </div>,
     document.body
