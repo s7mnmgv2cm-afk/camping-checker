@@ -1161,72 +1161,84 @@ export default function CampsiteARModal({
 
   const computedPeaks = useMemo(() => {
     if (arViewMode !== 'mountain') return [];
-    const fovH = effectiveLandscape ? 105 : 65; // Horizontal Field of View: 105° ultra-wide in landscape panorama
-    const fovV = effectiveLandscape ? 40 : 55; // Vertical Field of View
 
+    // 1. 📐 採用真實 3D 針孔相機光學切平面投影 (對齊智慧型手機 1x 主鏡頭等效 26mm)：
+    // 直向 (Portrait 9:16)：水平 44°、垂直 64°
+    // 橫向 (Landscape 16:9)：水平 64°、垂直 40°
+    // 徹底拋棄舊版 105° 假廣角造成所有山峰被向中央壓縮 1.64 倍的幾何嚴重失真！
     const projected = basePeaks.map(p => {
-      const azDiff = (p.azimuth - heading + 540) % 360 - 180;
-      const elDiff = p.apparentElevation - camElevation;
-
-      const screenX = 50 + (azDiff / (fovH / 2)) * 50;
-      const screenY = 50 - (elDiff / (fovV / 2)) * 50;
-      const isVisible = screenX >= -20 && screenX <= 120 && screenY >= -25 && screenY <= 125;
-      const inView = screenX >= 0 && screenX <= 100 && screenY >= 0 && screenY <= 100;
+      const proj = projectHorizontalToScreen3D(p.azimuth, p.apparentElevation, heading, camElevation, effectiveLandscape);
+      const isVisible = proj.screenX >= -20 && proj.screenX <= 120 && proj.screenY >= -25 && proj.screenY <= 125;
+      const inView = proj.screenX >= 0 && proj.screenX <= 100 && proj.screenY >= 0 && proj.screenY <= 100;
 
       return {
         ...p,
-        screenX,
-        screenY,
+        screenX: proj.screenX,
+        screenY: proj.screenY,
         isVisible,
         inView
       };
     });
 
-    // 🎯 8 層階梯錯位避讓 (8-Tier Staggered Skyline Layout, 仿 PeakFinder / PeakVisor):
-    // 解決過去僅 3 層且第 4 座山起全部強制塞回 Tier 0 導致密集山區 (如五峰尖石、雪霸聖稜線) 70% 山頭互相重疊蓋住的問題！
-    // 1. 先將可見山峰依距離排序（近景優先佔據低層，遠方高山自動向上階梯堆疊，符合真實遠近透視）
-    // 2. 共提供 Tier 0 ~ Tier 7 八層高度（每層垂直間距 24px），超過 3 層時自動切換為精巧膠囊 (isCompact)
-    // 3. 若單一極窄方位超過 8 座山，自動循環高度並微調水平偏移 (offsetX)，達成 100% 零重疊覆蓋、每座山皆清晰可見！
+    // 2. 🎯 PeakVisor 視野內山峰顯著度 (Topographic Prominence) 階層過濾：
+    // 解決 50km 半徑內 18~35 座山全部塞成字卡天花板遮蔽天空的擁擠問題！
+    // (A) 計算視覺顯著度評分 (海拔高、距離適中、名山加權優先)
+    // (B) 視野內僅選出最顯著的 Top 5~6 座「主要地標山峰」顯示文字卡片
+    // (C) 其餘「次要山峰」在稜線上顯示精巧微型信標點 (▲)，準心鎖定或點擊時才展開卡片
     const visibleList = projected.filter(p => p.isVisible);
-    const sorted = [...visibleList].sort((a, b) => (a.distKm || 999) - (b.distKm || 999));
 
-    const MAX_TIERS = 8;
+    const scoredList = visibleList.map(p => {
+      const isIconic = p.type?.includes('百岳') || p.type?.includes('五岳') || (p.altitudeM >= 2000);
+      const score = ((p.altitudeM || 500) / Math.log10((p.distKm || p.distanceKm || 10) + 5)) * (isIconic ? 1.5 : 1.0);
+      return { ...p, score };
+    });
+
+    const sortedByScore = [...scoredList].sort((a, b) => b.score - a.score);
+    const primaryPeakIds = new Set();
+    const minCardSpacing = effectiveLandscape ? 12 : 16; // 水平最小間距百分比，確保文字卡片互不重疊
+
+    for (const p of sortedByScore) {
+      if (primaryPeakIds.size >= (effectiveLandscape ? 6 : 5)) break;
+      const tooClose = Array.from(primaryPeakIds).some(id => {
+        const other = scoredList.find(item => item.id === id);
+        return other && Math.abs(other.screenX - p.screenX) < minCardSpacing;
+      });
+      if (!tooClose) {
+        primaryPeakIds.add(p.id);
+      }
+    }
+
+    // 針對需要顯示卡片的主要山峰進行 3 層輕量垂直避讓 (Tier 0~2，針高僅 10px ~ 36px，絕不向上推高至 178px 塞爆頂部)
+    const MAX_TIERS = 3;
     const occupiedTiers = [];
     const tierMap = new Map();
-    const threshold = effectiveLandscape ? 7.2 : 9.0; // 水平避讓門檻 (%)
+    const threshold = effectiveLandscape ? 8.0 : 10.0;
 
-    sorted.forEach(p => {
-      let chosenTier = -1;
-      let isCompact = false;
-      let offsetX = 0;
+    const primaryList = scoredList
+      .filter(p => primaryPeakIds.has(p.id))
+      .sort((a, b) => (a.distKm || a.distanceKm || 999) - (b.distKm || b.distanceKm || 999));
 
+    primaryList.forEach(p => {
+      let chosenTier = 0;
       for (let t = 0; t < MAX_TIERS; t++) {
         const conflict = occupiedTiers.some(occ => occ.tier === t && Math.abs(occ.screenX - p.screenX) < threshold);
         if (!conflict) {
           chosenTier = t;
-          if (t >= 3) isCompact = true;
           break;
         }
       }
-
-      if (chosenTier === -1) {
-        const nearCount = occupiedTiers.filter(occ => Math.abs(occ.screenX - p.screenX) < threshold).length;
-        chosenTier = nearCount % MAX_TIERS;
-        isCompact = true;
-        offsetX = ((nearCount % 2 === 0 ? 1 : -1) * Math.min(3.6, Math.ceil(nearCount / MAX_TIERS) * 1.8));
-      }
-
-      occupiedTiers.push({ screenX: p.screenX + offsetX, tier: chosenTier });
-      tierMap.set(p.id, { tier: chosenTier, isCompact, offsetX });
+      occupiedTiers.push({ screenX: p.screenX, tier: chosenTier });
+      tierMap.set(p.id, { tier: chosenTier, showCard: true });
     });
 
     return projected.map(p => {
-      const info = tierMap.get(p.id) || { tier: 0, isCompact: false, offsetX: 0 };
+      const info = tierMap.get(p.id) || { tier: 0, showCard: false };
       return {
         ...p,
         tier: info.tier,
-        isCompact: info.isCompact,
-        offsetX: info.offsetX || 0
+        showCard: info.showCard,
+        isCompact: true,
+        offsetX: 0
       };
     });
   }, [arViewMode, basePeaks, heading, camElevation, effectiveLandscape]);
@@ -1276,7 +1288,17 @@ export default function CampsiteARModal({
         const p1 = peakMap.get(id1);
         const p2 = peakMap.get(id2);
         if (p1 && p2) {
-          if ((p1.screenX >= -30 && p1.screenX <= 130) || (p2.screenX >= -30 && p2.screenX <= 130)) {
+          // 防止任一端點落於鏡頭背後 (screenX = 250 / -150) 時畫出橫跨全螢幕的假飛線
+          const bothInFront =
+            Math.abs(p1.screenX - 50) < 160 &&
+            Math.abs(p2.screenX - 50) < 160 &&
+            Math.abs(p1.screenY - 50) < 160 &&
+            Math.abs(p2.screenY - 50) < 160 &&
+            Math.abs(p1.screenX - p2.screenX) < 140;
+          const eitherNearView =
+            (p1.screenX >= -25 && p1.screenX <= 125 && p1.screenY >= -25 && p1.screenY <= 125) ||
+            (p2.screenX >= -25 && p2.screenX <= 125 && p2.screenY >= -25 && p2.screenY <= 125);
+          if (bothInFront && eitherNearView) {
             segments.push({ p1, p2 });
           }
         }
@@ -1289,60 +1311,93 @@ export default function CampsiteARModal({
     }).filter(Boolean);
   }, [arViewMode, showRidgeLines, computedPeaks]);
 
-  // PeakVisor Continuous Mountain Skyline Contour across all visible peaks
+  // PeakVisor Continuous Mountain Skyline Contour across all visible peaks (按景深分層與天然山勢輪廓)
   const computedMountainSkyline = useMemo(() => {
     if (arViewMode !== 'mountain' || !showRidgeLines) return null;
-    
+
     const visiblePeaks = computedPeaks
-      .filter(p => p.screenX >= -20 && p.screenX <= 120 && p.screenY >= -30 && p.screenY <= 120)
+      .filter(p => p.screenX >= -15 && p.screenX <= 115 && p.screenY >= -25 && p.screenY <= 115)
       .sort((a, b) => a.screenX - b.screenX);
 
     if (visiblePeaks.length === 0) return null;
 
-    if (visiblePeaks.length === 1) {
-      const p = visiblePeaks[0];
-      const leftX = Math.max(-10, p.screenX - 25);
-      const rightX = Math.min(110, p.screenX + 25);
-      const baseY = Math.min(100, p.screenY + 22);
+    // 分為兩大景深層（避免 40km 的雪山山脈遠山與 15km 的三峽大溪近郊丘陵強行相連成心電圖過山車）：
+    // Layer 1: 遠景山系 (distKm >= 28km，如塔曼山、李棟山、鵝公髻山、雪山聖稜線)
+    // Layer 2: 近景山巒 (distKm < 28km，如鳶山、溪洲山、金面山、彩和山)
+    const layersDef = [
+      { id: 'far', name: '遠景山系', color: '#38bdf8', fillOpacity: 0.15, peaks: visiblePeaks.filter(p => (p.distKm || p.distanceKm || 0) >= 28) },
+      { id: 'near', name: '近景山巒', color: '#34d399', fillOpacity: 0.18, peaks: visiblePeaks.filter(p => (p.distKm || p.distanceKm || 0) < 28) }
+    ];
+
+    const layers = layersDef.map(layer => {
+      if (layer.peaks.length === 0) return null;
+      const peaks = [...layer.peaks].sort((a, b) => a.screenX - b.screenX);
+
+      // Group peaks into clusters where adjacent screenX <= 22%
+      const clusters = [];
+      let cur = [peaks[0]];
+      for (let i = 1; i < peaks.length; i++) {
+        if (peaks[i].screenX - peaks[i - 1].screenX <= 22) {
+          cur.push(peaks[i]);
+        } else {
+          clusters.push(cur);
+          cur = [peaks[i]];
+        }
+      }
+      clusters.push(cur);
+
+      const pathSegments = [];
+      const fillSegments = [];
+
+      clusters.forEach(cluster => {
+        if (cluster.length === 1) {
+          const p = cluster[0];
+          const halfW = Math.max(8, Math.min(20, 16 - (p.distKm || p.distanceKm || 20) * 0.1));
+          const dropY = Math.min(95, p.screenY + Math.max(6, 12 - (p.distKm || p.distanceKm || 20) * 0.08));
+          const leftX = p.screenX - halfW;
+          const rightX = p.screenX + halfW;
+          const pathD = `M ${leftX.toFixed(1)} ${dropY.toFixed(1)} Q ${(p.screenX - halfW * 0.35).toFixed(1)} ${(p.screenY + 2).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)} Q ${(p.screenX + halfW * 0.35).toFixed(1)} ${(p.screenY + 2).toFixed(1)} ${rightX.toFixed(1)} ${dropY.toFixed(1)}`;
+          pathSegments.push(pathD);
+          fillSegments.push(`${pathD} V 100 H ${leftX.toFixed(1)} Z`);
+        } else {
+          let pathD = '';
+          let startLeftX = 0;
+          cluster.forEach((p, idx) => {
+            if (idx === 0) {
+              const halfW = 10;
+              const dropY = Math.min(95, p.screenY + 8);
+              startLeftX = p.screenX - halfW;
+              pathD = `M ${startLeftX.toFixed(1)} ${dropY.toFixed(1)} Q ${(p.screenX - 3.5).toFixed(1)} ${(p.screenY + 1.5).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)}`;
+            } else {
+              const prev = cluster[idx - 1];
+              const saddleX = (prev.screenX + p.screenX) / 2;
+              // 鞍部深度適度自然，絕不直墜地面
+              const saddleY = Math.max(prev.screenY, p.screenY) + Math.min(5, (p.screenX - prev.screenX) * 0.22);
+              pathD += ` Q ${((prev.screenX + saddleX) / 2).toFixed(1)} ${(saddleY - 1).toFixed(1)} ${saddleX.toFixed(1)} ${saddleY.toFixed(1)} Q ${((saddleX + p.screenX) / 2).toFixed(1)} ${(saddleY - 1).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)}`;
+            }
+            if (idx === cluster.length - 1) {
+              const halfW = 10;
+              const dropY = Math.min(95, p.screenY + 8);
+              const endRightX = p.screenX + halfW;
+              pathD += ` Q ${(p.screenX + 3.5).toFixed(1)} ${(p.screenY + 1.5).toFixed(1)} ${endRightX.toFixed(1)} ${dropY.toFixed(1)}`;
+              fillSegments.push(`${pathD} V 100 H ${startLeftX.toFixed(1)} Z`);
+            }
+          });
+          pathSegments.push(pathD);
+        }
+      });
+
       return {
-        type: 'single',
-        path: `M ${leftX.toFixed(1)} ${baseY.toFixed(1)} Q ${(p.screenX - 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)} Q ${(p.screenX + 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${rightX.toFixed(1)} ${baseY.toFixed(1)}`,
-        fillPath: `M ${leftX.toFixed(1)} ${baseY.toFixed(1)} Q ${(p.screenX - 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)} Q ${(p.screenX + 8).toFixed(1)} ${(p.screenY + 6).toFixed(1)} ${rightX.toFixed(1)} ${baseY.toFixed(1)} V 100 H ${leftX.toFixed(1)} Z`,
-        peaks: visiblePeaks
+        id: layer.id,
+        color: layer.color,
+        fillOpacity: layer.fillOpacity,
+        path: pathSegments.join(' '),
+        fillPath: fillSegments.join(' '),
+        peaks
       };
-    }
+    }).filter(Boolean);
 
-    let pathD = '';
-    let firstPoint = null;
-
-    visiblePeaks.forEach((p, idx) => {
-      if (idx === 0) {
-        const startX = Math.max(-15, p.screenX - 20);
-        const startY = Math.min(95, p.screenY + 18);
-        pathD = `M ${startX.toFixed(1)} ${startY.toFixed(1)} Q ${(p.screenX - 8).toFixed(1)} ${(p.screenY + 5).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)}`;
-        firstPoint = { x: startX, y: startY };
-      } else {
-        const prev = visiblePeaks[idx - 1];
-        const saddleX = (prev.screenX + p.screenX) / 2;
-        const saddleY = Math.max(prev.screenY, p.screenY) + Math.min(18, Math.abs(p.screenX - prev.screenX) * 0.35);
-        pathD += ` Q ${((prev.screenX + saddleX) / 2).toFixed(1)} ${(saddleY - 2).toFixed(1)} ${saddleX.toFixed(1)} ${saddleY.toFixed(1)} Q ${((saddleX + p.screenX) / 2).toFixed(1)} ${(saddleY - 2).toFixed(1)} ${p.screenX.toFixed(1)} ${p.screenY.toFixed(1)}`;
-      }
-
-      if (idx === visiblePeaks.length - 1) {
-        const endX = Math.min(115, p.screenX + 20);
-        const endY = Math.min(95, p.screenY + 18);
-        pathD += ` Q ${(p.screenX + 8).toFixed(1)} ${(p.screenY + 5).toFixed(1)} ${endX.toFixed(1)} ${endY.toFixed(1)}`;
-      }
-    });
-
-    const fillPath = `${pathD} V 100 H ${firstPoint?.x ? firstPoint.x.toFixed(1) : -15} Z`;
-
-    return {
-      type: 'multi',
-      path: pathD,
-      fillPath,
-      peaks: visiblePeaks
-    };
+    return layers;
   }, [arViewMode, showRidgeLines, computedPeaks]);
 
   // Detect Mountain Peak locked by Central Reticle (2D 螢幕準心視覺半徑鎖定，消除橫向 105°x40° 長寬比造成的球面角距偏移)
@@ -1387,7 +1442,7 @@ export default function CampsiteARModal({
   const computedPOIs = useMemo(() => {
     if (arViewMode !== 'spots') return [];
     const pois = computeNearbyPOIs(lat, lng, activeElevation, poiMaxDistance, poiCategory, poiSpots);
-    return projectPOIsToScreen(pois, heading, camElevation, effectiveLandscape ? 105 : 65, effectiveLandscape ? 40 : 55).map(p => ({
+    return projectPOIsToScreen(pois, heading, camElevation, effectiveLandscape ? 64 : 44, effectiveLandscape ? 40 : 64).map(p => ({
       ...p,
       azimuthDir: getHeadingDirectionName(p.azimuth)
     }));
@@ -1529,11 +1584,23 @@ export default function CampsiteARModal({
         }
       }
 
-      // 2. 📐 鏡頭仰角 (camElevation) 嚴謹 3D 空間旋轉矩陣解算 (直向與橫向皆不變)：
-      const betaRad = (rawBeta * Math.PI) / 180;
-      const gammaRad = (rawGamma * Math.PI) / 180;
-      const vz = -Math.cos(betaRad) * Math.cos(gammaRad);
-      const cameraElevation = (Math.asin(Math.max(-1, Math.min(1, vz))) * 180) / Math.PI;
+      // 2. 📐 鏡頭仰角 (camElevation) 嚴謹 3D 空間姿態解算 (iOS 原生重力向量 gz + Safari 橫向萬向節死鎖補償)：
+      let cameraElevation = 0;
+      if (typeof e.cameraElevation === 'number' && !isNaN(e.cameraElevation)) {
+        // iOS 原生 CoreMotion 重力向量 gz = asin(gz) * 180 / π，直向與橫向皆 100% 精準幾何不變
+        cameraElevation = e.cameraElevation;
+      } else if (screenAngle === 90 || screenAngle === 270 || (screenAngle === 0 && Math.abs(rawGamma) > 55)) {
+        // Safari 橫向模式萬向節死鎖補償：橫向側立時 rawGamma 接近 ±90° 導致 cos(gamma) 歸零，真實俯仰角映射至 rawBeta
+        const isLandscapeRight = screenAngle === 270 || (screenAngle === 0 && rawGamma < -55);
+        cameraElevation = isLandscapeRight ? -rawBeta : rawBeta;
+        cameraElevation = Math.max(-90, Math.min(90, cameraElevation));
+      } else {
+        // Safari 標準直向模式：後置鏡頭向量之 Earth-Z 分量
+        const betaRad = (rawBeta * Math.PI) / 180;
+        const gammaRad = (rawGamma * Math.PI) / 180;
+        const vz = -Math.cos(betaRad) * Math.cos(gammaRad);
+        cameraElevation = (Math.asin(Math.max(-1, Math.min(1, vz))) * 180) / Math.PI;
+      }
 
       // 3. 🧭 3D 陀螺儀後置鏡頭光軸向量 (V_cam = R * [0, 0, -1]^T) + 真北錨定融合：
       let gyroCamAzimuth = null;
@@ -2734,63 +2801,60 @@ export default function CampsiteARModal({
                       <feMergeNode in="SourceGraphic" />
                     </feMerge>
                   </filter>
-                  <linearGradient id="skyline-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.22" />
+                  <linearGradient id="skyline-grad-far" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.20" />
+                    <stop offset="100%" stopColor="#0f172a" stopOpacity="0.0" />
+                  </linearGradient>
+                  <linearGradient id="skyline-grad-near" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#34d399" stopOpacity="0.18" />
                     <stop offset="100%" stopColor="#0f172a" stopOpacity="0.0" />
                   </linearGradient>
                 </defs>
 
-                {/* 1. Continuous Panorama Mountain Silhouette Contour */}
-                {computedMountainSkyline && (
-                  <g className="transition-all duration-300">
+                {/* 1. Continuous Panorama Mountain Silhouette Contour (景深分層天際線，遠山與近丘不雜交) */}
+                {Array.isArray(computedMountainSkyline) && computedMountainSkyline.map(layer => (
+                  <g key={`skyline-layer-${layer.id}`} className="transition-all duration-300">
+                    {layer.fillPath && (
+                      <path
+                        d={layer.fillPath}
+                        fill={layer.id === 'far' ? 'url(#skyline-grad-far)' : 'url(#skyline-grad-near)'}
+                      />
+                    )}
                     <path
-                      d={computedMountainSkyline.fillPath}
-                      fill="url(#skyline-grad)"
-                    />
-                    <path
-                      d={computedMountainSkyline.path}
-                      stroke="#38bdf8"
+                      d={layer.path}
+                      stroke={layer.color}
                       strokeWidth="1.2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       filter="url(#ridge-glow)"
                       fill="none"
-                      className="drop-shadow-[0_0_8px_rgba(56,189,248,0.85)]"
+                      className={layer.id === 'far' ? 'drop-shadow-[0_0_8px_rgba(56,189,248,0.85)]' : 'drop-shadow-[0_0_8px_rgba(52,211,153,0.85)]'}
                     />
-                    {/* Glowing Beacon Drops from Peak Summits */}
-                    {computedMountainSkyline.peaks.map(p => (
+                    {/* Glowing Summit Beacons along Skyline */}
+                    {layer.peaks.map(p => (
                       <g key={`skyline-beacon-${p.id}`}>
                         <circle
                           cx={p.screenX}
                           cy={p.screenY}
-                          r="1.2"
-                          fill="#38bdf8"
+                          r="1.1"
+                          fill={layer.color}
                           filter="url(#ridge-glow)"
                         />
                         <circle
                           cx={p.screenX}
                           cy={p.screenY}
-                          r="0.5"
+                          r="0.4"
                           fill="#ffffff"
-                        />
-                        <line
-                          x1={p.screenX}
-                          y1={p.screenY}
-                          x2={p.screenX}
-                          y2={Math.min(95, p.screenY + 10)}
-                          stroke="#38bdf8"
-                          strokeWidth="0.4"
-                          strokeDasharray="1,1"
-                          strokeOpacity="0.75"
                         />
                       </g>
                     ))}
                   </g>
-                )}
+                ))}
 
                 {/* 2. Connected Mountain Chain Segments */}
                 {computedRidges.map(ridge => {
-                  const isHigh = selectedPeak && ridge.peakIds.includes(selectedPeak.id);
+                  const activePeak = selectedPeak || lockedPeak;
+                  const isHigh = activePeak && ridge.peakIds.includes(activePeak.id);
                   return (
                     <g key={ridge.id} className="transition-opacity duration-300">
                       {ridge.segments.map((seg, idx) => (
@@ -2802,6 +2866,7 @@ export default function CampsiteARModal({
                           y2={seg.p2.screenY}
                           stroke={ridge.color || '#38bdf8'}
                           strokeWidth={isHigh ? 1.4 : 0.9}
+                          strokeLinecap="round"
                           strokeDasharray={ridge.lineStyle === 'dashed' ? '2,1.5' : 'none'}
                           strokeOpacity={isHigh ? 0.95 : 0.8}
                           filter="url(#ridge-glow)"
@@ -2820,17 +2885,46 @@ export default function CampsiteARModal({
               </div>
             )}
 
-            {/* 3G. MOUNTAIN PEAK PINS & BADGES (8 層階梯錯位展開，零重疊覆蓋) */}
+            {/* 3G. MOUNTAIN PEAK PINS & BADGES (PeakVisor 顯著度階層過濾與極簡天際線卡片) */}
             {arViewMode === 'mountain' && computedPeaks.map(peak => {
               if (!peak.isVisible) return null;
               const isLocked = lockedPeak?.id === peak.id;
               const isSelected = selectedPeak?.id === peak.id;
               const isFocus = isLocked || isSelected;
-              // 當山頂靠近螢幕上方時 (screenY < 24%)，標籤自動改為垂掛在山頂下方，避免頂部遮蔽
-              const isFlipped = peak.screenY < 24;
-              // 8 層垂直階梯針高 (10px ~ 178px)，確保密集山系同方位多座山峰完全錯開不重疊
-              const needleHeightPx = isFocus ? 14 : (10 + (peak.tier || 0) * 24);
-              const displayX = peak.screenX + (isFocus ? 0 : (peak.offsetX || 0));
+              const shouldShowCard = peak.showCard || isFocus;
+
+              // 次要山峰 (Secondary Peaks)：稜線上僅顯示精緻頂峰微標信標點 (▲)，徹底釋放天空視野，點擊或瞄準時立即展開
+              if (!shouldShowCard) {
+                return (
+                  <div
+                    key={peak.id}
+                    data-testid="peak-pin-secondary"
+                    data-peak-id={peak.id}
+                    style={{
+                      left: `${peak.screenX}%`,
+                      top: `${peak.screenY}%`,
+                      transform: 'translate(-50%, -50%)'
+                    }}
+                    onClick={() => setSelectedPeak(prev => (prev?.id === peak.id ? null : peak))}
+                    className="absolute pointer-events-auto cursor-pointer group z-20 flex flex-col items-center"
+                    title={`${peak.name} (${peak.altitudeM}m · ${peak.distanceKm}km · 方位 ${peak.azimuth}°)`}
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400/80 border border-white/70 shadow-[0_0_8px_rgba(16,185,129,0.9)] transition-transform duration-150 group-hover:scale-150 flex items-center justify-center">
+                      <div className="w-1 h-1 rounded-full bg-white"></div>
+                    </div>
+                    {/* Hover 時浮現極簡微標 */}
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 mt-1 px-1.5 py-0.5 rounded bg-slate-950/90 text-white border border-emerald-400 text-[10px] font-bold whitespace-nowrap shadow-lg pointer-events-none">
+                      {peak.name} {peak.altitudeM}m
+                    </div>
+                  </div>
+                );
+              }
+
+              // 主要山峰 (Primary Peaks) 或焦點山峰 (Focus Peak)：以輕量垂直避讓階梯展示極簡單行卡片
+              // 垂直針高僅 10px ~ 36px，絕不向上推高至 178px 塞爆頂部
+              const needleHeightPx = isFocus ? 12 : (10 + (peak.tier || 0) * 14);
+              const displayX = peak.screenX;
+              const isFlipped = peak.screenY < 20;
 
               return (
                 <div
@@ -2847,7 +2941,7 @@ export default function CampsiteARModal({
                     isFocus ? 'scale-110 z-30' : 'opacity-95 hover:opacity-100 z-20'
                   }`}
                 >
-                  {/* 若山峰靠近頂部 (isFlipped)，先顯示山頂定錨點與針線，標籤垂掛下方 */}
+                  {/* 若山峰靠近螢幕頂端 (isFlipped)，先顯示山頂定錨點與針線，標籤垂掛下方 */}
                   {isFlipped && (
                     <>
                       <div className={`w-1.5 h-1.5 rounded-full ${isFocus ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-white'}`}></div>
@@ -2858,32 +2952,22 @@ export default function CampsiteARModal({
                     </>
                   )}
 
-                  {/* Peak Pin Badge (高對比度防遮蔽膠囊，移除 backdrop-blur 提升轉動流暢度) */}
-                  {peak.isCompact && !isFocus ? (
-                    <div className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-950/90 text-slate-100 border border-emerald-400/35 shadow-md flex items-center gap-1 hover:scale-105 hover:bg-emerald-950 hover:border-emerald-400 whitespace-nowrap">
-                      <span className="text-[10px]">{peak.icon || '⛰️'}</span>
-                      <span>{peak.name}</span>
-                      <span className="font-mono text-emerald-300 text-[10px]">{peak.altitudeM}m</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className={`px-2.5 py-0.5 rounded-full text-xs font-black shadow-xl flex items-center gap-1.5 border whitespace-nowrap ${
-                        isFocus
-                          ? 'bg-emerald-950/95 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
-                          : 'bg-slate-950/85 text-slate-100 border-white/30 hover:border-emerald-400/70 shadow-md'
-                      }`}>
-                        <span>{peak.icon || '⛰️'}</span>
-                        <span>{peak.name}</span>
-                        <span className="text-[10px] font-mono text-emerald-300 font-bold">{peak.altitudeM}m</span>
-                      </div>
+                  {/* Peak Pin Badge: 單行極簡膠囊，鎖定時高亮 */}
+                  <div className={`px-2 py-0.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1 border whitespace-nowrap transition-all ${
+                    isFocus
+                      ? 'bg-emerald-950/95 text-white border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_#10b981]'
+                      : 'bg-slate-950/85 text-slate-100 border-white/25 hover:border-emerald-400/70'
+                  }`}>
+                    <span className="text-[10px]">{peak.icon || '⛰️'}</span>
+                    <span>{peak.name}</span>
+                    <span className="text-[10px] font-mono text-emerald-300 font-bold">{peak.altitudeM}m</span>
+                  </div>
 
-                      {/* Distance Sub-label (僅在鎖定/選取或第 0~1 層主峰顯示，避免多層堆疊時遮擋下層山名) */}
-                      {(isFocus || (peak.tier || 0) <= 1) && (
-                        <div className="mt-0.5 px-1.5 py-0.1 rounded bg-slate-950/85 border border-white/15 text-[10px] font-mono text-emerald-300 font-bold whitespace-nowrap">
-                          {peak.distanceKm} km · {peak.azimuth}°
-                        </div>
-                      )}
-                    </>
+                  {/* 僅在焦點/選取時展開第二行距離與方位，其餘主要名山保持單行以徹底釋放天際線視野 */}
+                  {isFocus && (
+                    <div className="mt-0.5 px-1.5 py-0.1 rounded bg-slate-950/90 border border-emerald-400/40 text-[10px] font-mono text-emerald-300 font-bold whitespace-nowrap animate-in fade-in duration-150">
+                      {peak.distanceKm} km · {peak.azimuth}°
+                    </div>
                   )}
 
                   {/* 若為標準山峰 (!isFlipped)，標籤在上方，針線向下延伸至山頂定錨點 */}
@@ -3041,22 +3125,12 @@ export default function CampsiteARModal({
                 <div className="absolute left-0 h-0.5 w-1.5 bg-emerald-400/70" />
                 <div className="absolute right-0 h-0.5 w-1.5 bg-emerald-400/70" />
 
-                {/* 中央精準微點 */}
+                {/* 中央精準微點 (鎖定山峰時 Pin 本體已高亮展開，準心保持空曠無文字，徹底消除雙重疊字) */}
                 <div className={`w-1.5 h-1.5 rounded-full transition-all ${
                   lockedPeak
                     ? 'bg-emerald-400 shadow-[0_0_8px_#10b981] scale-125'
                     : 'bg-emerald-400/40 border border-emerald-300/50'
                 }`} />
-
-                {/* 僅在底部山峰字卡被使用者手動「隱藏」時，才在準心上方顯示微型浮動膠囊，徹底避免雙重疊字遮蔽 */}
-                {lockedPeak && dismissedPeakId === lockedPeak.id && (
-                  <div className="absolute -top-8 px-2.5 py-0.5 bg-emerald-500/90 backdrop-blur-md text-slate-950 font-black text-xs rounded-full shadow-lg flex items-center gap-1.5 whitespace-nowrap animate-in fade-in duration-150">
-                    <span>⛰️ {lockedPeak.name}</span>
-                    <span className="bg-slate-950 text-emerald-300 px-1 py-0.2 rounded font-mono text-[10px]">
-                      {lockedPeak.altitudeM}m · {lockedPeak.distanceKm}km
-                    </span>
-                  </div>
-                )}
               </div>
             ) : arViewMode === 'spots' ? (
               <div className={`relative w-44 h-44 sm:w-56 sm:h-56 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${
